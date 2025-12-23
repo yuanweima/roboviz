@@ -20,6 +20,12 @@ export type EulerTuple = [number, number, number];
 /** Quaternion tuple [x, y, z, w] */
 export type QuaternionTuple = [number, number, number, number];
 
+/**
+ * Mesh data for loading meshes from memory (base64 encoded)
+ * Key is the mesh filename (e.g., "link1.stl"), value is base64 encoded content
+ */
+export type MeshDataMap = Record<string, string>;
+
 export interface RobotProps {
   /** Robot state from store or directly provided */
   state?: RobotState;
@@ -27,7 +33,19 @@ export interface RobotProps {
   robotId?: string;
   /** Alternative props for direct usage without store */
   id?: string;
+  /** URL path to URDF file (mutually exclusive with urdfContent) */
   urdfPath?: string;
+  /**
+   * URDF XML content as string (mutually exclusive with urdfPath)
+   * Use this to load URDF directly from memory without HTTP fetch
+   */
+  urdfContent?: string;
+  /**
+   * Mesh data for loading meshes from memory (base64 encoded)
+   * Key is the mesh path as referenced in URDF, value is base64 encoded content
+   * Required when using urdfContent if the URDF references external meshes
+   */
+  meshData?: MeshDataMap;
   jointAngles?: number[];
   showAxes?: boolean;
   opacity?: number;
@@ -73,9 +91,71 @@ export interface RobotProps {
 }
 
 /**
- * Custom hook for loading URDF robot
+ * Helper to decode base64 to ArrayBuffer
  */
-function useURDFRobot(urdfPath: string | undefined) {
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+/**
+ * Helper to extract mesh filename from path
+ */
+function getMeshKey(path: string): string {
+  // Handle various path formats: package://..., file://..., relative paths
+  const parts = path.split('/');
+  return parts[parts.length - 1];
+}
+
+/**
+ * Process loaded robot: extract joint info and apply materials
+ */
+function processLoadedRobot(loadedRobot: URDFRobot): {
+  names: string[];
+  limits: Map<string, { lower: number; upper: number }>;
+} {
+  const names: string[] = [];
+  const limits = new Map<string, { lower: number; upper: number }>();
+
+  loadedRobot.traverse((child) => {
+    const joint = child as unknown as URDFJoint;
+    if (joint.isURDFJoint && (joint.jointType === 'revolute' || joint.jointType === 'prismatic' || joint.jointType === 'continuous')) {
+      names.push(joint.name);
+      limits.set(joint.name, {
+        lower: joint.limit?.lower ?? -Math.PI,
+        upper: joint.limit?.upper ?? Math.PI,
+      });
+    }
+  });
+
+  // Apply materials
+  loadedRobot.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      const mesh = child as THREE.Mesh;
+      if (mesh.material) {
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        mat.metalness = 0.4;
+        mat.roughness = 0.6;
+      }
+    }
+  });
+
+  return { names, limits };
+}
+
+/**
+ * Custom hook for loading URDF robot
+ * Supports both URL loading (urdfPath) and content loading (urdfContent + meshData)
+ */
+function useURDFRobot(
+  urdfPath: string | undefined,
+  urdfContent?: string,
+  meshData?: MeshDataMap
+) {
   const [robot, setRobot] = useState<URDFRobot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -85,15 +165,47 @@ function useURDFRobot(urdfPath: string | undefined) {
   }>({ names: [], limits: new Map() });
 
   useEffect(() => {
-    if (!urdfPath) return;
+    // Need either urdfPath or urdfContent
+    if (!urdfPath && !urdfContent) return;
 
     setLoading(true);
     setError(null);
 
     const loader = new URDFLoader();
 
-    // Configure mesh loader for STL files
+    // Configure mesh loader
     loader.loadMeshCb = (path, manager, onComplete) => {
+      // If we have mesh data, try to load from memory first
+      if (meshData) {
+        const meshKey = getMeshKey(path);
+        const base64Data = meshData[meshKey] || meshData[path];
+
+        if (base64Data) {
+          try {
+            const arrayBuffer = base64ToArrayBuffer(base64Data);
+            const stlLoader = new STLLoader(manager);
+
+            // Parse from ArrayBuffer
+            const geometry = stlLoader.parse(arrayBuffer);
+            geometry.computeBoundingBox();
+
+            const material = new THREE.MeshStandardMaterial({
+              color: 0xcccccc,
+              metalness: 0.4,
+              roughness: 0.6,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            onComplete(mesh);
+            return;
+          } catch (e) {
+            console.warn('Failed to parse mesh from memory:', meshKey, e);
+          }
+        }
+      }
+
+      // Fallback to loading from URL
       const stlLoader = new STLLoader(manager);
       stlLoader.load(
         path,
@@ -118,52 +230,45 @@ function useURDFRobot(urdfPath: string | undefined) {
       );
     };
 
-    loader.load(
-      urdfPath,
-      (loadedRobot) => {
-        // Extract joint info
-        const names: string[] = [];
-        const limits = new Map<string, { lower: number; upper: number }>();
-
-        loadedRobot.traverse((child) => {
-          const joint = child as unknown as URDFJoint;
-          if (joint.isURDFJoint && (joint.jointType === 'revolute' || joint.jointType === 'prismatic' || joint.jointType === 'continuous')) {
-            names.push(joint.name);
-            limits.set(joint.name, {
-              lower: joint.limit?.lower ?? -Math.PI,
-              upper: joint.limit?.upper ?? Math.PI,
-            });
-          }
-        });
-
-        // Apply materials
-        loadedRobot.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            const mesh = child as THREE.Mesh;
-            if (mesh.material) {
-              const mat = mesh.material as THREE.MeshStandardMaterial;
-              mat.metalness = 0.4;
-              mat.roughness = 0.6;
-            }
-          }
-        });
+    // Load from content (in-memory) or URL
+    if (urdfContent) {
+      try {
+        // Parse URDF from string content
+        const loadedRobot = loader.parse(urdfContent);
+        const { names, limits } = processLoadedRobot(loadedRobot);
 
         setRobot(loadedRobot);
         setJointInfo({ names, limits });
         setLoading(false);
-      },
-      undefined,
-      (err) => {
-        console.error('URDF load error:', err);
+      } catch (err) {
+        console.error('URDF parse error:', err);
         setError(err as Error);
         setLoading(false);
       }
-    );
+    } else if (urdfPath) {
+      // Load from URL
+      loader.load(
+        urdfPath,
+        (loadedRobot) => {
+          const { names, limits } = processLoadedRobot(loadedRobot);
+
+          setRobot(loadedRobot);
+          setJointInfo({ names, limits });
+          setLoading(false);
+        },
+        undefined,
+        (err) => {
+          console.error('URDF load error:', err);
+          setError(err as Error);
+          setLoading(false);
+        }
+      );
+    }
 
     return () => {
       // Cleanup will be handled by React
     };
-  }, [urdfPath]);
+  }, [urdfPath, urdfContent, meshData]);
 
   return { robot, loading, error, jointInfo };
 }
@@ -219,6 +324,8 @@ export function Robot({
   // Direct props
   id,
   urdfPath,
+  urdfContent,
+  meshData,
   jointAngles,
   showAxes,
   opacity,
@@ -245,9 +352,11 @@ export function Robot({
   }, [onEndEffectorUpdate]);
 
   // Build state from direct props if provided
-  const directState: RobotState | undefined = (id && urdfPath) ? {
+  // Support both urdfPath and urdfContent modes
+  const hasUrdf = urdfPath || urdfContent;
+  const directState: RobotState | undefined = (id && hasUrdf) ? {
     id,
-    urdf: urdfPath,
+    urdf: urdfPath || '', // For content mode, urdf path may be empty
     jointAngles: jointAngles || [],
     transform: {
       position: { x: 0, y: 0, z: 0 },
@@ -263,7 +372,12 @@ export function Robot({
   // Get state from props, direct props, or store
   const state = propState ?? directState ?? (robotId ? robots.get(robotId) : undefined);
 
-  const { robot, loading, error, jointInfo } = useURDFRobot(state?.urdf);
+  // Load URDF - support both URL and content modes
+  const { robot, loading, error, jointInfo } = useURDFRobot(
+    urdfContent ? undefined : state?.urdf, // Only use URL if no content provided
+    urdfContent,
+    meshData
+  );
 
   // Notify when loaded
   useEffect(() => {

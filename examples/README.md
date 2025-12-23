@@ -1,68 +1,98 @@
 # RoboViz Examples
 
-本目录包含 RoboViz 系统的演示示例。
+本目录包含 RoboViz 的使用示例。
 
-## 目录结构
+## 示例目录
 
 ```
 examples/
 ├── python/                    # Python SDK 示例
-│   └── simple_remote_control.py  # 远程控制示例
-└── react-demo/                # React Demo 应用
-    └── src/modules/           # 功能模块演示
-        ├── RobotModule.tsx       # 基础机器人控制
-        ├── TrajectoryModule.tsx  # 轨迹播放
-        ├── CollisionModule.tsx   # 碰撞检测与安全区域
-        └── RemoteControlModule.tsx # Python SDK 远程控制
+│   ├── basic.py              # 基础用法（推荐）
+│   └── simple_remote_control.py  # 旧版远程控制
+│
+├── react-basic/              # React 直接使用示例
+│   └── src/App.tsx           # 纯组件使用，无远程控制
+│
+└── react-demo/               # 完整功能演示（旧版）
+    └── src/modules/          # 各种功能模块
 ```
 
 ## 快速开始
 
-### 1. 启动 React Demo
+### Python 用户（推荐）
+
+最简单的方式 - 只需一个 Python 脚本：
 
 ```bash
+# 安装 SDK
+cd packages/sdk/python
+pip install .
+
+# 运行示例
+python examples/python/basic.py
+```
+
+脚本会自动启动服务器并打开浏览器，无需其他步骤。
+
+### React 用户
+
+#### 方式 1：直接使用组件（无远程控制）
+
+```bash
+# 安装依赖
 pnpm install
+
+# 运行 react-basic 示例
+pnpm --filter roboviz-react-basic dev
+```
+
+这个示例展示如何在 React 应用中直接使用 RoboViz 组件。
+
+#### 方式 2：查看完整功能演示
+
+```bash
+# 运行 react-demo（旧版）
 pnpm --filter roboviz-react-demo dev
 ```
 
-打开浏览器访问显示的地址（如 http://localhost:3004）
+## 使用模式说明
 
-### 2. Python SDK 远程控制
+### 模式 1：Python/C++ 独立使用
 
-首先安装 Python SDK：
+```python
+import roboviz as rv
 
-```bash
-cd packages/sdk/python
-pip install .
-pip install websocket-client
+rv.init()  # 自动启动一切
+robot = rv.add_robot("/robot.urdf")
+robot.set_joints([0, 0.5, 0.8])
+rv.show()  # 阻塞运行
 ```
 
-然后在 React Demo 的 "Remote" 模块中点击 "Connect" 连接服务器。
+用户只需要运行 Python 脚本，SDK 会自动：
+1. 启动 HTTP 服务器（serve viewer）
+2. 启动 WebSocket 服务器
+3. 打开浏览器
+4. 等待连接
 
-运行 Python 脚本：
+### 模式 2：React 直接集成
 
-```bash
-python examples/python/simple_remote_control.py
+```tsx
+import { Robot } from '@aspect/roboviz-core';
+
+function App() {
+  return (
+    <Canvas>
+      <Robot urdfPath="/robot.urdf" joints={[0, 0.5, 0.8]} />
+    </Canvas>
+  );
+}
 ```
 
-## 功能演示
+适用于：
+- 需要深度定制 UI
+- 需要与现有 React 应用集成
+- 不需要远程控制
 
-### Robot Module
-- 加载 URDF 机器人模型
-- 控制关节角度
-- 调整机器人颜色和显示选项
+### 模式 3：Tauri/Electron 桌面应用
 
-### Trajectory Module
-- 生成不同类型的轨迹 (pick-place, circular, wave)
-- 使用 `useTrajectoryPlayer` hook 控制播放
-- 添加和管理路点
-
-### Collision Module
-- 添加障碍物 (box, sphere, cylinder)
-- 显示安全区域 (`SafetyZoneVisual`)
-- 点击删除障碍物
-
-### Remote Control Module
-- 通过 WebSocket 接收 Python SDK 命令
-- 动态添加机器人、障碍物、安全区域
-- 实时关节控制
+使用 `useRoboVizBridge` hook 与后端通信，通过 IPC 而非 WebSocket。
