@@ -4,7 +4,7 @@
  * Shows the simplest way to use RoboViz in a React application.
  * This uses the components directly without any remote control.
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid, Environment } from '@react-three/drei';
 import { Robot } from '@aspect/roboviz-core';
