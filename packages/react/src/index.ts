@@ -75,6 +75,56 @@ export {
   type SafetyZoneVisualProps,
 } from '@aspect/roboviz-core';
 
+// Collision visualization components
+export {
+  // Main component
+  CollisionVisualizer,
+  CollisionStatusBadge,
+  useCollisionVisualization,
+  // Safety zones (SafetyZone3D to avoid conflict with SafetyZone type)
+  SafetyZone3D,
+  SafetyZoneList,
+  // Collision geometry
+  CollisionGeometryVisual,
+  CollisionGeometryList,
+  // Contact points
+  ContactPoint,
+  ContactPointList,
+  PenetrationVector,
+  CollisionIndicator,
+  // Types
+  type CollisionVisualizerProps,
+  type SafetyZoneProps,
+  type SafetyZoneListProps,
+  type CollisionGeometryVisualProps,
+  type CollisionGeometryListProps,
+  type ContactPointProps,
+  type ContactPointListProps,
+  type CollisionStatusBadgeProps,
+} from '@aspect/roboviz-core';
+
+// Collision hooks and types
+export {
+  useCollision,
+  type UseCollisionOptions,
+  type UseCollisionState,
+  type UseCollisionActions,
+} from '@aspect/roboviz-core';
+
+// Collision types
+export type {
+  CollisionGeometry,
+  CollisionGeometryType,
+  CollisionGeometryParams,
+  SafetyZone as SafetyZoneType,
+  SafetyLevel,
+  SafetyZoneVisualization,
+  CollisionResult,
+  CollisionPair,
+  CollisionVisualizationConfig,
+  SafetyZoneTriggerState,
+} from '@aspect/roboviz-core';
+
 // Trajectory playback hook
 export {
   useTrajectoryPlayer,

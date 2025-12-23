@@ -22,3 +22,32 @@ export {
   type AnimatedCoordinationLineProps,
   type BidirectionalLineProps,
 } from './CoordinationLine';
+
+// Collision visualization components
+// Note: SafetyZone component renamed to SafetyZone3D to avoid conflict with SafetyZone type
+export {
+  // Main visualizer
+  CollisionVisualizer,
+  CollisionStatusBadge,
+  useCollisionVisualization,
+  // Geometry-based SafetyZone component (as SafetyZone3D to distinguish from type)
+  SafetyZone as SafetyZone3D,
+  SafetyZoneList,
+  // Collision geometry
+  CollisionGeometryVisual,
+  CollisionGeometryList,
+  // Contact points
+  ContactPoint,
+  ContactPointList,
+  PenetrationVector,
+  CollisionIndicator,
+  // Types
+  type CollisionVisualizerProps,
+  type SafetyZoneProps,
+  type SafetyZoneListProps,
+  type CollisionGeometryVisualProps,
+  type CollisionGeometryListProps,
+  type ContactPointProps,
+  type ContactPointListProps,
+  type CollisionStatusBadgeProps,
+} from '../collision/index';
