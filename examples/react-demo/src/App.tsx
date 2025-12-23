@@ -8,10 +8,27 @@ import { CollisionModule } from './modules/CollisionModule';
 import { MultiRobotModule } from './modules/MultiRobotModule';
 import { PerformanceModule } from './modules/PerformanceModule';
 import { RemoteControlModule } from './modules/RemoteControlModule';
+// New modules showcasing refactored API
+import { ImperativeModule } from './modules/ImperativeModule';
+import { MultiInstanceModule } from './modules/MultiInstanceModule';
+import { EventSystemModule } from './modules/EventSystemModule';
+import { HeadlessModule } from './modules/HeadlessModule';
 import { StatusBar } from './components/StatusBar';
 import { useAppStore } from './store';
 
-export type ModuleType = 'robot' | 'trajectory' | 'vision' | 'collision' | 'multi-robot' | 'performance' | 'remote';
+export type ModuleType =
+  | 'robot'
+  | 'trajectory'
+  | 'vision'
+  | 'collision'
+  | 'multi-robot'
+  | 'performance'
+  | 'remote'
+  // New module types
+  | 'imperative'
+  | 'multi-instance'
+  | 'events'
+  | 'headless';
 
 const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'robot': RobotModule,
@@ -21,10 +38,15 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'multi-robot': MultiRobotModule,
   'performance': PerformanceModule,
   'remote': RemoteControlModule,
+  // New modules
+  'imperative': ImperativeModule,
+  'multi-instance': MultiInstanceModule,
+  'events': EventSystemModule,
+  'headless': HeadlessModule,
 };
 
 export default function App() {
-  const [activeModule, setActiveModule] = useState<ModuleType>('robot');
+  const [activeModule, setActiveModule] = useState<ModuleType>('imperative');
   const ActiveModuleComponent = MODULE_COMPONENTS[activeModule];
 
   return (
@@ -33,7 +55,7 @@ export default function App() {
 
       <header className="header">
         <h1>RoboViz Test Suite</h1>
-        <span className="version">v0.1.0</span>
+        <span className="version">v0.2.0</span>
       </header>
 
       <div className="main-layout">
