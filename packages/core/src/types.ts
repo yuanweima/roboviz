@@ -3,17 +3,47 @@
  */
 
 // Basic geometric types
-export type Vector3 = [number, number, number];
-export type Quaternion = [number, number, number, number]; // [w, x, y, z]
+export interface Vector3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface Quaternion {
+  w: number;
+  x: number;
+  y: number;
+  z: number;
+}
 
 export interface Transform {
   position: Vector3;
-  orientation: Quaternion;
+  rotation: Quaternion;
 }
 
 export interface Pose {
   position: Vector3;
   orientation: Quaternion;
+}
+
+// Helper functions for creating geometric types
+export function vec3(x: number, y: number, z: number): Vector3 {
+  return { x, y, z };
+}
+
+export function quat(w: number, x: number, y: number, z: number): Quaternion {
+  return { w, x, y, z };
+}
+
+export function identityQuaternion(): Quaternion {
+  return { w: 1, x: 0, y: 0, z: 0 };
+}
+
+export function identityTransform(): Transform {
+  return {
+    position: { x: 0, y: 0, z: 0 },
+    rotation: { w: 1, x: 0, y: 0, z: 0 },
+  };
 }
 
 // Robot types

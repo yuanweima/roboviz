@@ -270,53 +270,46 @@ export const diagnosticGetActive: MethodHandler<
 };
 
 // ============================================================================
-// Handler Registry
+// Handler Registration
 // ============================================================================
 
 /**
- * 所有诊断处理器
- */
-export const diagnosticHandlers: Record<string, MethodHandler> = {
-  // Joint Diagnostic
-  'diagnostic.showJoint': diagnosticShowJoint,
-  'diagnostic.hideJoint': diagnosticHideJoint,
-  'diagnostic.updateJoint': diagnosticUpdateJoint,
-  'diagnostic.getJointConfig': diagnosticGetJointConfig,
-
-  // Workspace
-  'diagnostic.showWorkspace': diagnosticShowWorkspace,
-  'diagnostic.hideWorkspace': diagnosticHideWorkspace,
-  'diagnostic.getWorkspaceConfig': diagnosticGetWorkspaceConfig,
-
-  // Singularity
-  'diagnostic.showSingularity': diagnosticShowSingularity,
-  'diagnostic.hideSingularity': diagnosticHideSingularity,
-  'diagnostic.getSingularityState': diagnosticGetSingularityState,
-  'diagnostic.getSingularityConfig': diagnosticGetSingularityConfig,
-
-  // Joint Limits
-  'diagnostic.showJointLimits': diagnosticShowJointLimits,
-  'diagnostic.hideJointLimits': diagnosticHideJointLimits,
-  'diagnostic.getJointLimitStates': diagnosticGetJointLimitStates,
-  'diagnostic.getJointLimitConfig': diagnosticGetJointLimitConfig,
-
-  // Velocity
-  'diagnostic.showVelocity': diagnosticShowVelocity,
-  'diagnostic.hideVelocity': diagnosticHideVelocity,
-  'diagnostic.getVelocityConfig': diagnosticGetVelocityConfig,
-
-  // Global
-  'diagnostic.hideAll': diagnosticHideAll,
-  'diagnostic.getActive': diagnosticGetActive,
-};
-
-/**
  * 注册所有诊断处理器到 dispatcher
+ *
+ * 使用类型安全的逐个注册方式
  */
 export function registerDiagnosticHandlers(
-  registerMethod: (method: string, handler: MethodHandler) => void
+  register: <TParams, TResult>(method: string, handler: MethodHandler<TParams, TResult>) => void
 ): void {
-  for (const [method, handler] of Object.entries(diagnosticHandlers)) {
-    registerMethod(method, handler);
-  }
+  // Joint Diagnostic
+  register('diagnostic.showJoint', diagnosticShowJoint);
+  register('diagnostic.hideJoint', diagnosticHideJoint);
+  register('diagnostic.updateJoint', diagnosticUpdateJoint);
+  register('diagnostic.getJointConfig', diagnosticGetJointConfig);
+
+  // Workspace
+  register('diagnostic.showWorkspace', diagnosticShowWorkspace);
+  register('diagnostic.hideWorkspace', diagnosticHideWorkspace);
+  register('diagnostic.getWorkspaceConfig', diagnosticGetWorkspaceConfig);
+
+  // Singularity
+  register('diagnostic.showSingularity', diagnosticShowSingularity);
+  register('diagnostic.hideSingularity', diagnosticHideSingularity);
+  register('diagnostic.getSingularityState', diagnosticGetSingularityState);
+  register('diagnostic.getSingularityConfig', diagnosticGetSingularityConfig);
+
+  // Joint Limits
+  register('diagnostic.showJointLimits', diagnosticShowJointLimits);
+  register('diagnostic.hideJointLimits', diagnosticHideJointLimits);
+  register('diagnostic.getJointLimitStates', diagnosticGetJointLimitStates);
+  register('diagnostic.getJointLimitConfig', diagnosticGetJointLimitConfig);
+
+  // Velocity
+  register('diagnostic.showVelocity', diagnosticShowVelocity);
+  register('diagnostic.hideVelocity', diagnosticHideVelocity);
+  register('diagnostic.getVelocityConfig', diagnosticGetVelocityConfig);
+
+  // Global
+  register('diagnostic.hideAll', diagnosticHideAll);
+  register('diagnostic.getActive', diagnosticGetActive);
 }

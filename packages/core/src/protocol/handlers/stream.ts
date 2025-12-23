@@ -178,31 +178,24 @@ export const streamGetLatest: MethodHandler<{ streamId: string; count?: number }
 };
 
 // ============================================================================
-// Handler Registry
+// Handler Registration
 // ============================================================================
 
 /**
- * 所有 stream.* 处理器
- */
-export const streamHandlers: Record<string, MethodHandler> = {
-  'stream.create': streamCreate,
-  'stream.subscribe': streamSubscribe,
-  'stream.unsubscribe': streamUnsubscribe,
-  'stream.pause': streamPause,
-  'stream.resume': streamResume,
-  'stream.destroy': streamDestroy,
-  'stream.getState': streamGetState,
-  'stream.list': streamList,
-  'stream.getLatest': streamGetLatest,
-};
-
-/**
  * 注册所有 stream 处理器到 dispatcher
+ *
+ * 使用类型安全的逐个注册方式
  */
 export function registerStreamHandlers(
-  registerMethod: (method: string, handler: MethodHandler) => void
+  register: <TParams, TResult>(method: string, handler: MethodHandler<TParams, TResult>) => void
 ): void {
-  for (const [method, handler] of Object.entries(streamHandlers)) {
-    registerMethod(method, handler);
-  }
+  register('stream.create', streamCreate);
+  register('stream.subscribe', streamSubscribe);
+  register('stream.unsubscribe', streamUnsubscribe);
+  register('stream.pause', streamPause);
+  register('stream.resume', streamResume);
+  register('stream.destroy', streamDestroy);
+  register('stream.getState', streamGetState);
+  register('stream.list', streamList);
+  register('stream.getLatest', streamGetLatest);
 }

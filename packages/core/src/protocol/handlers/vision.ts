@@ -323,60 +323,53 @@ export const visionUnprojectPoint: MethodHandler<
 };
 
 // ============================================================================
-// Handler Registry
+// Handler Registration
 // ============================================================================
 
 /**
- * 所有视觉相关处理器
- */
-export const visionHandlers: Record<string, MethodHandler> = {
-  // Point Cloud
-  'pointCloud.load': pointCloudLoad,
-  'pointCloud.update': pointCloudUpdate,
-  'pointCloud.setVisualization': pointCloudSetVisualization,
-  'pointCloud.remove': pointCloudRemove,
-  'pointCloud.clear': pointCloudClear,
-  'pointCloud.get': pointCloudGet,
-  'pointCloud.list': pointCloudList,
-
-  // Camera View
-  'vision.addCameraView': visionAddCameraView,
-  'vision.removeCameraView': visionRemoveCameraView,
-  'vision.updateCameraView': visionUpdateCameraView,
-  'vision.getCameraView': visionGetCameraView,
-  'vision.listCameraViews': visionListCameraViews,
-
-  // Image Overlay
-  'vision.setImageOverlay': visionSetImageOverlay,
-  'vision.clearImageOverlay': visionClearImageOverlay,
-
-  // Calibration
-  'vision.showCalibration': visionShowCalibration,
-  'vision.hideCalibration': visionHideCalibration,
-
-  // 2D Markers
-  'vision.addMarker2D': visionAddMarker2D,
-  'vision.removeMarker2D': visionRemoveMarker2D,
-  'vision.clearMarkers2D': visionClearMarkers2D,
-
-  // ROI
-  'vision.addROI2D': visionAddROI2D,
-  'vision.removeROI2D': visionRemoveROI2D,
-  'vision.addROI3D': visionAddROI3D,
-  'vision.removeROI3D': visionRemoveROI3D,
-
-  // Projection
-  'vision.projectPoint': visionProjectPoint,
-  'vision.unprojectPoint': visionUnprojectPoint,
-};
-
-/**
  * 注册所有视觉处理器到 dispatcher
+ *
+ * 使用类型安全的逐个注册方式
  */
 export function registerVisionHandlers(
-  registerMethod: (method: string, handler: MethodHandler) => void
+  register: <TParams, TResult>(method: string, handler: MethodHandler<TParams, TResult>) => void
 ): void {
-  for (const [method, handler] of Object.entries(visionHandlers)) {
-    registerMethod(method, handler);
-  }
+  // Point Cloud
+  register('pointCloud.load', pointCloudLoad);
+  register('pointCloud.update', pointCloudUpdate);
+  register('pointCloud.setVisualization', pointCloudSetVisualization);
+  register('pointCloud.remove', pointCloudRemove);
+  register('pointCloud.clear', pointCloudClear);
+  register('pointCloud.get', pointCloudGet);
+  register('pointCloud.list', pointCloudList);
+
+  // Camera View
+  register('vision.addCameraView', visionAddCameraView);
+  register('vision.removeCameraView', visionRemoveCameraView);
+  register('vision.updateCameraView', visionUpdateCameraView);
+  register('vision.getCameraView', visionGetCameraView);
+  register('vision.listCameraViews', visionListCameraViews);
+
+  // Image Overlay
+  register('vision.setImageOverlay', visionSetImageOverlay);
+  register('vision.clearImageOverlay', visionClearImageOverlay);
+
+  // Calibration
+  register('vision.showCalibration', visionShowCalibration);
+  register('vision.hideCalibration', visionHideCalibration);
+
+  // 2D Markers
+  register('vision.addMarker2D', visionAddMarker2D);
+  register('vision.removeMarker2D', visionRemoveMarker2D);
+  register('vision.clearMarkers2D', visionClearMarkers2D);
+
+  // ROI
+  register('vision.addROI2D', visionAddROI2D);
+  register('vision.removeROI2D', visionRemoveROI2D);
+  register('vision.addROI3D', visionAddROI3D);
+  register('vision.removeROI3D', visionRemoveROI3D);
+
+  // Projection
+  register('vision.projectPoint', visionProjectPoint);
+  register('vision.unprojectPoint', visionUnprojectPoint);
 }

@@ -75,7 +75,7 @@ export class CollisionManager implements ICollisionManager {
       geometry,
       transform: transform ?? {
         position: { x: 0, y: 0, z: 0 },
-        rotation: { x: 0, y: 0, z: 0, w: 1 },
+        rotation: { w: 1, x: 0, y: 0, z: 0 },
       },
       enabled: true,
     };
@@ -496,13 +496,13 @@ export class CollisionManager implements ICollisionManager {
   private isPointInSafetyZone(point: Vector3, zone: SafetyZone): boolean {
     // 使用安全区域的几何体检查
     const center = zone.transform.position;
-    const params = zone.geometry.params;
+    const params = zone.params;
 
     const dx = point.x - center.x;
     const dy = point.y - center.y;
     const dz = point.z - center.z;
 
-    switch (zone.geometry.type) {
+    switch (zone.type) {
       case 'sphere':
         const distSq = dx * dx + dy * dy + dz * dz;
         return distSq <= (params.radius ?? 0) * (params.radius ?? 0);

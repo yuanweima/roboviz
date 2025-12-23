@@ -426,7 +426,7 @@ export const DEFAULT_GROUP_VISUALIZATION: RobotGroupVisualization = {
   showConnections: true,
   connectionColor: '#00ffff',
   showLabel: true,
-  labelOffset: [0, 0, 0.5],
+  labelOffset: { x: 0, y: 0, z: 0.5 },
 };
 
 /**

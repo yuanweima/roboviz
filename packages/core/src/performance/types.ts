@@ -91,6 +91,10 @@ export interface PerformanceConfig {
 
   /** 是否启用帧率限制 */
   enableFrameRateLimit: boolean;
+
+  // 阴影质量
+  /** 阴影质量 */
+  shadowQuality: 'off' | 'low' | 'medium' | 'high';
 }
 
 /**
@@ -125,6 +129,7 @@ export const DEFAULT_PERFORMANCE_CONFIG: PerformanceConfig = {
   adaptiveQuality: true,
   adaptiveMinFPS: 30,
   enableFrameRateLimit: true,
+  shadowQuality: 'medium',
 };
 
 // ============================================================================

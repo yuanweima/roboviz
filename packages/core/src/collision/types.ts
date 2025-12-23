@@ -2,9 +2,10 @@
  * RoboViz Collision Types
  *
  * 碰撞检测和安全区域相关类型定义
+ * 与 collision-manager.ts 实现对齐
  */
 
-import type { Vector3, Quaternion, Transform } from '../types';
+import type { Vector3, Transform } from '../types';
 
 // ============================================================================
 // Collision Geometry Types
@@ -22,60 +23,20 @@ export type CollisionGeometryType =
   | 'convexHull';
 
 /**
- * 碰撞几何体参数
+ * 碰撞几何体参数 (简化版)
  */
-export type CollisionParams =
-  | BoxParams
-  | SphereParams
-  | CylinderParams
-  | CapsuleParams
-  | MeshParams
-  | ConvexHullParams;
-
-export interface BoxParams {
-  type: 'box';
-  /** 尺寸 [width, depth, height] (米) */
-  size: Vector3;
-}
-
-export interface SphereParams {
-  type: 'sphere';
-  /** 半径 (米) */
-  radius: number;
-}
-
-export interface CylinderParams {
-  type: 'cylinder';
-  /** 半径 (米) */
-  radius: number;
-  /** 高度 (米) */
-  height: number;
-}
-
-export interface CapsuleParams {
-  type: 'capsule';
-  /** 半径 (米) */
-  radius: number;
-  /** 高度 (不包括两端半球) (米) */
-  height: number;
-}
-
-export interface MeshParams {
-  type: 'mesh';
-  /** 顶点数组 (交错存储 [x,y,z, ...]) */
-  vertices: Float32Array;
-  /** 三角形索引 */
-  indices: Uint32Array;
-}
-
-export interface ConvexHullParams {
-  type: 'convexHull';
-  /** 点集 (交错存储 [x,y,z, ...]) */
-  points: Float32Array;
+export interface CollisionGeometryParams {
+  // Box
+  width?: number;
+  height?: number;
+  depth?: number;
+  // Sphere
+  radius?: number;
+  // Cylinder/Capsule also use radius + height
 }
 
 /**
- * 碰撞几何体定义
+ * 碰撞几何体定义 (简化版)
  */
 export interface CollisionGeometry {
   /** 唯一标识符 */
@@ -85,19 +46,13 @@ export interface CollisionGeometry {
   type: CollisionGeometryType;
 
   /** 几何体参数 */
-  params: CollisionParams;
+  params: CollisionGeometryParams;
 
-  /** 相对于父对象的变换 */
-  transform: Transform;
+  /** 元数据 */
+  metadata?: Record<string, unknown>;
 
-  /** 父对象 ID (机器人 link 或障碍物) */
-  parentId: string;
-
-  /** 父对象类型 */
-  parentType: 'robot_link' | 'obstacle';
-
-  /** 是否启用 */
-  enabled: boolean;
+  /** 关联对象类型 (用于碰撞检测结果) */
+  associatedObjectType?: 'robot' | 'obstacle' | 'geometry';
 }
 
 // ============================================================================
@@ -107,11 +62,7 @@ export interface CollisionGeometry {
 /**
  * 安全等级
  */
-export type SafetyLevel =
-  | 'info'      // 信息级别，仅显示
-  | 'warning'   // 警告级别，减速
-  | 'danger'    // 危险级别，需要注意
-  | 'stop';     // 停止级别，立即停止
+export type SafetyLevel = 'info' | 'warning' | 'danger' | 'stop';
 
 /**
  * 安全区域可视化配置
@@ -140,7 +91,7 @@ export interface SafetyZoneVisualization {
 }
 
 /**
- * 安全区域定义
+ * 安全区域定义 (简化版 - 与 manager 实现对齐)
  */
 export interface SafetyZone {
   /** 唯一标识符 */
@@ -153,48 +104,34 @@ export interface SafetyZone {
   type: CollisionGeometryType;
 
   /** 几何体参数 */
-  params: CollisionParams;
-
-  /** 世界坐标系中的变换 */
-  transform: Transform;
+  params: CollisionGeometryParams;
 
   /** 安全等级 */
   level: SafetyLevel;
 
+  /** 动作类型 */
+  action?: string;
+
+  /** 世界坐标系中的变换 */
+  transform: Transform;
+
+  /** 几何体 (用于内部碰撞检测) */
+  geometry?: {
+    type: CollisionGeometryType;
+    params: CollisionGeometryParams;
+  };
+
   /** 是否启用 */
-  enabled: boolean;
+  enabled?: boolean;
 
   /** 可视化配置 */
-  visualization: SafetyZoneVisualization;
+  visualization?: SafetyZoneVisualization;
 
   /** 触发条件：指定机器人 (空 = 所有) */
-  triggerOnRobots?: string[];
+  robotIds?: string[];
 
-  /** 触发条件：指定 link (空 = 所有) */
-  triggerOnLinks?: string[];
-
-  /** 进入区域时的动作 */
-  enterAction?: SafetyAction;
-
-  /** 退出区域时的动作 */
-  exitAction?: SafetyAction;
-}
-
-/**
- * 安全动作
- */
-export interface SafetyAction {
-  /** 动作类型 */
-  type: 'notify' | 'slow_down' | 'pause' | 'stop' | 'custom';
-
-  /** 减速系数 (用于 slow_down) */
-  speedFactor?: number;
-
-  /** 自定义动作 ID */
-  customActionId?: string;
-
-  /** 动作参数 */
-  params?: Record<string, unknown>;
+  /** 元数据 */
+  metadata?: Record<string, unknown>;
 }
 
 // ============================================================================
@@ -202,25 +139,14 @@ export interface SafetyAction {
 // ============================================================================
 
 /**
- * 碰撞对象类型
- */
-export type CollisionObjectType = 'robot' | 'obstacle' | 'safetyZone';
-
-/**
  * 碰撞对象引用
  */
 export interface CollisionObjectRef {
   /** 对象类型 */
-  type: CollisionObjectType;
+  type: string;
 
   /** 对象 ID */
   id: string;
-
-  /** Link 名称 (仅对机器人有效) */
-  linkName?: string;
-
-  /** 几何体 ID */
-  geometryId?: string;
 }
 
 /**
@@ -234,19 +160,10 @@ export interface CollisionPair {
   objectB: CollisionObjectRef;
 
   /** 接触点 (世界坐标) */
-  contactPoints?: Vector3[];
+  contactPoint?: Vector3;
 
   /** 穿透深度 (米) */
   penetrationDepth?: number;
-
-  /** 碰撞法向 (从 A 到 B) */
-  normal?: Vector3;
-
-  /** 最近点对 */
-  closestPoints?: {
-    pointA: Vector3;
-    pointB: Vector3;
-  };
 }
 
 /**
@@ -254,16 +171,13 @@ export interface CollisionPair {
  */
 export interface CollisionResult {
   /** 是否发生碰撞 */
-  colliding: boolean;
+  hasCollision: boolean;
 
   /** 碰撞对列表 */
   pairs: CollisionPair[];
 
   /** 检测时间戳 */
   timestamp: number;
-
-  /** 检测耗时 (ms) */
-  computeTime?: number;
 }
 
 /**
@@ -273,17 +187,14 @@ export interface SafetyZoneTriggerState {
   /** 区域 ID */
   zoneId: string;
 
-  /** 区域名称 */
-  zoneName: string;
+  /** 是否触发 */
+  triggered: boolean;
+
+  /** 进入时间 */
+  enteredTime?: number;
 
   /** 安全等级 */
   level: SafetyLevel;
-
-  /** 触发对象 */
-  triggeredBy: CollisionObjectRef[];
-
-  /** 进入时间 */
-  enterTime: number;
 }
 
 // ============================================================================
@@ -359,43 +270,59 @@ export const DEFAULT_COLLISION_VISUALIZATION: CollisionVisualizationConfig = {
 };
 
 // ============================================================================
-// Collision Manager Types
+// Collision Manager Interface
 // ============================================================================
 
 /**
- * 碰撞管理器接口
+ * 碰撞管理器接口 (简化版)
  */
 export interface ICollisionManager {
   // 碰撞几何体管理
-  getCollisionGeometries(objectId: string): CollisionGeometry[];
-  setCollisionGeometryVisible(objectId: string, visible: boolean): void;
-  setCollisionGeometryEnabled(geometryId: string, enabled: boolean): void;
+  addCollisionGeometry(geometry: CollisionGeometry, transform?: Transform): void;
+  removeCollisionGeometry(id: string): void;
+  updateCollisionGeometry(id: string, updates: Partial<CollisionGeometry>): void;
+  setCollisionGeometryTransform(id: string, transform: Transform): void;
+  enableCollisionGeometry(id: string, enabled: boolean): void;
+  getCollisionGeometry(id: string): CollisionGeometry | undefined;
+  getAllCollisionGeometries(): CollisionGeometry[];
+  clearCollisionGeometries(): void;
 
   // 安全区域管理
   addSafetyZone(zone: SafetyZone): void;
   removeSafetyZone(id: string): void;
   updateSafetyZone(id: string, updates: Partial<SafetyZone>): void;
   getSafetyZone(id: string): SafetyZone | undefined;
-  getSafetyZones(): SafetyZone[];
-  setSafetyZoneEnabled(id: string, enabled: boolean): void;
+  getAllSafetyZones(): SafetyZone[];
+  getSafetyZonesByLevel(level: SafetyLevel): SafetyZone[];
+  clearSafetyZones(): void;
 
-  // 碰撞结果可视化
-  showCollisionResult(result: CollisionResult): void;
-  clearCollisionResult(): void;
-  getLastCollisionResult(): CollisionResult | undefined;
+  // 碰撞检测
+  checkCollisions(): CollisionResult;
+  getLastCollisionResult(): CollisionResult | null;
+  getSafetyZoneTriggerStates(): SafetyZoneTriggerState[];
 
-  // 安全区域状态
-  getTriggerState(): SafetyZoneTriggerState[];
-  isInSafetyZone(objectId: string, zoneLevel?: SafetyLevel): boolean;
+  // 路径碰撞检测
+  checkPathCollision(request: PathCollisionCheckRequest): PathCollisionCheckResult;
 
-  // 配置
+  // 距离查询
+  queryDistance(request: DistanceQueryRequest): DistanceQueryResult;
+
+  // 机器人安全区域检测
+  checkRobotInSafetyZones(robotId: string, tcpPosition: Vector3): SafetyZoneTriggerState[];
+
+  // 可视化配置
   setVisualizationConfig(config: Partial<CollisionVisualizationConfig>): void;
   getVisualizationConfig(): CollisionVisualizationConfig;
 
-  // 事件订阅
-  onCollision(callback: (result: CollisionResult) => void): () => void;
-  onSafetyZoneEnter(callback: (state: SafetyZoneTriggerState) => void): () => void;
-  onSafetyZoneExit(callback: (zoneId: string, objectId: string) => void): () => void;
+  // 事件
+  onCollisionEvent(callback: (event: CollisionEvent) => void): () => void;
+
+  // 持续监测
+  startContinuousCheck(intervalMs?: number): void;
+  stopContinuousCheck(): void;
+
+  // 清理
+  dispose(): void;
 }
 
 // ============================================================================
@@ -413,12 +340,11 @@ export type CollisionEventType =
   | 'safety_level_changed';
 
 /**
- * 碰撞事件
+ * 碰撞事件基类
  */
 export interface CollisionEvent {
   type: CollisionEventType;
   timestamp: number;
-  data: unknown;
 }
 
 /**
@@ -426,7 +352,7 @@ export interface CollisionEvent {
  */
 export interface CollisionDetectedEvent extends CollisionEvent {
   type: 'collision_detected';
-  data: CollisionResult;
+  pairs: CollisionPair[];
 }
 
 /**
@@ -434,14 +360,9 @@ export interface CollisionDetectedEvent extends CollisionEvent {
  */
 export interface SafetyZoneEnteredEvent extends CollisionEvent {
   type: 'safety_zone_entered';
-  data: {
-    zoneId: string;
-    zoneName: string;
-    level: SafetyLevel;
-    objectId: string;
-    objectType: CollisionObjectType;
-    linkName?: string;
-  };
+  zoneId: string;
+  robotId: string;
+  level: SafetyLevel;
 }
 
 /**
@@ -449,11 +370,9 @@ export interface SafetyZoneEnteredEvent extends CollisionEvent {
  */
 export interface SafetyZoneExitedEvent extends CollisionEvent {
   type: 'safety_zone_exited';
-  data: {
-    zoneId: string;
-    objectId: string;
-    duration: number; // 停留时间 (ms)
-  };
+  zoneId: string;
+  robotId: string;
+  level: SafetyLevel;
 }
 
 // ============================================================================
@@ -464,50 +383,35 @@ export interface SafetyZoneExitedEvent extends CollisionEvent {
  * 路径碰撞检测请求
  */
 export interface PathCollisionCheckRequest {
-  /** 机器人 ID */
-  robotId: string;
+  /** 路径点列表 */
+  path: Vector3[];
 
-  /** 关节角度路径 */
-  path: number[][];
-
-  /** 检测分辨率 (0-1 之间插值点数) */
+  /** 检测分辨率 */
   resolution?: number;
 
-  /** 是否包含障碍物 */
-  includeObstacles?: string[];
+  /** 机器人 ID */
+  robotId?: string;
 
-  /** 是否包含安全区域 */
-  includeSafetyZones?: boolean;
-
-  /** 是否在第一个碰撞点停止 */
-  stopAtFirstCollision?: boolean;
+  /** 指定几何体 ID */
+  geometryId?: string;
 }
 
 /**
  * 路径碰撞检测结果
  */
 export interface PathCollisionCheckResult {
-  /** 路径是否无碰撞 */
-  collisionFree: boolean;
+  /** 是否有碰撞 */
+  hasCollision: boolean;
 
-  /** 第一个碰撞点的索引 */
-  firstCollisionIndex?: number;
-
-  /** 第一个碰撞点的插值参数 (0-1) */
-  firstCollisionParameter?: number;
-
-  /** 碰撞详情 */
-  collisionResult?: CollisionResult;
-
-  /** 所有碰撞点 (如果 stopAtFirstCollision = false) */
-  allCollisions?: Array<{
-    index: number;
-    parameter: number;
-    result: CollisionResult;
+  /** 碰撞点列表 */
+  collisions: Array<{
+    pathIndex: number;
+    position: Vector3;
+    geometryId: string;
   }>;
 
-  /** 检测耗时 (ms) */
-  computeTime?: number;
+  /** 检测的点数 */
+  checkedPoints: number;
 }
 
 // ============================================================================
@@ -518,17 +422,14 @@ export interface PathCollisionCheckResult {
  * 距离查询请求
  */
 export interface DistanceQueryRequest {
-  /** 机器人 ID */
-  robotId: string;
+  /** 查询点 */
+  point: Vector3;
 
-  /** 关节角度 (可选，默认使用当前状态) */
-  angles?: number[];
+  /** 指定几何体 ID 列表 */
+  geometryIds?: string[];
 
-  /** 查询对象 (可选，默认查询所有) */
-  targetObjects?: string[];
-
-  /** 是否只返回最近的 */
-  onlyClosest?: boolean;
+  /** 最大距离 */
+  maxDistance?: number;
 }
 
 /**
@@ -536,17 +437,11 @@ export interface DistanceQueryRequest {
  */
 export interface DistanceQueryResult {
   /** 最小距离 */
-  minDistance: number;
+  distance: number;
 
-  /** 距离对列表 */
-  distances: Array<{
-    objectA: CollisionObjectRef;
-    objectB: CollisionObjectRef;
-    distance: number;
-    closestPointA: Vector3;
-    closestPointB: Vector3;
-  }>;
+  /** 最近几何体 ID */
+  closestGeometryId?: string;
 
-  /** 计算耗时 (ms) */
-  computeTime?: number;
+  /** 最近点 */
+  closestPoint?: Vector3;
 }

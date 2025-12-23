@@ -297,55 +297,48 @@ export const performanceGetBottlenecks: MethodHandler<
 };
 
 // ============================================================================
-// Handler Registry
+// Handler Registration
 // ============================================================================
 
 /**
- * 所有性能处理器
- */
-export const performanceHandlers: Record<string, MethodHandler> = {
-  // Configuration
-  'performance.setConfig': performanceSetConfig,
-  'performance.getConfig': performanceGetConfig,
-  'performance.resetConfig': performanceResetConfig,
-
-  // Metrics
-  'performance.getMetrics': performanceGetMetrics,
-  'performance.getRenderStats': performanceGetRenderStats,
-  'performance.getMemoryStats': performanceGetMemoryStats,
-  'performance.getNetworkStats': performanceGetNetworkStats,
-
-  // Monitoring
-  'performance.startMonitoring': performanceStartMonitoring,
-  'performance.stopMonitoring': performanceStopMonitoring,
-
-  // Resource management
-  'performance.clearCache': performanceClearCache,
-  'performance.clearGeometryCache': performanceClearGeometryCache,
-  'performance.clearTextureCache': performanceClearTextureCache,
-  'performance.preloadURDF': performancePreloadURDF,
-  'performance.preloadPointCloud': performancePreloadPointCloud,
-  'performance.disposeUnused': performanceDisposeUnused,
-
-  // Quality
-  'performance.enableAdaptiveQuality': performanceEnableAdaptiveQuality,
-  'performance.disableAdaptiveQuality': performanceDisableAdaptiveQuality,
-  'performance.setQualityLevel': performanceSetQualityLevel,
-  'performance.getQualityLevel': performanceGetQualityLevel,
-
-  // Profiling
-  'performance.startProfiling': performanceStartProfiling,
-  'performance.stopProfiling': performanceStopProfiling,
-  'performance.getBottlenecks': performanceGetBottlenecks,
-};
-
-/**
  * 注册所有性能处理器到 dispatcher
+ *
+ * 使用类型安全的逐个注册方式
  */
 export function registerPerformanceHandlers(
-  registerMethod: (method: string, handler: MethodHandler) => void
+  register: <TParams, TResult>(method: string, handler: MethodHandler<TParams, TResult>) => void
 ): void {
-  for (const [method, handler] of Object.entries(performanceHandlers)) {
-    registerMethod(method, handler);
-  }
+  // Configuration
+  register('performance.setConfig', performanceSetConfig);
+  register('performance.getConfig', performanceGetConfig);
+  register('performance.resetConfig', performanceResetConfig);
+
+  // Metrics
+  register('performance.getMetrics', performanceGetMetrics);
+  register('performance.getRenderStats', performanceGetRenderStats);
+  register('performance.getMemoryStats', performanceGetMemoryStats);
+  register('performance.getNetworkStats', performanceGetNetworkStats);
+
+  // Monitoring
+  register('performance.startMonitoring', performanceStartMonitoring);
+  register('performance.stopMonitoring', performanceStopMonitoring);
+
+  // Resource management
+  register('performance.clearCache', performanceClearCache);
+  register('performance.clearGeometryCache', performanceClearGeometryCache);
+  register('performance.clearTextureCache', performanceClearTextureCache);
+  register('performance.preloadURDF', performancePreloadURDF);
+  register('performance.preloadPointCloud', performancePreloadPointCloud);
+  register('performance.disposeUnused', performanceDisposeUnused);
+
+  // Quality
+  register('performance.enableAdaptiveQuality', performanceEnableAdaptiveQuality);
+  register('performance.disableAdaptiveQuality', performanceDisableAdaptiveQuality);
+  register('performance.setQualityLevel', performanceSetQualityLevel);
+  register('performance.getQualityLevel', performanceGetQualityLevel);
+
+  // Profiling
+  register('performance.startProfiling', performanceStartProfiling);
+  register('performance.stopProfiling', performanceStopProfiling);
+  register('performance.getBottlenecks', performanceGetBottlenecks);
 }

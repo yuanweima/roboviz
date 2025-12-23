@@ -352,54 +352,47 @@ export const workspaceCalculateShared: MethodHandler<
 };
 
 // ============================================================================
-// Handler Registry
+// Handler Registration
 // ============================================================================
 
 /**
- * 所有多机器人处理器
- */
-export const multiRobotHandlers: Record<string, MethodHandler> = {
-  // Robot Group
-  'robotGroup.create': robotGroupCreate,
-  'robotGroup.delete': robotGroupDelete,
-  'robotGroup.update': robotGroupUpdate,
-  'robotGroup.get': robotGroupGet,
-  'robotGroup.list': robotGroupList,
-  'robotGroup.addRobot': robotGroupAddRobot,
-  'robotGroup.removeRobot': robotGroupRemoveRobot,
-  'robotGroup.setCoordinationType': robotGroupSetCoordinationType,
-  'robotGroup.setMasterRobot': robotGroupSetMasterRobot,
-  'robotGroup.setCooperativeConfig': robotGroupSetCooperativeConfig,
-  'robotGroup.setVisualization': robotGroupSetVisualization,
-
-  // Synchronized Trajectory
-  'syncTrajectory.load': syncTrajectoryLoad,
-  'syncTrajectory.unload': syncTrajectoryUnload,
-  'syncTrajectory.get': syncTrajectoryGet,
-  'syncTrajectory.play': syncTrajectoryPlay,
-  'syncTrajectory.pause': syncTrajectoryPause,
-  'syncTrajectory.stop': syncTrajectoryStop,
-  'syncTrajectory.seek': syncTrajectorySeek,
-  'syncTrajectory.getPlaybackState': syncTrajectoryGetPlaybackState,
-
-  // Workspace
-  'workspace.add': workspaceAdd,
-  'workspace.remove': workspaceRemove,
-  'workspace.update': workspaceUpdate,
-  'workspace.get': workspaceGet,
-  'workspace.list': workspaceList,
-  'workspace.setVisualization': workspaceSetVisualization,
-  'workspace.calculateReachable': workspaceCalculateReachable,
-  'workspace.calculateShared': workspaceCalculateShared,
-};
-
-/**
  * 注册所有多机器人处理器到 dispatcher
+ *
+ * 使用类型安全的逐个注册方式
  */
 export function registerMultiRobotHandlers(
-  registerMethod: (method: string, handler: MethodHandler) => void
+  register: <TParams, TResult>(method: string, handler: MethodHandler<TParams, TResult>) => void
 ): void {
-  for (const [method, handler] of Object.entries(multiRobotHandlers)) {
-    registerMethod(method, handler);
-  }
+  // Robot Group
+  register('robotGroup.create', robotGroupCreate);
+  register('robotGroup.delete', robotGroupDelete);
+  register('robotGroup.update', robotGroupUpdate);
+  register('robotGroup.get', robotGroupGet);
+  register('robotGroup.list', robotGroupList);
+  register('robotGroup.addRobot', robotGroupAddRobot);
+  register('robotGroup.removeRobot', robotGroupRemoveRobot);
+  register('robotGroup.setCoordinationType', robotGroupSetCoordinationType);
+  register('robotGroup.setMasterRobot', robotGroupSetMasterRobot);
+  register('robotGroup.setCooperativeConfig', robotGroupSetCooperativeConfig);
+  register('robotGroup.setVisualization', robotGroupSetVisualization);
+
+  // Synchronized Trajectory
+  register('syncTrajectory.load', syncTrajectoryLoad);
+  register('syncTrajectory.unload', syncTrajectoryUnload);
+  register('syncTrajectory.get', syncTrajectoryGet);
+  register('syncTrajectory.play', syncTrajectoryPlay);
+  register('syncTrajectory.pause', syncTrajectoryPause);
+  register('syncTrajectory.stop', syncTrajectoryStop);
+  register('syncTrajectory.seek', syncTrajectorySeek);
+  register('syncTrajectory.getPlaybackState', syncTrajectoryGetPlaybackState);
+
+  // Workspace
+  register('workspace.add', workspaceAdd);
+  register('workspace.remove', workspaceRemove);
+  register('workspace.update', workspaceUpdate);
+  register('workspace.get', workspaceGet);
+  register('workspace.list', workspaceList);
+  register('workspace.setVisualization', workspaceSetVisualization);
+  register('workspace.calculateReachable', workspaceCalculateReachable);
+  register('workspace.calculateShared', workspaceCalculateShared);
 }

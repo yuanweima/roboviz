@@ -147,7 +147,7 @@ export interface SceneExportOptions {
  */
 export interface SceneImportOptions {
   /** 是否合并 (true = 合并, false = 替换) */
-  merge: boolean;
+  merge?: boolean;
 
   /** 是否导入机器人 */
   includeRobots?: boolean;
@@ -171,7 +171,7 @@ export interface SceneImportOptions {
   includeCamera?: boolean;
 
   /** ID 冲突处理策略 */
-  conflictStrategy: 'skip' | 'overwrite' | 'rename';
+  conflictStrategy?: 'skip' | 'overwrite' | 'rename';
 
   /** 重命名前缀 (用于 rename 策略) */
   renamePrefix?: string;

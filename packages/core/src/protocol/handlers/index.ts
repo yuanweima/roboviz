@@ -2,31 +2,36 @@
  * RoboViz Protocol Handlers
  *
  * 导出所有协议处理器
+ *
+ * 设计说明：
+ * - 每个 handler 都有完整的类型信息 (MethodHandler<TParams, TResult>)
+ * - 使用 registerXxxHandlers 函数进行类型安全的注册
+ * - 不导出 handler 集合对象，避免类型擦除
  */
 
 // Stream handlers
-export { streamHandlers, registerStreamHandlers } from './stream';
+export { registerStreamHandlers } from './stream';
 
 // Vision handlers
-export { visionHandlers, registerVisionHandlers } from './vision';
+export { registerVisionHandlers } from './vision';
 
 // Frame handlers
-export { frameHandlers, registerFrameHandlers } from './frame';
+export { registerFrameHandlers } from './frame';
 
 // Collision handlers
-export { collisionHandlers, registerCollisionHandlers } from './collision';
+export { registerCollisionHandlers } from './collision';
 
 // Multi-Robot handlers
-export { multiRobotHandlers, registerMultiRobotHandlers } from './multi-robot';
+export { registerMultiRobotHandlers } from './multi-robot';
 
 // Performance handlers
-export { performanceHandlers, registerPerformanceHandlers } from './performance';
+export { registerPerformanceHandlers } from './performance';
 
 // Diagnostic handlers
-export { diagnosticHandlers, registerDiagnosticHandlers } from './diagnostic';
+export { registerDiagnosticHandlers } from './diagnostic';
 
 // Scene handlers
-export { sceneHandlers, registerSceneHandlers } from './scene';
+export { registerSceneHandlers } from './scene';
 
 // Re-export individual stream handlers
 export {
@@ -230,6 +235,9 @@ export {
 // ============================================================================
 
 import type { MethodHandler } from '../handler';
+import { registerStreamHandlers } from './stream';
+import { registerVisionHandlers } from './vision';
+import { registerFrameHandlers } from './frame';
 import { registerCollisionHandlers } from './collision';
 import { registerMultiRobotHandlers } from './multi-robot';
 import { registerPerformanceHandlers } from './performance';
@@ -237,17 +245,25 @@ import { registerDiagnosticHandlers } from './diagnostic';
 import { registerSceneHandlers } from './scene';
 
 /**
- * 注册所有协议处理器
+ * 类型安全的方法注册函数签名
  */
-export function registerAllHandlers(
-  registerMethod: (method: string, handler: MethodHandler) => void
-): void {
-  registerStreamHandlers(registerMethod);
-  registerVisionHandlers(registerMethod);
-  registerFrameHandlers(registerMethod);
-  registerCollisionHandlers(registerMethod);
-  registerMultiRobotHandlers(registerMethod);
-  registerPerformanceHandlers(registerMethod);
-  registerDiagnosticHandlers(registerMethod);
-  registerSceneHandlers(registerMethod);
+export type RegisterMethod = <TParams, TResult>(
+  method: string,
+  handler: MethodHandler<TParams, TResult>
+) => void;
+
+/**
+ * 注册所有协议处理器
+ *
+ * @param register - 类型安全的注册函数，保留每个 handler 的完整类型信息
+ */
+export function registerAllHandlers(register: RegisterMethod): void {
+  registerStreamHandlers(register);
+  registerVisionHandlers(register);
+  registerFrameHandlers(register);
+  registerCollisionHandlers(register);
+  registerMultiRobotHandlers(register);
+  registerPerformanceHandlers(register);
+  registerDiagnosticHandlers(register);
+  registerSceneHandlers(register);
 }

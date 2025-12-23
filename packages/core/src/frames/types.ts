@@ -387,8 +387,8 @@ export function createWorldFrame(): CoordinateFrame {
     type: 'world',
     parentFrameId: null,
     transform: {
-      position: [0, 0, 0],
-      orientation: [1, 0, 0, 0],
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { w: 1, x: 0, y: 0, z: 0 },
     },
     visualization: {
       ...DEFAULT_FRAME_VISUALIZATION,
