@@ -9,24 +9,10 @@ export { useRoboViz } from './useRoboViz';
 export { useRoboVizBridge, type RoboVizBridge } from './useRoboVizBridge';
 export { RoboVizContext, RoboVizProvider } from './context';
 
-// Re-export core types
-export type {
-  Vector3,
-  Quaternion,
-  Transform,
-  Pose,
-  RobotOptions,
-  RobotInfo,
-  TrajectoryData,
-  PlaybackOptions,
-  WaypointData,
-  ObstacleData,
-  SceneConfig,
-  RobotClickEvent,
-  JointChangeEvent,
-  TrajectoryProgressEvent,
-  WaypointSelectEvent,
-  CameraChangeEvent,
-  BridgeConfig,
-  BridgeHandlers,
-} from '@aspect/roboviz-core';
+// TODO: Re-export core types when package is built
+// These types will be re-exported from @aspect/roboviz-core once built
+// For now, define minimal placeholder types
+export interface Vector3 { x: number; y: number; z: number; }
+export interface Quaternion { w: number; x: number; y: number; z: number; }
+export interface Transform { position: Vector3; rotation: Quaternion; }
+export interface Pose { position: Vector3; orientation: Quaternion; }

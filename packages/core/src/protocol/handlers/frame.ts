@@ -313,53 +313,46 @@ export const frameHighlight: MethodHandler<
 };
 
 // ============================================================================
-// Handler Registry
+// Handler Registration
 // ============================================================================
 
 /**
- * 所有 frame.* 处理器
- */
-export const frameHandlers: Record<string, MethodHandler> = {
-  // CRUD
-  'frame.add': frameAdd,
-  'frame.remove': frameRemove,
-  'frame.update': frameUpdate,
-  'frame.get': frameGet,
-  'frame.list': frameList,
-
-  // Transform
-  'frame.setTransform': frameSetTransform,
-  'frame.getWorldTransform': frameGetWorldTransform,
-  'frame.getRelativeTransform': frameGetRelativeTransform,
-  'frame.transformPoint': frameTransformPoint,
-  'frame.transformPose': frameTransformPose,
-
-  // Tree
-  'frame.getChildren': frameGetChildren,
-  'frame.getAncestors': frameGetAncestors,
-
-  // Active frames
-  'frame.setActiveUserFrame': frameSetActiveUserFrame,
-  'frame.setActiveToolFrame': frameSetActiveToolFrame,
-  'frame.setActiveWorkpieceFrame': frameSetActiveWorkpieceFrame,
-  'frame.getActiveFrames': frameGetActiveFrames,
-
-  // Visualization
-  'frame.setVisualization': frameSetVisualization,
-  'frame.show': frameShow,
-  'frame.hide': frameHide,
-  'frame.showTree': frameShowTree,
-  'frame.hideTree': frameHideTree,
-  'frame.highlight': frameHighlight,
-};
-
-/**
  * 注册所有 frame 处理器到 dispatcher
+ *
+ * 使用类型安全的逐个注册方式
  */
 export function registerFrameHandlers(
-  registerMethod: (method: string, handler: MethodHandler) => void
+  register: <TParams, TResult>(method: string, handler: MethodHandler<TParams, TResult>) => void
 ): void {
-  for (const [method, handler] of Object.entries(frameHandlers)) {
-    registerMethod(method, handler);
-  }
+  // CRUD
+  register('frame.add', frameAdd);
+  register('frame.remove', frameRemove);
+  register('frame.update', frameUpdate);
+  register('frame.get', frameGet);
+  register('frame.list', frameList);
+
+  // Transform
+  register('frame.setTransform', frameSetTransform);
+  register('frame.getWorldTransform', frameGetWorldTransform);
+  register('frame.getRelativeTransform', frameGetRelativeTransform);
+  register('frame.transformPoint', frameTransformPoint);
+  register('frame.transformPose', frameTransformPose);
+
+  // Tree
+  register('frame.getChildren', frameGetChildren);
+  register('frame.getAncestors', frameGetAncestors);
+
+  // Active frames
+  register('frame.setActiveUserFrame', frameSetActiveUserFrame);
+  register('frame.setActiveToolFrame', frameSetActiveToolFrame);
+  register('frame.setActiveWorkpieceFrame', frameSetActiveWorkpieceFrame);
+  register('frame.getActiveFrames', frameGetActiveFrames);
+
+  // Visualization
+  register('frame.setVisualization', frameSetVisualization);
+  register('frame.show', frameShow);
+  register('frame.hide', frameHide);
+  register('frame.showTree', frameShowTree);
+  register('frame.hideTree', frameHideTree);
+  register('frame.highlight', frameHighlight);
 }

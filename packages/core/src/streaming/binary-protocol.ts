@@ -76,6 +76,18 @@ export class BinaryProtocolError extends Error {
   }
 }
 
+/**
+ * 二进制消息头类型
+ */
+export interface BinaryHeader {
+  magic: number;
+  version: number;
+  type: BinaryMessageType;
+  streamId: number;
+  timestamp: number;
+  payloadLength: number;
+}
+
 // ============================================================================
 // Binary Protocol Implementation
 // ============================================================================
@@ -126,14 +138,7 @@ export class BinaryProtocol {
   /**
    * 解码消息头
    */
-  decodeHeader(buffer: ArrayBuffer, offset: number = 0): {
-    magic: number;
-    version: number;
-    type: BinaryMessageType;
-    streamId: number;
-    timestamp: number;
-    payloadLength: number;
-  } {
+  decodeHeader(buffer: ArrayBuffer, offset: number = 0): BinaryHeader {
     const view = new DataView(buffer, offset);
 
     const magic = view.getUint32(0, false);
@@ -767,7 +772,7 @@ export class BinaryProtocol {
    * 解码任意消息 (仅解析头部)
    */
   decodeMessage(buffer: ArrayBuffer): {
-    header: ReturnType<typeof this.decodeHeader>;
+    header: BinaryHeader;
     payload: ArrayBuffer;
   } {
     const header = this.decodeHeader(buffer);
@@ -781,6 +786,55 @@ export class BinaryProtocol {
   getMessageType(buffer: ArrayBuffer): BinaryMessageType {
     const view = new DataView(buffer);
     return view.getUint8(5) as BinaryMessageType;
+  }
+
+  /**
+   * 通用编码方法
+   */
+  encode(type: BinaryMessageType, frame: StreamFrame, streamId: number = 0): ArrayBuffer {
+    switch (type) {
+      case BinaryMessageType.JOINT_STATE:
+        return this.encodeJointState(streamId, frame as JointStateFrame);
+      case BinaryMessageType.TCP_POSE:
+        return this.encodeTcpPose(streamId, frame as TcpPoseFrame);
+      case BinaryMessageType.FORCE_TORQUE:
+        return this.encodeForceTorque(streamId, frame as ForceTorqueFrame);
+      case BinaryMessageType.POINT_CLOUD:
+        return this.encodePointCloud(streamId, frame as PointCloudFrame);
+      default:
+        throw new BinaryProtocolError(
+          `Unsupported message type for encoding: ${type}`,
+          'UNSUPPORTED_TYPE'
+        );
+    }
+  }
+
+  /**
+   * 通用解码方法
+   */
+  decode(buffer: ArrayBuffer): { type: BinaryMessageType; data: StreamFrame } | null {
+    const type = this.getMessageType(buffer);
+
+    switch (type) {
+      case BinaryMessageType.JOINT_STATE: {
+        const result = this.decodeJointState(buffer);
+        return { type, data: result.frame };
+      }
+      case BinaryMessageType.TCP_POSE: {
+        const result = this.decodeTcpPose(buffer);
+        return { type, data: result.frame };
+      }
+      case BinaryMessageType.FORCE_TORQUE: {
+        const result = this.decodeForceTorque(buffer);
+        return { type, data: result.frame };
+      }
+      case BinaryMessageType.POINT_CLOUD: {
+        const result = this.decodePointCloud(buffer);
+        return { type, data: result.frame };
+      }
+      default:
+        return null;
+    }
   }
 }
 

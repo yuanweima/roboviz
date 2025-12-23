@@ -67,13 +67,13 @@ const defaultScene: SceneConfig = {
   },
   lighting: {
     ambient: { intensity: 0.4, color: '#ffffff' },
-    directional: { intensity: 0.8, position: [10, 10, 5] },
+    directional: { intensity: 0.8, position: { x: 10, y: 10, z: 5 } },
   },
 };
 
 const defaultCamera: CameraState = {
-  position: [3, 3, 3],
-  target: [0, 0, 0],
+  position: { x: 3, y: 3, z: 3 },
+  target: { x: 0, y: 0, z: 0 },
   fov: 50,
 };
 

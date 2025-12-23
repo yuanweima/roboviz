@@ -243,43 +243,36 @@ export const historyGetConfig: MethodHandler<
 };
 
 // ============================================================================
-// Handler Registry
+// Handler Registration
 // ============================================================================
 
 /**
- * 所有场景处理器
- */
-export const sceneHandlers: Record<string, MethodHandler> = {
-  // Snapshots
-  'scene.createSnapshot': sceneCreateSnapshot,
-  'scene.restoreSnapshot': sceneRestoreSnapshot,
-  'scene.deleteSnapshot': sceneDeleteSnapshot,
-  'scene.getSnapshot': sceneGetSnapshot,
-  'scene.listSnapshots': sceneListSnapshots,
-
-  // Export/Import
-  'scene.export': sceneExport,
-  'scene.import': sceneImport,
-
-  // History
-  'history.undo': historyUndo,
-  'history.redo': historyRedo,
-  'history.canUndo': historyCanUndo,
-  'history.canRedo': historyCanRedo,
-  'history.getUndoStack': historyGetUndoStack,
-  'history.getRedoStack': historyGetRedoStack,
-  'history.clear': historyClear,
-  'history.setConfig': historySetConfig,
-  'history.getConfig': historyGetConfig,
-};
-
-/**
  * 注册所有场景处理器到 dispatcher
+ *
+ * 使用类型安全的逐个注册方式
  */
 export function registerSceneHandlers(
-  registerMethod: (method: string, handler: MethodHandler) => void
+  register: <TParams, TResult>(method: string, handler: MethodHandler<TParams, TResult>) => void
 ): void {
-  for (const [method, handler] of Object.entries(sceneHandlers)) {
-    registerMethod(method, handler);
-  }
+  // Snapshots
+  register('scene.createSnapshot', sceneCreateSnapshot);
+  register('scene.restoreSnapshot', sceneRestoreSnapshot);
+  register('scene.deleteSnapshot', sceneDeleteSnapshot);
+  register('scene.getSnapshot', sceneGetSnapshot);
+  register('scene.listSnapshots', sceneListSnapshots);
+
+  // Export/Import
+  register('scene.export', sceneExport);
+  register('scene.import', sceneImport);
+
+  // History
+  register('history.undo', historyUndo);
+  register('history.redo', historyRedo);
+  register('history.canUndo', historyCanUndo);
+  register('history.canRedo', historyCanRedo);
+  register('history.getUndoStack', historyGetUndoStack);
+  register('history.getRedoStack', historyGetRedoStack);
+  register('history.clear', historyClear);
+  register('history.setConfig', historySetConfig);
+  register('history.getConfig', historyGetConfig);
 }

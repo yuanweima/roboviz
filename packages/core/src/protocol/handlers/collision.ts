@@ -323,55 +323,48 @@ export const collisionStopContinuousCheck: MethodHandler<
 };
 
 // ============================================================================
-// Handler Registry
+// Handler Registration
 // ============================================================================
 
 /**
- * 所有碰撞相关处理器
- */
-export const collisionHandlers: Record<string, MethodHandler> = {
-  // Geometry
-  'collision.addGeometry': collisionAddGeometry,
-  'collision.removeGeometry': collisionRemoveGeometry,
-  'collision.updateGeometry': collisionUpdateGeometry,
-  'collision.setGeometryTransform': collisionSetGeometryTransform,
-  'collision.enableGeometry': collisionEnableGeometry,
-  'collision.getGeometry': collisionGetGeometry,
-  'collision.listGeometries': collisionListGeometries,
-  'collision.clearGeometries': collisionClearGeometries,
-
-  // Collision check
-  'collision.check': collisionCheck,
-  'collision.getLastResult': collisionGetLastResult,
-  'collision.checkPath': collisionCheckPath,
-  'collision.queryDistance': collisionQueryDistance,
-
-  // Safety zones
-  'safetyZone.add': safetyZoneAdd,
-  'safetyZone.remove': safetyZoneRemove,
-  'safetyZone.update': safetyZoneUpdate,
-  'safetyZone.get': safetyZoneGet,
-  'safetyZone.list': safetyZoneList,
-  'safetyZone.clear': safetyZoneClear,
-  'safetyZone.getTriggerStates': safetyZoneGetTriggerStates,
-  'safetyZone.checkRobot': safetyZoneCheckRobot,
-
-  // Visualization
-  'collision.setVisualization': collisionSetVisualization,
-  'collision.getVisualization': collisionGetVisualization,
-
-  // Continuous check
-  'collision.startContinuousCheck': collisionStartContinuousCheck,
-  'collision.stopContinuousCheck': collisionStopContinuousCheck,
-};
-
-/**
  * 注册所有碰撞处理器到 dispatcher
+ *
+ * 使用类型安全的逐个注册方式，而不是使用 Record 存储异构类型
  */
 export function registerCollisionHandlers(
-  registerMethod: (method: string, handler: MethodHandler) => void
+  register: <TParams, TResult>(method: string, handler: MethodHandler<TParams, TResult>) => void
 ): void {
-  for (const [method, handler] of Object.entries(collisionHandlers)) {
-    registerMethod(method, handler);
-  }
+  // Geometry
+  register('collision.addGeometry', collisionAddGeometry);
+  register('collision.removeGeometry', collisionRemoveGeometry);
+  register('collision.updateGeometry', collisionUpdateGeometry);
+  register('collision.setGeometryTransform', collisionSetGeometryTransform);
+  register('collision.enableGeometry', collisionEnableGeometry);
+  register('collision.getGeometry', collisionGetGeometry);
+  register('collision.listGeometries', collisionListGeometries);
+  register('collision.clearGeometries', collisionClearGeometries);
+
+  // Collision check
+  register('collision.check', collisionCheck);
+  register('collision.getLastResult', collisionGetLastResult);
+  register('collision.checkPath', collisionCheckPath);
+  register('collision.queryDistance', collisionQueryDistance);
+
+  // Safety zones
+  register('safetyZone.add', safetyZoneAdd);
+  register('safetyZone.remove', safetyZoneRemove);
+  register('safetyZone.update', safetyZoneUpdate);
+  register('safetyZone.get', safetyZoneGet);
+  register('safetyZone.list', safetyZoneList);
+  register('safetyZone.clear', safetyZoneClear);
+  register('safetyZone.getTriggerStates', safetyZoneGetTriggerStates);
+  register('safetyZone.checkRobot', safetyZoneCheckRobot);
+
+  // Visualization
+  register('collision.setVisualization', collisionSetVisualization);
+  register('collision.getVisualization', collisionGetVisualization);
+
+  // Continuous check
+  register('collision.startContinuousCheck', collisionStartContinuousCheck);
+  register('collision.stopContinuousCheck', collisionStopContinuousCheck);
 }

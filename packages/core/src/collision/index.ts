@@ -8,23 +8,15 @@
 export type {
   // Geometry
   CollisionGeometryType,
-  CollisionParams,
-  BoxParams,
-  SphereParams,
-  CylinderParams,
-  CapsuleParams,
-  MeshParams,
-  ConvexHullParams,
+  CollisionGeometryParams,
   CollisionGeometry,
 
   // Safety Zone
   SafetyLevel,
   SafetyZoneVisualization,
   SafetyZone,
-  SafetyAction,
 
   // Collision Detection
-  CollisionObjectType,
   CollisionObjectRef,
   CollisionPair,
   CollisionResult,

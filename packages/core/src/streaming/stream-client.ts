@@ -257,13 +257,13 @@ export class StreamClient {
     const frame = data as Record<string, unknown>;
 
     switch (type) {
-      case BinaryMessageType.JointState:
+      case BinaryMessageType.JOINT_STATE:
         return `joint_state_${frame.robotId || 'default'}`;
-      case BinaryMessageType.TcpPose:
+      case BinaryMessageType.TCP_POSE:
         return `tcp_pose_${frame.robotId || 'default'}`;
-      case BinaryMessageType.ForceTorque:
+      case BinaryMessageType.FORCE_TORQUE:
         return `force_torque_${frame.sensorId || 'default'}`;
-      case BinaryMessageType.PointCloud:
+      case BinaryMessageType.POINT_CLOUD:
         return `point_cloud_${frame.frameId || 'default'}`;
       default:
         return `stream_${type}`;
@@ -275,22 +275,22 @@ export class StreamClient {
    */
   private getMessageTypeForFrame(frame: StreamFrame): BinaryMessageType {
     // 根据帧的属性推断类型
-    const frameAny = frame as Record<string, unknown>;
+    const frameAny = frame as unknown as Record<string, unknown>;
 
     if ('positions' in frameAny && 'velocities' in frameAny) {
-      return BinaryMessageType.JointState;
+      return BinaryMessageType.JOINT_STATE;
     }
     if ('position' in frameAny && 'orientation' in frameAny) {
-      return BinaryMessageType.TcpPose;
+      return BinaryMessageType.TCP_POSE;
     }
     if ('force' in frameAny && 'torque' in frameAny) {
-      return BinaryMessageType.ForceTorque;
+      return BinaryMessageType.FORCE_TORQUE;
     }
     if ('points' in frameAny) {
-      return BinaryMessageType.PointCloud;
+      return BinaryMessageType.POINT_CLOUD;
     }
 
-    return BinaryMessageType.JointState; // 默认
+    return BinaryMessageType.JOINT_STATE; // 默认
   }
 
   /**
