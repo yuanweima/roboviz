@@ -350,3 +350,166 @@ window.addEventListener('message', (e) => {
 4. **Culling**: Frustum and occlusion culling
 5. **Web Workers**: Heavy computations off main thread
 6. **Streaming**: Large trajectories streamed incrementally
+
+---
+
+## Enhanced Architecture (Industrial Extensions)
+
+The following modules extend the base architecture to support industrial robotics requirements.
+
+### Module Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            RoboViz Core (Enhanced)                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐              │
+│  │   Streaming     │  │     Vision      │  │     Frames      │              │
+│  │  (Real-time)    │  │ (Point Cloud)   │  │ (Coordinate)    │              │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘              │
+│                                                                             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐              │
+│  │   Collision     │  │  Multi-Robot    │  │   Performance   │              │
+│  │  (Safety Zone)  │  │ (Coordination)  │  │   (Adaptive)    │              │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘              │
+│                                                                             │
+│  ┌─────────────────┐  ┌─────────────────┐                                   │
+│  │   Diagnostic    │  │    Scene Mgmt   │                                   │
+│  │  (Debugging)    │  │  (Persistence)  │                                   │
+│  └─────────────────┘  └─────────────────┘                                   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Streaming Module (Real-time Data)
+
+Supports high-frequency data transmission for industrial robot control (up to 1kHz).
+
+**Key Features:**
+- Binary protocol for low-latency transmission
+- Ring buffer for data buffering
+- Multiple stream types: joint_state, tcp_pose, force_torque, point_cloud
+- WebSocket binary frame support
+
+**Location:** `packages/core/src/streaming/`
+
+### 2. Vision Module (Machine Vision Integration)
+
+Integrates point cloud visualization, camera views, and calibration display.
+
+**Key Features:**
+- Point cloud loading and visualization (PCD/PLY/XYZ formats)
+- Camera view with frustum visualization
+- Hand-eye calibration display
+- Image overlay support
+- 2D/3D ROI management
+
+**Location:** `packages/core/src/vision/`
+
+### 3. Frames Module (Coordinate System Management)
+
+Manages industrial robot coordinate systems (User Frame, Tool Frame, etc.).
+
+**Key Features:**
+- Frame tree structure with parent-child relationships
+- Active frame management (user/tool/workpiece)
+- Transform utilities (quaternion, euler, matrix)
+- Frame tree visualization
+
+**Location:** `packages/core/src/frames/`
+
+### 4. Collision Module (Safety Visualization)
+
+Provides collision detection visualization and safety zone management.
+
+**Key Features:**
+- Collision geometry visualization
+- Safety zone definition (info/warning/danger/stop levels)
+- Real-time collision result display
+- Path collision checking support
+
+**Location:** `packages/core/src/collision/`
+
+### 5. Multi-Robot Module (Coordination)
+
+Supports multi-robot scenarios with synchronized playback and workspace management.
+
+**Key Features:**
+- Robot group management
+- Coordination types: independent, synchronized, master-slave, cooperative
+- Synchronized trajectory playback
+- Workspace visualization (reachable, shared, exclusive)
+
+**Location:** `packages/core/src/multi-robot/`
+
+### 6. Performance Module (Optimization)
+
+Provides performance monitoring and adaptive quality control.
+
+**Key Features:**
+- Web Worker support for heavy computations
+- LOD (Level of Detail) strategies
+- Adaptive quality based on FPS
+- Performance metrics monitoring
+- Resource caching and management
+
+**Location:** `packages/core/src/performance/`
+
+### 7. Diagnostic Module (Debugging)
+
+Offers debugging and diagnostic visualization tools.
+
+**Key Features:**
+- Joint data visualization (position, velocity, torque, etc.)
+- Workspace visualization (reachable, dexterous)
+- Singularity proximity warning
+- Joint limit visualization
+- Velocity/acceleration vectors
+
+**Location:** `packages/core/src/diagnostic/`
+
+### 8. Scene Management Module (Persistence)
+
+Handles scene snapshots, export/import, and undo/redo functionality.
+
+**Key Features:**
+- Scene snapshot creation and restoration
+- Export to JSON/YAML/XML formats
+- Import with merge/replace options
+- Undo/redo history
+- Conflict resolution strategies
+
+**Location:** `packages/core/src/scene-management/`
+
+---
+
+## Extended API Namespaces
+
+| Namespace | Description | Priority |
+|-----------|-------------|----------|
+| `stream.*` | Real-time data streaming | P0 |
+| `pointCloud.*` | Point cloud operations | P0 |
+| `vision.*` | Camera and calibration | P0 |
+| `frame.*` | Coordinate frame management | P1 |
+| `collision.*` | Collision detection & safety | P1 |
+| `safetyZone.*` | Safety zone management | P1 |
+| `robotGroup.*` | Multi-robot coordination | P2 |
+| `workspace.*` | Workspace visualization | P2 |
+| `performance.*` | Performance control | P2 |
+| `diagnostic.*` | Debugging tools | P3 |
+| `scene.snapshot/export/import` | Scene persistence | P3 |
+
+---
+
+## Implementation Roadmap
+
+See [Architecture Enhancement Strategy](./architecture-enhancement-strategy.md) for detailed implementation plan.
+
+**Timeline Summary:**
+- Phase 1-2 (P0): ~12 weeks - Real-time streaming + Vision
+- Phase 3-4 (P1): ~10 weeks - Frames + Collision
+- Phase 5-6 (P2): ~9 weeks - Multi-robot + Performance
+- Phase 7 (P3): ~4 weeks - Diagnostic + Scene management
+
+**Total: ~35 weeks (8-9 months)**
