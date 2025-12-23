@@ -9,6 +9,20 @@ export interface Vector3 {
   z: number;
 }
 
+// Tuple type for convenience (e.g., [x, y, z])
+export type Vector3Tuple = [number, number, number];
+
+// Union type that accepts both object and tuple format
+export type Vector3Like = Vector3 | Vector3Tuple;
+
+// Helper to convert Vector3Like to Vector3
+export function toVector3(v: Vector3Like): Vector3 {
+  if (Array.isArray(v)) {
+    return { x: v[0], y: v[1], z: v[2] };
+  }
+  return v;
+}
+
 export interface Quaternion {
   w: number;
   x: number;
@@ -169,9 +183,9 @@ export interface SceneConfig {
 
 // Camera types
 export interface CameraState {
-  position: Vector3;
-  target: Vector3;
-  fov: number;
+  position: Vector3Like;
+  target?: Vector3Like;
+  fov?: number;
 }
 
 export interface OrbitControlsOptions {

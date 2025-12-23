@@ -72,13 +72,28 @@ export * from './diagnostic';
 export * from './scene-management';
 
 // =============================================================================
+// Server (Remote Control)
+// =============================================================================
+export * from './server';
+
+// =============================================================================
+// Hooks
+// =============================================================================
+export * from './hooks';
+
+// =============================================================================
 // Components (internal, exposed for advanced use)
 // =============================================================================
-export { Scene } from './components/Scene';
-export { Robot } from './components/Robot';
-export { Trajectory } from './components/Trajectory';
-export { Waypoint } from './components/Waypoint';
-export { Obstacle } from './components/Obstacle';
+export { Scene, type SceneProps } from './components/Scene';
+export { Robot, type RobotProps, type EulerTuple, type QuaternionTuple, useEndEffectorPose } from './components/Robot';
+export { Trajectory, type TrajectoryProps } from './components/Trajectory';
+export { Waypoint, WaypointGroup, type WaypointProps, type WaypointGroupProps } from './components/Waypoint';
+export { Obstacle, type ObstacleProps } from './components/Obstacle';
+
+// =============================================================================
+// Helper Components
+// =============================================================================
+export * from './components/helpers';
 
 // =============================================================================
 // Main Component
