@@ -12,6 +12,7 @@ const MODULES: { id: ModuleType; label: string; icon: string; description: strin
   { id: 'multi-instance', label: 'Multi-Instance', icon: '📦', description: 'Instance isolation', isNew: true },
   { id: 'events', label: 'Event System', icon: '📡', description: 'Event hooks & bus', isNew: true },
   { id: 'headless', label: 'Headless Mode', icon: '🎭', description: 'State without render', isNew: true },
+  { id: 'workpoint', label: 'Workpoint System', icon: '📍', description: 'Surface work points', isNew: true },
   { id: 'vision-stream', label: 'Vision Streaming', icon: '📹', description: 'Camera & point cloud streams', isNew: true },
   // Original modules
   { id: 'robot', label: 'Robot Control', icon: '🤖', description: 'URDF loading, joint control' },

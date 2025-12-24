@@ -117,6 +117,7 @@ function InnerScene({
 
       <OrbitControls
         ref={controlsRef}
+        makeDefault
         enabled={mergedControls.enabled}
         enableDamping={mergedControls.enableDamping}
         dampingFactor={mergedControls.dampingFactor}
