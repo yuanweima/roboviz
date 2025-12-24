@@ -13,6 +13,7 @@ import { ImperativeModule } from './modules/ImperativeModule';
 import { MultiInstanceModule } from './modules/MultiInstanceModule';
 import { EventSystemModule } from './modules/EventSystemModule';
 import { HeadlessModule } from './modules/HeadlessModule';
+import { VisionStreamModule } from './modules/VisionStreamModule';
 import { StatusBar } from './components/StatusBar';
 import { useAppStore } from './store';
 
@@ -28,7 +29,8 @@ export type ModuleType =
   | 'imperative'
   | 'multi-instance'
   | 'events'
-  | 'headless';
+  | 'headless'
+  | 'vision-stream';
 
 const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'robot': RobotModule,
@@ -43,6 +45,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'multi-instance': MultiInstanceModule,
   'events': EventSystemModule,
   'headless': HeadlessModule,
+  'vision-stream': VisionStreamModule,
 };
 
 export default function App() {

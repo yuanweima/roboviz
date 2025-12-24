@@ -648,18 +648,17 @@ export class RoboVizInstance implements IRoboVizInstance {
     if (!this.root) return;
 
     // Dynamic import to avoid circular dependencies
-    // The actual rendering will be handled by RoboVizProvider
-    // This is a placeholder - actual implementation will be in the component
-    const RoboVizRenderer = React.lazy(() =>
+    // Use RoboVizRendererWithProvider which wraps the renderer with RoboVizProvider
+    const RoboVizRendererWithProvider = React.lazy(() =>
       import('../components/RoboVizRenderer').then((mod) => ({
-        default: mod.RoboVizRenderer,
+        default: mod.RoboVizRendererWithProvider,
       }))
     );
 
     const element = React.createElement(
       React.Suspense,
       { fallback: null },
-      React.createElement(RoboVizRenderer, {
+      React.createElement(RoboVizRendererWithProvider, {
         instance: this,
         showStats: this.config.showStats,
       })

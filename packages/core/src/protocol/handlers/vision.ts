@@ -19,7 +19,18 @@ import type {
   ROI3D,
 } from '../../vision/types';
 import type { Vector3 } from '../../types';
-import { getVisionManager } from '../../vision/vision-manager';
+import type {
+  ImageFrame,
+  DepthImageFrame,
+  PointCloudFrame,
+  PointCloudUpdateFrame,
+  StreamConfig,
+} from '../../streaming/types';
+import {
+  getVisionManager,
+  type CameraStreamState,
+  type PointCloudStreamState,
+} from '../../vision/vision-manager';
 
 // ============================================================================
 // Point Cloud Handlers
@@ -323,6 +334,130 @@ export const visionUnprojectPoint: MethodHandler<
 };
 
 // ============================================================================
+// Camera Stream Handlers
+// ============================================================================
+
+/**
+ * camera.startStream - 启动相机图像流
+ */
+export const cameraStartStream: MethodHandler<
+  { cameraId: string; config?: Partial<StreamConfig> },
+  { streamId: string }
+> = async (params) => {
+  const manager = getVisionManager();
+  const streamId = await manager.startCameraStream(params.cameraId, params.config);
+  return { streamId };
+};
+
+/**
+ * camera.stopStream - 停止相机图像流
+ */
+export const cameraStopStream: MethodHandler<
+  { cameraId: string },
+  { success: boolean }
+> = (params) => {
+  const manager = getVisionManager();
+  manager.stopCameraStream(params.cameraId);
+  return { success: true };
+};
+
+/**
+ * camera.getStreamState - 获取相机流状态
+ */
+export const cameraGetStreamState: MethodHandler<
+  { cameraId: string },
+  CameraStreamState | null
+> = (params) => {
+  const manager = getVisionManager();
+  return manager.getCameraStreamState(params.cameraId) ?? null;
+};
+
+/**
+ * camera.listActiveStreams - 列出所有活跃的相机流
+ */
+export const cameraListActiveStreams: MethodHandler<
+  Record<string, never>,
+  { streams: CameraStreamState[] }
+> = () => {
+  const manager = getVisionManager();
+  return { streams: manager.getActiveCameraStreams() };
+};
+
+/**
+ * camera.pushFrame - 推送图像帧 (用于外部数据源)
+ */
+export const cameraPushFrame: MethodHandler<
+  { cameraId: string; frame: ImageFrame | DepthImageFrame },
+  { success: boolean }
+> = (params) => {
+  const manager = getVisionManager();
+  const success = manager.pushImageFrame(params.cameraId, params.frame);
+  return { success };
+};
+
+// ============================================================================
+// Point Cloud Stream Handlers
+// ============================================================================
+
+/**
+ * pointCloud.startStream - 启动点云数据流
+ */
+export const pointCloudStartStream: MethodHandler<
+  { cloudId: string; config?: Partial<StreamConfig> },
+  { streamId: string }
+> = async (params) => {
+  const manager = getVisionManager();
+  const streamId = await manager.startPointCloudStream(params.cloudId, params.config);
+  return { streamId };
+};
+
+/**
+ * pointCloud.stopStream - 停止点云数据流
+ */
+export const pointCloudStopStream: MethodHandler<
+  { cloudId: string },
+  { success: boolean }
+> = (params) => {
+  const manager = getVisionManager();
+  manager.stopPointCloudStream(params.cloudId);
+  return { success: true };
+};
+
+/**
+ * pointCloud.getStreamState - 获取点云流状态
+ */
+export const pointCloudGetStreamState: MethodHandler<
+  { cloudId: string },
+  PointCloudStreamState | null
+> = (params) => {
+  const manager = getVisionManager();
+  return manager.getPointCloudStreamState(params.cloudId) ?? null;
+};
+
+/**
+ * pointCloud.listActiveStreams - 列出所有活跃的点云流
+ */
+export const pointCloudListActiveStreams: MethodHandler<
+  Record<string, never>,
+  { streams: PointCloudStreamState[] }
+> = () => {
+  const manager = getVisionManager();
+  return { streams: manager.getActivePointCloudStreams() };
+};
+
+/**
+ * pointCloud.pushFrame - 推送点云帧 (用于外部数据源)
+ */
+export const pointCloudPushFrame: MethodHandler<
+  { cloudId: string; frame: PointCloudFrame | PointCloudUpdateFrame },
+  { success: boolean }
+> = (params) => {
+  const manager = getVisionManager();
+  const success = manager.pushPointCloudFrame(params.cloudId, params.frame);
+  return { success };
+};
+
+// ============================================================================
 // Handler Registration
 // ============================================================================
 
@@ -343,12 +478,26 @@ export function registerVisionHandlers(
   register('pointCloud.get', pointCloudGet);
   register('pointCloud.list', pointCloudList);
 
+  // Point Cloud Streaming
+  register('pointCloud.startStream', pointCloudStartStream);
+  register('pointCloud.stopStream', pointCloudStopStream);
+  register('pointCloud.getStreamState', pointCloudGetStreamState);
+  register('pointCloud.listActiveStreams', pointCloudListActiveStreams);
+  register('pointCloud.pushFrame', pointCloudPushFrame);
+
   // Camera View
   register('vision.addCameraView', visionAddCameraView);
   register('vision.removeCameraView', visionRemoveCameraView);
   register('vision.updateCameraView', visionUpdateCameraView);
   register('vision.getCameraView', visionGetCameraView);
   register('vision.listCameraViews', visionListCameraViews);
+
+  // Camera Streaming
+  register('camera.startStream', cameraStartStream);
+  register('camera.stopStream', cameraStopStream);
+  register('camera.getStreamState', cameraGetStreamState);
+  register('camera.listActiveStreams', cameraListActiveStreams);
+  register('camera.pushFrame', cameraPushFrame);
 
   // Image Overlay
   register('vision.setImageOverlay', visionSetImageOverlay);

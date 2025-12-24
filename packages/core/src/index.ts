@@ -96,6 +96,28 @@ export { Obstacle, type ObstacleProps } from './components/Obstacle';
 export * from './components/helpers';
 
 // =============================================================================
+// Vision Components (Camera & Point Cloud Streaming)
+// =============================================================================
+export {
+  ImageStreamRenderer,
+  ImagePlane3D,
+  PointCloudStreamRenderer,
+  depthFrameToPointCloud,
+  CameraViewPanel,
+  DepthCloudRenderer,
+  type ImageStreamRendererProps,
+  type ImagePlane3DProps,
+  type ImageStreamStats,
+  type PointCloudStreamRendererProps,
+  type PointCloudColorMode as VisionPointCloudColorMode,
+  type ColorMapConfig,
+  type PointCloudStats,
+  type CameraViewPanelProps,
+  type DepthCloudRendererProps,
+  type DepthCloudStats,
+} from './components/vision';
+
+// =============================================================================
 // Main Component
 // =============================================================================
 export { RoboVizCore, type RoboVizCoreProps } from './RoboVizCore';
