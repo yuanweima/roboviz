@@ -44,7 +44,7 @@ function LastClickDisplay() {
       }}
     >
       <h4 style={{ margin: '0 0 8px 0', color: '#4ecdc4' }}>
-        useEventValue(&apos;robot:click&apos;)
+        useEventValue('robot:click')
       </h4>
       {lastClick ? (
         <div style={{ fontSize: '12px', color: '#aaa' }}>
@@ -79,7 +79,7 @@ function EventCallbackDemo() {
       }}
     >
       <h4 style={{ margin: '0 0 8px 0', color: '#ff6b6b' }}>
-        useEventCallback(&apos;camera:changed&apos;)
+        useEventCallback('camera:changed')
       </h4>
       <div style={{ fontSize: '12px', color: '#aaa' }}>Camera moved {count} times</div>
     </div>
