@@ -11,17 +11,20 @@
  * - Multiple event handlers
  * - Connection events
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useControls, button } from 'leva';
 import {
   RoboViz,
+  RoboVizProvider,
   Robot,
-  useRoboViz,
+  createRoboViz,
+  useRoboVizInstance,
   useEvents,
   useEventValue,
   useEventCallback,
   useMultipleEvents,
   useConnection,
+  type IRoboVizInstance,
 } from '@aspect/roboviz-react';
 import { useAppStore } from '../store';
 
@@ -76,7 +79,7 @@ function EventCallbackDemo() {
       }}
     >
       <h4 style={{ margin: '0 0 8px 0', color: '#ff6b6b' }}>
-        useEventCallback&apos;camera:changed&apos;
+        useEventCallback('camera:changed')
       </h4>
       <div style={{ fontSize: '12px', color: '#aaa' }}>Camera moved {count} times</div>
     </div>
@@ -127,7 +130,7 @@ function MultiEventLogger() {
 
 // Component that uses useConnection hook
 function ConnectionStatus() {
-  const { isConnected, error, connect, disconnect } = useConnection();
+  const { isConnected, error } = useConnection();
 
   return (
     <div
@@ -159,8 +162,7 @@ function ConnectionStatus() {
 
 // Main event controls using useEvents hook
 function EventControls() {
-  const { on, emit } = useEvents();
-  const [subscriptions, setSubscriptions] = useState<string[]>([]);
+  const { emit } = useEvents();
 
   const emitCustomEvent = () => {
     emit('robot:joints-changed', {
@@ -200,15 +202,14 @@ function EventControls() {
   );
 }
 
-// Inner component that uses hooks (must be inside RoboViz/RoboVizProvider)
-function EventDemoContent() {
-  const { addRobot, setRobotJoints, robots } = useRoboViz();
+// Robot controls component (uses instance directly)
+function RobotControls({ instance }: { instance: IRoboVizInstance }) {
   const [robotId, setRobotId] = useState<string | null>(null);
   const { addLog } = useAppStore();
 
   // Add robot on mount
-  React.useEffect(() => {
-    const id = addRobot({
+  useEffect(() => {
+    const id = instance.addRobot({
       urdf: URDF_PATH,
       jointAngles: [0, 0, 0, 0, 0, 0],
     });
@@ -216,9 +217,9 @@ function EventDemoContent() {
     addLog('info', `Robot added: ${id}`);
 
     return () => {
-      // Robot will be cleaned up when component unmounts
+      instance.removeRobot(id);
     };
-  }, [addRobot, addLog]);
+  }, [instance, addLog]);
 
   // Leva controls
   useControls('Event Demo', {
@@ -231,7 +232,7 @@ function EventDemoContent() {
           clearInterval(interval);
           return;
         }
-        setRobotJoints(robotId, [
+        instance.setRobotJoints(robotId, [
           Math.sin(t) * 0.5,
           Math.cos(t * 0.7) * 0.3,
           Math.sin(t * 0.5) * 0.4,
@@ -243,7 +244,7 @@ function EventDemoContent() {
     }),
     'Random Position': button(() => {
       if (!robotId) return;
-      setRobotJoints(robotId, [
+      instance.setRobotJoints(robotId, [
         (Math.random() - 0.5) * Math.PI,
         (Math.random() - 0.5) * Math.PI * 0.5,
         Math.random() * Math.PI * 0.5,
@@ -254,26 +255,41 @@ function EventDemoContent() {
     }),
   });
 
-  return (
-    <div style={{ display: 'flex', gap: '16px', height: '100%' }}>
-      {/* Visualization */}
-      <div className="canvas-wrapper" style={{ flex: 2, minHeight: '400px' }}>
-        {/* Robot is rendered by RoboViz automatically from store */}
-      </div>
+  return null; // This component only manages state via Leva
+}
 
-      {/* Event panels */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <EventControls />
-        <LastClickDisplay />
-        <EventCallbackDemo />
-        <MultiEventLogger />
-        <ConnectionStatus />
-      </div>
+// Event panels that need to be inside RoboVizProvider but outside Canvas
+function EventPanels() {
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: '280px' }}>
+      <EventControls />
+      <LastClickDisplay />
+      <EventCallbackDemo />
+      <MultiEventLogger />
+      <ConnectionStatus />
     </div>
   );
 }
 
 export function EventSystemModule() {
+  const { addLog } = useAppStore();
+
+  // Create a single instance for this module
+  const [instance] = useState(() =>
+    createRoboViz({
+      headless: false,
+      debug: false,
+    })
+  );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    addLog('info', 'Event System module loaded');
+    return () => {
+      instance.dispose();
+    };
+  }, [instance, addLog]);
+
   return (
     <div className="module-container">
       <div className="module-header">
@@ -284,28 +300,32 @@ export function EventSystemModule() {
         </p>
       </div>
 
-      <div className="module-content">
-        <RoboViz
-          config={{
-            scene: {
-              background: '#1a1a2e',
-              grid: { enabled: true, size: 10, divisions: 20, color: '#404060' },
-            },
-          }}
-          width="100%"
-          height="500px"
-          onRobotClick={(e) => console.log('Robot clicked (prop):', e)}
-          onCameraChange={(e) => console.log('Camera changed (prop):', e)}
-        >
-          <Robot
-            id="event-demo-robot"
-            urdfPath={URDF_PATH}
-            jointAngles={[0, 0, 0, 0, 0, 0]}
-            showAxes
-          />
-          <EventDemoContent />
-        </RoboViz>
-      </div>
+      {/* Wrap everything in RoboVizProvider so hooks work outside Canvas */}
+      <RoboVizProvider instance={instance}>
+        {/* Robot controls (uses instance) */}
+        <RobotControls instance={instance} />
+
+        <div className="module-content" style={{ display: 'flex', gap: '16px' }}>
+          {/* 3D Visualization */}
+          <div className="canvas-wrapper" style={{ flex: 2, minHeight: '400px' }}>
+            <RoboViz
+              instance={instance}
+              config={{
+                scene: {
+                  background: '#1a1a2e',
+                  grid: { enabled: true, size: 10, divisions: 20, color: '#404060' },
+                },
+                camera: { position: { x: 2, y: 1.5, z: 2 } },
+              }}
+              width="100%"
+              height="400px"
+            />
+          </div>
+
+          {/* Event panels (outside Canvas but inside Provider) */}
+          <EventPanels />
+        </div>
+      </RoboVizProvider>
 
       {/* Code examples */}
       <div
