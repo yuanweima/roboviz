@@ -421,10 +421,12 @@ export function CollisionModule() {
       <div className="canvas-wrapper">
         <RoboViz
           config={{
-            background: '#1a1a2e',
-            grid: { enabled: true, size: 10, divisions: 20, color: '#404060' },
+            scene: {
+              background: '#1a1a2e',
+              grid: { enabled: true, size: 10, divisions: 20, color: '#404060' },
+            },
+            camera: { position: { x: 2, y: 1.5, z: 2 } },
           }}
-          camera={{ position: [2, 1.5, 2] }}
         >
           {/* 机器人 */}
           <Robot id="collision_robot" urdfPath={URDF_PATH} jointAngles={jointAngles} />

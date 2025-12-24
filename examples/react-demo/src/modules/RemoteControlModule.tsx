@@ -139,10 +139,12 @@ export function RemoteControlModule() {
       <div className="canvas-wrapper">
         <RoboViz
           config={{
-            background: '#1a1a2e',
-            grid: { enabled: true, size: 10, divisions: 20, color: '#404060' },
+            scene: {
+              background: '#1a1a2e',
+              grid: { enabled: true, size: 10, divisions: 20, color: '#404060' },
+            },
+            camera: { position: { x: 3, y: 2, z: 3 } },
           }}
-          camera={{ position: [3, 2, 3] }}
         >
           {/* 渲染远程控制的机器人 */}
           {Array.from(robots.values()).map((robot) => (

@@ -130,10 +130,12 @@ export function RobotModule() {
         {/* ✨ 使用简化的 RoboViz 组件 */}
         <RoboViz
           config={{
-            background: '#1a1a2e',
-            grid: { enabled: true, size: 10, divisions: 20, color: '#404060' },
+            scene: {
+              background: '#1a1a2e',
+              grid: { enabled: true, size: 10, divisions: 20, color: '#404060' },
+            },
+            camera: { position: { x: 2, y: 1.5, z: 2 } },
           }}
-          camera={{ position: [2, 1.5, 2] }}
         >
           {/* ✨ 简化的 Robot 组件 - 无需处理回调 */}
           <Robot
