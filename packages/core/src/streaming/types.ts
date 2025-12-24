@@ -20,6 +20,8 @@ export type StreamType =
   | 'point_cloud'      // 点云数据
   | 'force_torque'     // 力/力矩传感器
   | 'io_state'         // IO 状态
+  | 'image'            // 图像数据 (工业相机)
+  | 'depth_image'      // 深度图像 (3D相机)
   | 'custom';          // 自定义数据
 
 /**
@@ -225,6 +227,142 @@ export interface SensorDataFrame extends BaseFrame {
   labels?: string[];
 }
 
+// ============================================================================
+// Image Frames (工业相机/3D相机)
+// ============================================================================
+
+/**
+ * 图像像素格式
+ */
+export type ImagePixelFormat =
+  | 'rgb8'       // RGB 8-bit per channel
+  | 'rgba8'      // RGBA 8-bit per channel
+  | 'bgr8'       // BGR 8-bit per channel
+  | 'bgra8'      // BGRA 8-bit per channel
+  | 'mono8'      // Grayscale 8-bit
+  | 'mono16'     // Grayscale 16-bit
+  | 'bayer_rggb' // Bayer pattern RGGB
+  | 'bayer_grbg' // Bayer pattern GRBG
+  | 'yuv422'     // YUV 4:2:2
+  | 'jpeg'       // JPEG compressed
+  | 'png';       // PNG compressed
+
+/**
+ * 图像编码格式 (传输时)
+ */
+export type ImageEncoding = 'raw' | 'jpeg' | 'png' | 'webp' | 'h264' | 'h265';
+
+/**
+ * 图像数据帧 (工业相机)
+ */
+export interface ImageFrame extends BaseFrame {
+  /** 相机 ID */
+  cameraId: string;
+
+  /** 图像宽度 (pixels) */
+  width: number;
+
+  /** 图像高度 (pixels) */
+  height: number;
+
+  /** 像素格式 */
+  pixelFormat: ImagePixelFormat;
+
+  /** 传输编码 */
+  encoding: ImageEncoding;
+
+  /** 图像数据 (原始字节或 base64) */
+  data: Uint8Array | ArrayBuffer | string;
+
+  /** 曝光时间 (微秒) */
+  exposureTime?: number;
+
+  /** 增益 */
+  gain?: number;
+
+  /** 帧 ID (相机内部计数器) */
+  frameId?: number;
+
+  /** 关联的坐标系 */
+  frameRefId?: string;
+}
+
+/**
+ * 深度图像数据帧 (3D相机)
+ */
+export interface DepthImageFrame extends BaseFrame {
+  /** 相机 ID */
+  cameraId: string;
+
+  /** 图像宽度 (pixels) */
+  width: number;
+
+  /** 图像高度 (pixels) */
+  height: number;
+
+  /** 深度数据格式 */
+  depthFormat: 'uint16_mm' | 'float32_m';
+
+  /** 深度数据 */
+  depthData: Uint16Array | Float32Array;
+
+  /** 最小有效深度 (m) */
+  minDepth: number;
+
+  /** 最大有效深度 (m) */
+  maxDepth: number;
+
+  /** 配对的彩色图像 (可选) */
+  colorImage?: {
+    pixelFormat: ImagePixelFormat;
+    encoding: ImageEncoding;
+    data: Uint8Array | ArrayBuffer | string;
+  };
+
+  /** 相机内参 (用于反投影) */
+  intrinsics?: {
+    fx: number;
+    fy: number;
+    cx: number;
+    cy: number;
+  };
+}
+
+/**
+ * 增量点云更新帧
+ */
+export interface PointCloudUpdateFrame extends BaseFrame {
+  /** 点云 ID */
+  cloudId: string;
+
+  /** 更新类型 */
+  updateType: 'full' | 'append' | 'replace_region' | 'clear';
+
+  /** 点数量 */
+  pointCount: number;
+
+  /** 点坐标 (交错存储 [x,y,z, x,y,z, ...]) */
+  points: Float32Array;
+
+  /** 颜色 (可选, [r,g,b,a, ...]) */
+  colors?: Uint8Array;
+
+  /** 强度 (可选) */
+  intensities?: Float32Array;
+
+  /** 法线 (可选) */
+  normals?: Float32Array;
+
+  /** 区域边界 (用于 replace_region) */
+  regionBounds?: {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  };
+
+  /** 关联的坐标系 */
+  frameRefId?: string;
+}
+
 /**
  * 所有帧类型联合
  */
@@ -234,7 +372,10 @@ export type StreamFrame =
   | ForceTorqueFrame
   | PointCloudFrame
   | IOStateFrame
-  | SensorDataFrame;
+  | SensorDataFrame
+  | ImageFrame
+  | DepthImageFrame
+  | PointCloudUpdateFrame;
 
 // ============================================================================
 // Stream Events

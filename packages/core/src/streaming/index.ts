@@ -18,6 +18,13 @@ export type {
   PointCloudFrame,
   IOStateFrame,
   SensorDataFrame,
+  // Image streaming types
+  ImagePixelFormat,
+  ImageEncoding,
+  ImageFrame,
+  DepthImageFrame,
+  PointCloudUpdateFrame,
+  // Frame union
   StreamFrame,
   StreamEventType,
   StreamEvent,

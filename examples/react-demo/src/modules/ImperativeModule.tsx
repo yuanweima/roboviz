@@ -25,7 +25,9 @@ export function ImperativeModule() {
   const containerRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<IRoboVizInstance | null>(null);
   const [robotId, setRobotId] = useState<string | null>(null);
+  const robotIdRef = useRef<string | null>(null); // Ref for callbacks to get latest value
   const [jointAngles, setJointAngles] = useState<number[]>([0, 0, 0, 0, 0, 0]);
+  const jointAnglesRef = useRef<number[]>([0, 0, 0, 0, 0, 0]); // Ref for callbacks
   const [events, setEvents] = useState<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const { addLog } = useAppStore();
@@ -85,6 +87,15 @@ export function ImperativeModule() {
     };
   }, [addLog]);
 
+  // Keep refs in sync with state for callback closures
+  React.useEffect(() => {
+    robotIdRef.current = robotId;
+  }, [robotId]);
+
+  React.useEffect(() => {
+    jointAnglesRef.current = jointAngles;
+  }, [jointAngles]);
+
   // Leva controls for imperative actions
   useControls('Imperative API', {
     'Add Robot': button(() => {
@@ -95,22 +106,31 @@ export function ImperativeModule() {
         jointAngles: [0, 0, 0, 0, 0, 0],
       });
       setRobotId(id);
+      robotIdRef.current = id; // Also update ref immediately
       addLog('info', `Robot added with ID: ${id}`);
     }),
     'Remove Robot': button(() => {
-      if (!instanceRef.current || !robotId) return;
-      instanceRef.current.removeRobot(robotId);
+      const currentRobotId = robotIdRef.current;
+      if (!instanceRef.current || !currentRobotId) return;
+      instanceRef.current.removeRobot(currentRobotId);
       setRobotId(null);
+      robotIdRef.current = null;
       addLog('info', 'Robot removed');
     }),
     'Animate Joints': button(() => {
-      if (!instanceRef.current || !robotId) return;
+      const currentRobotId = robotIdRef.current;
+      if (!instanceRef.current || !currentRobotId) {
+        console.log('[Animate] No robot or instance', { instance: !!instanceRef.current, robotId: currentRobotId });
+        return;
+      }
 
+      console.log('[Animate] Starting animation for robot:', currentRobotId);
       let t = 0;
       const interval = setInterval(() => {
         t += 0.1;
         if (t > Math.PI * 4) {
           clearInterval(interval);
+          console.log('[Animate] Animation complete');
           return;
         }
         const angles = [
@@ -121,7 +141,7 @@ export function ImperativeModule() {
           Math.sin(t * 0.8) * 0.2,
           t * 0.5,
         ];
-        instanceRef.current?.setRobotJoints(robotId, angles);
+        instanceRef.current?.setRobotJoints(currentRobotId, angles);
         setJointAngles(angles);
       }, 50);
     }),
@@ -132,7 +152,8 @@ export function ImperativeModule() {
       addLog('info', `State: ${state.robots.size} robots, ${state.trajectories.size} trajectories`);
     }),
     'Add Trajectory': button(() => {
-      if (!instanceRef.current || !robotId) return;
+      const currentRobotId = robotIdRef.current;
+      if (!instanceRef.current || !currentRobotId) return;
 
       // Generate a simple pick-place trajectory
       const numPoints = 21;
@@ -153,7 +174,7 @@ export function ImperativeModule() {
       }
 
       const trajectoryId = instanceRef.current.addTrajectory({
-        robotId,
+        robotId: currentRobotId,
         data: { duration: 3, times, positions },
       });
       addLog('info', `Trajectory added: ${trajectoryId}`);
@@ -174,48 +195,60 @@ export function ImperativeModule() {
     }),
   });
 
-  // Joint slider controls
-  useControls('Manual Joint Control', {
+  // Joint slider controls - using Leva's set function for bidirectional sync
+  const [, setLevaJoints] = useControls('Manual Joint Control', () => ({
     J1: {
-      value: jointAngles[0],
+      value: 0,
       min: -Math.PI,
       max: Math.PI,
       step: 0.01,
-      onChange: (v) => {
-        if (!instanceRef.current || !robotId) return;
-        const newAngles = [...jointAngles];
+      onChange: (v: number) => {
+        const currentRobotId = robotIdRef.current;
+        if (!instanceRef.current || !currentRobotId) return;
+        const newAngles = [...jointAnglesRef.current];
         newAngles[0] = v;
         setJointAngles(newAngles);
-        instanceRef.current.setRobotJoints(robotId, newAngles);
+        instanceRef.current.setRobotJoints(currentRobotId, newAngles);
       },
     },
     J2: {
-      value: jointAngles[1],
+      value: 0,
       min: -Math.PI / 2,
       max: Math.PI / 2,
       step: 0.01,
-      onChange: (v) => {
-        if (!instanceRef.current || !robotId) return;
-        const newAngles = [...jointAngles];
+      onChange: (v: number) => {
+        const currentRobotId = robotIdRef.current;
+        if (!instanceRef.current || !currentRobotId) return;
+        const newAngles = [...jointAnglesRef.current];
         newAngles[1] = v;
         setJointAngles(newAngles);
-        instanceRef.current.setRobotJoints(robotId, newAngles);
+        instanceRef.current.setRobotJoints(currentRobotId, newAngles);
       },
     },
     J3: {
-      value: jointAngles[2],
+      value: 0,
       min: -Math.PI / 2,
       max: Math.PI,
       step: 0.01,
-      onChange: (v) => {
-        if (!instanceRef.current || !robotId) return;
-        const newAngles = [...jointAngles];
+      onChange: (v: number) => {
+        const currentRobotId = robotIdRef.current;
+        if (!instanceRef.current || !currentRobotId) return;
+        const newAngles = [...jointAnglesRef.current];
         newAngles[2] = v;
         setJointAngles(newAngles);
-        instanceRef.current.setRobotJoints(robotId, newAngles);
+        instanceRef.current.setRobotJoints(currentRobotId, newAngles);
       },
     },
-  });
+  }));
+
+  // Sync Leva controls when jointAngles change from animation
+  React.useEffect(() => {
+    setLevaJoints({
+      J1: jointAngles[0],
+      J2: jointAngles[1],
+      J3: jointAngles[2],
+    });
+  }, [jointAngles, setLevaJoints]);
 
   return (
     <div className="module-container">

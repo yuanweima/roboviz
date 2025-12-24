@@ -24,6 +24,14 @@ import type {
   ROISelectedEvent,
   ROIModifiedEvent,
 } from './types';
+import type {
+  ImageFrame,
+  DepthImageFrame,
+  PointCloudFrame,
+  PointCloudUpdateFrame,
+  StreamConfig,
+} from '../streaming/types';
+import { getStreamManager } from '../streaming/stream-manager';
 
 // ============================================================================
 // Types
@@ -37,7 +45,10 @@ export type VisionEventType =
   | 'pointcloud_hover'
   | 'cameraview_click'
   | 'roi_selected'
-  | 'roi_modified';
+  | 'roi_modified'
+  | 'image_frame'
+  | 'depth_frame'
+  | 'pointcloud_frame';
 
 /**
  * 视觉事件
@@ -47,9 +58,37 @@ export type VisionEvent =
   | { type: 'pointcloud_hover'; data: PointCloudHoverEvent }
   | { type: 'cameraview_click'; data: CameraViewClickEvent }
   | { type: 'roi_selected'; data: ROISelectedEvent }
-  | { type: 'roi_modified'; data: ROIModifiedEvent };
+  | { type: 'roi_modified'; data: ROIModifiedEvent }
+  | { type: 'image_frame'; data: { cameraId: string; frame: ImageFrame } }
+  | { type: 'depth_frame'; data: { cameraId: string; frame: DepthImageFrame } }
+  | { type: 'pointcloud_frame'; data: { cloudId: string; frame: PointCloudFrame | PointCloudUpdateFrame } };
 
 type VisionEventCallback = (event: VisionEvent) => void;
+
+/**
+ * 相机流状态
+ */
+export interface CameraStreamState {
+  cameraId: string;
+  streamId: string;
+  isActive: boolean;
+  fps: number;
+  lastFrame?: ImageFrame | DepthImageFrame;
+  lastUpdateTime: number;
+}
+
+/**
+ * 点云流状态
+ */
+export interface PointCloudStreamState {
+  cloudId: string;
+  streamId: string;
+  isActive: boolean;
+  updateRate: number;
+  pointCount: number;
+  lastFrame?: PointCloudFrame | PointCloudUpdateFrame;
+  lastUpdateTime: number;
+}
 
 /**
  * 默认点云可视化配置
@@ -88,6 +127,11 @@ export class VisionManager implements IVisionManager {
   private readonly markers2D: Map<string, Marker2D> = new Map();
   private readonly rois2D: Map<string, ROI2D> = new Map();
   private readonly rois3D: Map<string, ROI3D> = new Map();
+
+  // 流管理
+  private readonly cameraStreams: Map<string, CameraStreamState> = new Map();
+  private readonly pointCloudStreams: Map<string, PointCloudStreamState> = new Map();
+  private readonly streamSubscriptions: Map<string, () => void> = new Map();
 
   private readonly eventListeners: Set<VisionEventCallback> = new Set();
   private idCounter = 0;
@@ -372,6 +416,256 @@ export class VisionManager implements IVisionManager {
   }
 
   // ==========================================================================
+  // Camera Stream Management
+  // ==========================================================================
+
+  /**
+   * 启动相机图像流
+   */
+  async startCameraStream(
+    cameraId: string,
+    streamConfig?: Partial<StreamConfig>
+  ): Promise<string> {
+    // 检查是否已存在
+    if (this.cameraStreams.has(cameraId)) {
+      const existing = this.cameraStreams.get(cameraId)!;
+      if (existing.isActive) {
+        return existing.streamId;
+      }
+    }
+
+    const streamManager = getStreamManager();
+    const config: StreamConfig = {
+      streamId: `camera_${cameraId}_${Date.now()}`,
+      type: 'image',
+      frequency: 30,
+      bufferSize: 3,
+      compression: 'none',
+      priority: 'high',
+      sensorId: cameraId,
+      ...streamConfig,
+    };
+
+    const streamId = await streamManager.createStream(config);
+
+    // 订阅流
+    const unsubscribe = streamManager.subscribe<ImageFrame | DepthImageFrame>(
+      streamId,
+      (frame) => this.handleCameraFrame(cameraId, frame)
+    );
+    this.streamSubscriptions.set(streamId, unsubscribe);
+
+    // 更新状态
+    this.cameraStreams.set(cameraId, {
+      cameraId,
+      streamId,
+      isActive: true,
+      fps: 0,
+      lastUpdateTime: Date.now(),
+    });
+
+    return streamId;
+  }
+
+  /**
+   * 停止相机图像流
+   */
+  stopCameraStream(cameraId: string): void {
+    const state = this.cameraStreams.get(cameraId);
+    if (!state) return;
+
+    // 取消订阅
+    const unsubscribe = this.streamSubscriptions.get(state.streamId);
+    if (unsubscribe) {
+      unsubscribe();
+      this.streamSubscriptions.delete(state.streamId);
+    }
+
+    // 销毁流
+    const streamManager = getStreamManager();
+    streamManager.destroyStream(state.streamId);
+
+    // 更新状态
+    state.isActive = false;
+  }
+
+  /**
+   * 获取相机流状态
+   */
+  getCameraStreamState(cameraId: string): CameraStreamState | undefined {
+    return this.cameraStreams.get(cameraId);
+  }
+
+  /**
+   * 获取所有活跃的相机流
+   */
+  getActiveCameraStreams(): CameraStreamState[] {
+    return Array.from(this.cameraStreams.values()).filter((s) => s.isActive);
+  }
+
+  /**
+   * 处理相机帧
+   */
+  private handleCameraFrame(cameraId: string, frame: ImageFrame | DepthImageFrame): void {
+    const state = this.cameraStreams.get(cameraId);
+    if (!state) return;
+
+    state.lastFrame = frame;
+    state.lastUpdateTime = Date.now();
+
+    // 判断是否是深度帧
+    const isDepthFrame = 'depthData' in frame;
+
+    // 发送事件
+    if (isDepthFrame) {
+      this.emitEvent({
+        type: 'depth_frame',
+        data: { cameraId, frame: frame as DepthImageFrame },
+      });
+    } else {
+      this.emitEvent({
+        type: 'image_frame',
+        data: { cameraId, frame: frame as ImageFrame },
+      });
+    }
+  }
+
+  // ==========================================================================
+  // Point Cloud Stream Management
+  // ==========================================================================
+
+  /**
+   * 启动点云数据流
+   */
+  async startPointCloudStream(
+    cloudId: string,
+    streamConfig?: Partial<StreamConfig>
+  ): Promise<string> {
+    // 检查是否已存在
+    if (this.pointCloudStreams.has(cloudId)) {
+      const existing = this.pointCloudStreams.get(cloudId)!;
+      if (existing.isActive) {
+        return existing.streamId;
+      }
+    }
+
+    const streamManager = getStreamManager();
+    const config: StreamConfig = {
+      streamId: `pointcloud_${cloudId}_${Date.now()}`,
+      type: 'point_cloud',
+      frequency: 30,
+      bufferSize: 2,
+      compression: 'none',
+      priority: 'high',
+      sensorId: cloudId,
+      ...streamConfig,
+    };
+
+    const streamId = await streamManager.createStream(config);
+
+    // 订阅流
+    const unsubscribe = streamManager.subscribe<PointCloudFrame | PointCloudUpdateFrame>(
+      streamId,
+      (frame) => this.handlePointCloudFrame(cloudId, frame)
+    );
+    this.streamSubscriptions.set(streamId, unsubscribe);
+
+    // 更新状态
+    this.pointCloudStreams.set(cloudId, {
+      cloudId,
+      streamId,
+      isActive: true,
+      updateRate: 0,
+      pointCount: 0,
+      lastUpdateTime: Date.now(),
+    });
+
+    return streamId;
+  }
+
+  /**
+   * 停止点云数据流
+   */
+  stopPointCloudStream(cloudId: string): void {
+    const state = this.pointCloudStreams.get(cloudId);
+    if (!state) return;
+
+    // 取消订阅
+    const unsubscribe = this.streamSubscriptions.get(state.streamId);
+    if (unsubscribe) {
+      unsubscribe();
+      this.streamSubscriptions.delete(state.streamId);
+    }
+
+    // 销毁流
+    const streamManager = getStreamManager();
+    streamManager.destroyStream(state.streamId);
+
+    // 更新状态
+    state.isActive = false;
+  }
+
+  /**
+   * 获取点云流状态
+   */
+  getPointCloudStreamState(cloudId: string): PointCloudStreamState | undefined {
+    return this.pointCloudStreams.get(cloudId);
+  }
+
+  /**
+   * 获取所有活跃的点云流
+   */
+  getActivePointCloudStreams(): PointCloudStreamState[] {
+    return Array.from(this.pointCloudStreams.values()).filter((s) => s.isActive);
+  }
+
+  /**
+   * 处理点云帧
+   */
+  private handlePointCloudFrame(
+    cloudId: string,
+    frame: PointCloudFrame | PointCloudUpdateFrame
+  ): void {
+    const state = this.pointCloudStreams.get(cloudId);
+    if (!state) return;
+
+    state.lastFrame = frame;
+    state.lastUpdateTime = Date.now();
+    state.pointCount = frame.pointCount;
+
+    // 发送事件
+    this.emitEvent({
+      type: 'pointcloud_frame',
+      data: { cloudId, frame },
+    });
+  }
+
+  /**
+   * 推送图像帧到流 (用于外部数据源)
+   */
+  pushImageFrame(cameraId: string, frame: ImageFrame | DepthImageFrame): boolean {
+    const state = this.cameraStreams.get(cameraId);
+    if (!state || !state.isActive) return false;
+
+    const streamManager = getStreamManager();
+    return streamManager.pushData(state.streamId, frame);
+  }
+
+  /**
+   * 推送点云帧到流 (用于外部数据源)
+   */
+  pushPointCloudFrame(
+    cloudId: string,
+    frame: PointCloudFrame | PointCloudUpdateFrame
+  ): boolean {
+    const state = this.pointCloudStreams.get(cloudId);
+    if (!state || !state.isActive) return false;
+
+    const streamManager = getStreamManager();
+    return streamManager.pushData(state.streamId, frame);
+  }
+
+  // ==========================================================================
   // Utility Methods
   // ==========================================================================
 
@@ -379,6 +673,14 @@ export class VisionManager implements IVisionManager {
    * 清理所有资源
    */
   dispose(): void {
+    // 停止所有流
+    for (const [cameraId] of this.cameraStreams) {
+      this.stopCameraStream(cameraId);
+    }
+    for (const [cloudId] of this.pointCloudStreams) {
+      this.stopPointCloudStream(cloudId);
+    }
+
     this.pointClouds.clear();
     this.cameraViews.clear();
     this.imageOverlays.clear();
@@ -386,6 +688,9 @@ export class VisionManager implements IVisionManager {
     this.markers2D.clear();
     this.rois2D.clear();
     this.rois3D.clear();
+    this.cameraStreams.clear();
+    this.pointCloudStreams.clear();
+    this.streamSubscriptions.clear();
     this.eventListeners.clear();
   }
 
