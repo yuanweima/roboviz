@@ -14,6 +14,7 @@ import { MultiInstanceModule } from './modules/MultiInstanceModule';
 import { EventSystemModule } from './modules/EventSystemModule';
 import { HeadlessModule } from './modules/HeadlessModule';
 import { WorkpointModule } from './modules/WorkpointModule';
+import { VisionStreamModule } from './modules/VisionStreamModule';
 import { StatusBar } from './components/StatusBar';
 import { useAppStore } from './store';
 
@@ -30,7 +31,8 @@ export type ModuleType =
   | 'multi-instance'
   | 'events'
   | 'headless'
-  | 'workpoint';
+  | 'workpoint'
+  | 'vision-stream';
 
 const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'robot': RobotModule,
@@ -46,6 +48,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'events': EventSystemModule,
   'headless': HeadlessModule,
   'workpoint': WorkpointModule,
+  'vision-stream': VisionStreamModule,
 };
 
 export default function App() {

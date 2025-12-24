@@ -29,3 +29,21 @@ export {
   type RemoteWaypoint,
   type RemoteTrajectory,
 } from './useRemoteControl';
+
+// Vision streaming hooks
+export {
+  useCameraStream,
+  type CameraStreamOptions,
+  type CameraStreamState,
+  type CameraStreamControls,
+  type UseCameraStreamReturn,
+} from './useCameraStream';
+
+export {
+  usePointCloudStream,
+  type PointCloudStreamOptions,
+  type PointCloudData as StreamPointCloudData,
+  type PointCloudStreamState,
+  type PointCloudStreamControls,
+  type UsePointCloudStreamReturn,
+} from './usePointCloudStream';
