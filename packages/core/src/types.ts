@@ -12,6 +12,9 @@ export interface Vector3 {
 // Tuple type for convenience (e.g., [x, y, z])
 export type Vector3Tuple = [number, number, number];
 
+// Quaternion tuple type [x, y, z, w]
+export type QuaternionTuple = [number, number, number, number];
+
 // Union type that accepts both object and tuple format
 export type Vector3Like = Vector3 | Vector3Tuple;
 
