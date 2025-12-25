@@ -84,7 +84,11 @@ export interface WorkpointMetadata {
   cameraDistance?: number;
   /** Camera aspect ratio (for camera type) */
   cameraAspectRatio?: number;
-  /** Target position on workpiece surface (for camera type - the actual click point) */
+  /**
+   * @deprecated No longer used. The workpoint position is now always the surface position.
+   * For camera type, optical center = position + surfaceNormal * cameraDistance.
+   * Kept for backward compatibility with existing data.
+   */
   targetPosition?: Vector3Tuple;
   /** Tool offset from TCP (for all types) */
   toolOffset?: Vector3Tuple;
@@ -204,6 +208,12 @@ export interface WorkpointPreviewState {
 export interface WorkpointConfig {
   /** Rotation step in degrees when pressing rotate key */
   rotationStepDegrees: number;
+  /** Position step in meters for keyboard nudging (default: 0.001 = 1mm) */
+  positionStepMeters: number;
+  /** Fine adjustment multiplier (Alt key, default: 0.1) */
+  fineStepMultiplier: number;
+  /** Coarse adjustment multiplier (Shift key, default: 10) */
+  coarseStepMultiplier: number;
   /** Preview opacity (0-1) */
   previewOpacity: number;
   /** Whether Gizmo is enabled */
@@ -228,10 +238,13 @@ export interface WorkpointConfig {
  * Default configuration values
  */
 export const DEFAULT_WORKPOINT_CONFIG: WorkpointConfig = {
-  rotationStepDegrees: 15,
+  rotationStepDegrees: 1, // 1 degree for fine rotation control
+  positionStepMeters: 0.001, // 1mm default step
+  fineStepMultiplier: 0.1, // Alt key: 0.1mm / 0.1°
+  coarseStepMultiplier: 10, // Shift key: 10mm / 10°
   previewOpacity: 0.5,
   enableGizmo: true,
-  gizmoSize: 1,
+  gizmoSize: 2, // Reasonable size for gizmo
   defaultCameraFOV: 60,
   defaultCameraDistance: 0.3,
   defaultCameraAspectRatio: 4 / 3,

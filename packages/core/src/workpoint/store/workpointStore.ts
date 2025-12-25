@@ -110,10 +110,13 @@ export const createWorkpointStore = (
   initialDisplayConfig: Partial<WorkpointDisplayConfig> = {}
 ) => {
   const defaultConfig: WorkpointConfig = {
-    rotationStepDegrees: 15,
+    rotationStepDegrees: 1, // 1 degree for fine rotation control
+    positionStepMeters: 0.001, // 1mm default step
+    fineStepMultiplier: 0.1, // Alt key: 0.1mm / 0.1°
+    coarseStepMultiplier: 10, // Shift key: 10mm / 10°
     previewOpacity: 0.5,
     enableGizmo: true,
-    gizmoSize: 1,
+    gizmoSize: 2, // Reasonable size for gizmo
     // Camera parameters: 80mm x 60mm view at 300mm distance
     // FOV(vertical) = 2 * atan(30mm / 300mm) ≈ 11.4 degrees
     defaultCameraFOV: 11.4,

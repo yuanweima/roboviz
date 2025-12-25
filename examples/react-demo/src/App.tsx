@@ -15,6 +15,7 @@ import { EventSystemModule } from './modules/EventSystemModule';
 import { HeadlessModule } from './modules/HeadlessModule';
 import { WorkpointModule } from './modules/WorkpointModule';
 import { VisionStreamModule } from './modules/VisionStreamModule';
+import { GhostRobotModule } from './modules/GhostRobotModule';
 import { StatusBar } from './components/StatusBar';
 import { useAppStore } from './store';
 
@@ -32,7 +33,8 @@ export type ModuleType =
   | 'events'
   | 'headless'
   | 'workpoint'
-  | 'vision-stream';
+  | 'vision-stream'
+  | 'ghost-robot';
 
 const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'robot': RobotModule,
@@ -49,6 +51,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'headless': HeadlessModule,
   'workpoint': WorkpointModule,
   'vision-stream': VisionStreamModule,
+  'ghost-robot': GhostRobotModule,
 };
 
 export default function App() {
