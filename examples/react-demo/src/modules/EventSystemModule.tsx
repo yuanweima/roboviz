@@ -286,7 +286,10 @@ export function EventSystemModule() {
   useEffect(() => {
     addLog('info', 'Event System module loaded');
     return () => {
-      instance.dispose();
+      // Defer disposal to avoid "unmount during render" warning
+      queueMicrotask(() => {
+        instance.dispose();
+      });
     };
   }, [instance, addLog]);
 

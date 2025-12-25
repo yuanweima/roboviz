@@ -33,6 +33,12 @@ export { registerDiagnosticHandlers } from './diagnostic';
 // Scene handlers
 export { registerSceneHandlers } from './scene';
 
+// Kinematics handlers
+export { registerKinematicsHandlers } from './kinematics';
+
+// Motion planning handlers
+export { registerMotionHandlers } from './motion';
+
 // Re-export individual stream handlers
 export {
   streamCreate,
@@ -230,6 +236,47 @@ export {
   historyGetConfig,
 } from './scene';
 
+// Re-export individual kinematics handlers
+export {
+  kinematicsInit,
+  kinematicsIsReady,
+  kinematicsListAvailableRobots,
+  kinematicsCreateSolver,
+  kinematicsCreateSolverWithConfig,
+  kinematicsDisposeSolver,
+  kinematicsListSolvers,
+  kinematicsHasSolver,
+  kinematicsFk,
+  kinematicsFkChain,
+  kinematicsIk,
+  kinematicsIkAll,
+  kinematicsConfigureIk,
+  kinematicsAnalyzeWorkspace,
+  kinematicsIsReachable,
+  kinematicsIsNearSingularity,
+  kinematicsComputeManipulability,
+  kinematicsComputeJacobian,
+  kinematicsAttachTool,
+  kinematicsDetachTool,
+  kinematicsHasTool,
+  kinematicsIsValidConfig,
+  kinematicsGetDhParams,
+} from './kinematics';
+
+// Re-export individual motion handlers
+export {
+  motionLinear,
+  motionLinearPath,
+  motionCheckLinear,
+  motionLinearFromCurrent,
+  motionInterpolatePath,
+  motionSmoothPath,
+  motionCartesianToJoint,
+  motionJointToCartesian,
+  motionAnalyzePath,
+  motionValidatePath,
+} from './motion';
+
 // ============================================================================
 // All Handlers Registration
 // ============================================================================
@@ -243,6 +290,8 @@ import { registerMultiRobotHandlers } from './multi-robot';
 import { registerPerformanceHandlers } from './performance';
 import { registerDiagnosticHandlers } from './diagnostic';
 import { registerSceneHandlers } from './scene';
+import { registerKinematicsHandlers } from './kinematics';
+import { registerMotionHandlers } from './motion';
 
 /**
  * 类型安全的方法注册函数签名
@@ -266,4 +315,6 @@ export function registerAllHandlers(register: RegisterMethod): void {
   registerPerformanceHandlers(register);
   registerDiagnosticHandlers(register);
   registerSceneHandlers(register);
+  registerKinematicsHandlers(register);
+  registerMotionHandlers(register);
 }

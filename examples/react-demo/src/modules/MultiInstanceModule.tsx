@@ -181,7 +181,10 @@ export function MultiInstanceModule() {
     addLog('info', `Created ${instances.length} independent RoboViz instances`);
 
     return () => {
-      instances.forEach((instance) => instance.dispose());
+      // Defer disposal to avoid "unmount during render" warning
+      queueMicrotask(() => {
+        instances.forEach((instance) => instance.dispose());
+      });
       addLog('info', 'All instances disposed');
     };
   }, [instances, addLog]);

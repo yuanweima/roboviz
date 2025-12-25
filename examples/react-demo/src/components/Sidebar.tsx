@@ -15,6 +15,8 @@ const MODULES: { id: ModuleType; label: string; icon: string; description: strin
   { id: 'workpoint', label: 'Workpoint System', icon: '📍', description: 'Surface work points', isNew: true },
   { id: 'vision-stream', label: 'Vision Streaming', icon: '📹', description: 'Camera & point cloud streams', isNew: true },
   { id: 'ghost-robot', label: 'Ghost Robot', icon: '👻', description: 'Target pose preview', isNew: true },
+  { id: 'trajx-wasm', label: 'Trajx WASM', icon: '⚙️', description: 'FK/IK, WASM solver', isNew: true },
+  { id: 'process-workflow', label: 'Process Workflow', icon: '🔥', description: 'Multi-process architecture', isNew: true },
   // Original modules
   { id: 'robot', label: 'Robot Control', icon: '🤖', description: 'URDF loading, joint control' },
   { id: 'trajectory', label: 'Trajectory', icon: '📈', description: 'Playback, waypoints' },

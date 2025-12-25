@@ -19,3 +19,6 @@ export type { SurfaceRegionProps as SurfaceRegionRendererProps } from './Surface
 
 export { SurfaceRegionManager } from './SurfaceRegionManager';
 export type { SurfaceRegionManagerProps } from './SurfaceRegionManager';
+
+export { WorkpointShortcutsHelp } from './WorkpointShortcutsHelp';
+export type { WorkpointShortcutsHelpProps } from './WorkpointShortcutsHelp';

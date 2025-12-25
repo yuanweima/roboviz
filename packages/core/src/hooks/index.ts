@@ -47,3 +47,11 @@ export {
   type PointCloudStreamControls,
   type UsePointCloudStreamReturn,
 } from './usePointCloudStream';
+
+// IK drag hook for interactive end-effector control
+export {
+  useIKDrag,
+  type UseIKDragOptions,
+  type IKDragResult,
+  type UseIKDragReturn,
+} from './useIKDrag';
