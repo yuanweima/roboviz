@@ -82,7 +82,11 @@ export function ImperativeModule() {
       unsubRobotClick();
       unsubJointsChanged();
       unsubCameraChanged();
-      instance.dispose();
+      // Defer disposal to avoid "unmount during render" warning
+      // This ensures React finishes its current render cycle before we unmount the internal root
+      queueMicrotask(() => {
+        instance.dispose();
+      });
       addLog('info', 'RoboViz instance disposed');
     };
   }, [addLog]);

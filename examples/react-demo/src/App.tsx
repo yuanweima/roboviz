@@ -16,6 +16,8 @@ import { HeadlessModule } from './modules/HeadlessModule';
 import { WorkpointModule } from './modules/WorkpointModule';
 import { VisionStreamModule } from './modules/VisionStreamModule';
 import { GhostRobotModule } from './modules/GhostRobotModule';
+import { TrajxWasmModule } from './modules/TrajxWasmModule';
+import { ProcessWorkflowModule } from './modules/ProcessWorkflowModule';
 import { StatusBar } from './components/StatusBar';
 import { useAppStore } from './store';
 
@@ -34,7 +36,9 @@ export type ModuleType =
   | 'headless'
   | 'workpoint'
   | 'vision-stream'
-  | 'ghost-robot';
+  | 'ghost-robot'
+  | 'trajx-wasm'
+  | 'process-workflow';
 
 const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'robot': RobotModule,
@@ -52,6 +56,8 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'workpoint': WorkpointModule,
   'vision-stream': VisionStreamModule,
   'ghost-robot': GhostRobotModule,
+  'trajx-wasm': TrajxWasmModule,
+  'process-workflow': ProcessWorkflowModule,
 };
 
 export default function App() {

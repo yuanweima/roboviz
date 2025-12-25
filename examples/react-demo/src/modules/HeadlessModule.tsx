@@ -265,7 +265,10 @@ function ImperativeHeadlessDemo() {
 
     return () => {
       unsubscribe();
-      viz.dispose();
+      // Defer disposal to avoid "unmount during render" warning
+      queueMicrotask(() => {
+        viz.dispose();
+      });
     };
   }, [addLog]);
 
