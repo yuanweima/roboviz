@@ -91,6 +91,14 @@ export * from './hooks';
 // =============================================================================
 export { Scene, type SceneProps } from './components/Scene';
 export { Robot, type RobotProps, type EulerTuple, type QuaternionTuple, type MeshDataMap, useEndEffectorPose } from './components/Robot';
+export {
+  GhostRobot,
+  GhostRobotTrajectory,
+  GHOST_STATUS_COLORS,
+  type GhostRobotProps,
+  type GhostRobotTrajectoryProps,
+  type GhostStatus,
+} from './components/GhostRobot';
 export { Trajectory, type TrajectoryProps } from './components/Trajectory';
 export { Waypoint, WaypointGroup, type WaypointProps, type WaypointGroupProps } from './components/Waypoint';
 export { Obstacle, type ObstacleProps } from './components/Obstacle';

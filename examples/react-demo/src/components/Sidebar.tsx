@@ -14,6 +14,7 @@ const MODULES: { id: ModuleType; label: string; icon: string; description: strin
   { id: 'headless', label: 'Headless Mode', icon: '🎭', description: 'State without render', isNew: true },
   { id: 'workpoint', label: 'Workpoint System', icon: '📍', description: 'Surface work points', isNew: true },
   { id: 'vision-stream', label: 'Vision Streaming', icon: '📹', description: 'Camera & point cloud streams', isNew: true },
+  { id: 'ghost-robot', label: 'Ghost Robot', icon: '👻', description: 'Target pose preview', isNew: true },
   // Original modules
   { id: 'robot', label: 'Robot Control', icon: '🤖', description: 'URDF loading, joint control' },
   { id: 'trajectory', label: 'Trajectory', icon: '📈', description: 'Playback, waypoints' },

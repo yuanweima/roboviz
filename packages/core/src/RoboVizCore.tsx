@@ -13,6 +13,7 @@ import type { SceneConfig, CameraState, OrbitControlsOptions, Vector3, Vector3Li
 import { toVector3 } from './types';
 import { Scene } from './components/Scene';
 import { useVizStore } from './store/vizStore';
+import { useWorkpointStore } from './workpoint/store';
 
 export interface RoboVizCoreProps {
   /** Scene configuration (background, grid, lighting) */
@@ -83,6 +84,14 @@ function InnerScene({
   const controlsRef = React.useRef<any>(null);
   const { setCamera, selectObject, hoverObject } = useVizStore();
 
+  // Get workpoint gizmo state to disable OrbitControls rotation when gizmo is in rotate mode
+  const gizmoMode = useWorkpointStore((s) => s.gizmoMode);
+  const selectedWorkpointId = useWorkpointStore((s) => s.selectedWorkpointId);
+  const workpointMode = useWorkpointStore((s) => s.mode);
+
+  // Disable OrbitControls rotation when workpoint gizmo is in rotate mode with a selected workpoint
+  const shouldDisableOrbitRotate = workpointMode === 'edit' && gizmoMode === 'rotate' && selectedWorkpointId !== null;
+
   const mergedControls = { ...defaultControls, ...controls };
 
   // Handle control changes
@@ -124,6 +133,7 @@ function InnerScene({
         minDistance={mergedControls.minDistance}
         maxDistance={mergedControls.maxDistance}
         autoRotate={mergedControls.autoRotate}
+        enableRotate={!shouldDisableOrbitRotate}
         onChange={handleControlsChange}
       />
     </>

@@ -64,12 +64,7 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig[] = [
   { key: '4', action: 'setTypeSpray', description: 'Set type: Spray' },
   { key: '5', action: 'setTypeMeasure', description: 'Set type: Measure' },
   { key: 't', action: 'gizmoTranslate', description: 'Gizmo translate mode' },
-  {
-    key: 'r',
-    ctrl: true,
-    action: 'gizmoRotate',
-    description: 'Gizmo rotate mode',
-  },
+  { key: 'e', action: 'gizmoRotate', description: 'Gizmo rotate mode' },
   { key: 'Tab', action: 'selectNext', description: 'Select next workpoint' },
   {
     key: 'Tab',

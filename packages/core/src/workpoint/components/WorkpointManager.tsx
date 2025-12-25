@@ -15,6 +15,7 @@ import { WorkpointGizmo } from './WorkpointGizmo';
 import { CameraZone } from './CameraZone';
 import { useWorkpointRaycast, createWorkpointOrientation, createTiltedWorkpointOrientation } from '../hooks/useWorkpointRaycast';
 import { useWorkpointShortcuts } from '../hooks/useWorkpointShortcuts';
+import { useWorkpointNudge } from '../hooks/useWorkpointNudge';
 import {
   useWorkpointStore,
   useWorkpointMode,
@@ -144,24 +145,17 @@ export function WorkpointManager({
 
   /**
    * Calculate workpoint position based on type
-   * For camera type: offset position along normal by cameraDistance
-   * For other types: use hit position directly
+   * All types use the hit position (surface position) directly.
+   * For camera type, the camera optical center is calculated from surface position + cameraDistance
+   * during visualization and export, making it easier to recalculate when camera parameters change.
    */
   const calculateWorkpointPosition = useCallback(
-    (hitPosition: [number, number, number], normal: [number, number, number], type: string): [number, number, number] => {
-      if (type === 'camera') {
-        // Camera workpoint: offset from surface along normal
-        const distance = config.defaultCameraDistance;
-        return [
-          hitPosition[0] + normal[0] * distance,
-          hitPosition[1] + normal[1] * distance,
-          hitPosition[2] + normal[2] * distance,
-        ];
-      }
-      // Other types: position at hit point
+    (hitPosition: [number, number, number], _normal: [number, number, number], _type: string): [number, number, number] => {
+      // All types: position at hit point (workpiece surface)
+      // For camera type, the optical center offset is handled in CameraZone visualization
       return hitPosition;
     },
-    [config.defaultCameraDistance]
+    []
   );
 
   /**
@@ -190,16 +184,12 @@ export function WorkpointManager({
         const previewWorkpoint: WorkpointData = {
           id: 'preview',
           type: currentType,
-          position,
+          position, // Always the surface position for all types
           quaternion,
           workpieceId: hit.workpieceId,
           surfaceNormal: hit.normal,
           localPosition: hit.localPosition,
           enabled: true,
-          // Store the original hit position for reference
-          metadata: currentType === 'camera' ? {
-            targetPosition: hit.position,
-          } : undefined,
         };
 
         const previewState: WorkpointPreviewState = {
@@ -244,7 +234,8 @@ export function WorkpointManager({
           state.preview.rotationOffset
         );
 
-    // Use the preview's already-calculated position (which includes camera offset)
+    // Position is always the surface position for all workpoint types
+    // For camera type, the optical center is calculated as position + surfaceNormal * cameraDistance
     const createData: WorkpointCreateData = {
       type: workpoint.type,
       position: workpoint.position,
@@ -252,7 +243,6 @@ export function WorkpointManager({
       workpieceId: workpoint.workpieceId,
       surfaceNormal: workpoint.surfaceNormal,
       localPosition: workpoint.localPosition,
-      // Pass through metadata including targetPosition for camera type
       metadata: workpoint.metadata,
     };
 
@@ -336,6 +326,25 @@ export function WorkpointManager({
     onShortcut: (action) => {
       if (action === 'toggleMode') {
         callbacks?.onModeChanged?.(store.getState().mode);
+      }
+    },
+  });
+
+  /**
+   * Setup keyboard nudge for precise position/rotation adjustment
+   * Arrow keys: X/Y axis, PageUp/PageDown: Z axis
+   * Shift: 10x step (coarse), Alt: 0.1x step (fine)
+   */
+  useWorkpointNudge({
+    enabled: enabled,
+    positionStep: config.positionStepMeters,
+    rotationStep: config.rotationStepDegrees,
+    fineMultiplier: config.fineStepMultiplier,
+    coarseMultiplier: config.coarseStepMultiplier,
+    onNudge: (workpointId, _axis, _delta, _isRotation) => {
+      const wp = store.getState().getWorkpoint(workpointId);
+      if (wp) {
+        callbacks?.onWorkpointChanged?.(wp);
       }
     },
   });

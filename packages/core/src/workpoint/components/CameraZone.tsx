@@ -3,6 +3,10 @@
  *
  * Renders a camera frustum visualization for camera-type workpoints.
  * Shows the field of view, working distance, and capture area.
+ *
+ * The workpoint position is at the workpiece surface (target point).
+ * The camera optical center is offset along the surface normal by cameraDistance.
+ * This design allows easy recalculation when camera parameters change.
  */
 
 import React, { useMemo } from 'react';
@@ -47,23 +51,26 @@ export const CameraZone = React.memo(function CameraZone({
   color = '#00ffff',
 }: CameraZoneProps) {
   // Calculate frustum dimensions
-  const { halfWidth, halfHeight, corners } = useMemo(() => {
+  // The workpoint is at the surface (origin), camera optical center is at +Z direction
+  const { halfWidth, halfHeight, cameraPosition } = useMemo(() => {
     const fovRad = (fov / 2) * (Math.PI / 180);
+    // Calculate the half-dimensions at the surface (where the camera is looking)
     const hh = Math.tan(fovRad) * distance;
     const hw = hh * aspectRatio;
 
-    // Frustum corner points (at the far plane)
-    // Camera looks in -Z direction (opposite to surface normal)
-    // This means the camera is positioned at the workpoint and looks outward
-    const c = {
-      topLeft: [-hw, hh, -distance] as Vector3Tuple,
-      topRight: [hw, hh, -distance] as Vector3Tuple,
-      bottomLeft: [-hw, -hh, -distance] as Vector3Tuple,
-      bottomRight: [hw, -hh, -distance] as Vector3Tuple,
-    };
+    // Camera optical center position (along +Z from surface)
+    const camPos: Vector3Tuple = [0, 0, distance];
 
-    return { halfWidth: hw, halfHeight: hh, corners: c };
+    return { halfWidth: hw, halfHeight: hh, cameraPosition: camPos };
   }, [fov, distance, aspectRatio]);
+
+  // Surface corners (where the camera is looking, at origin plane)
+  const surfaceCorners = useMemo(() => ({
+    topLeft: [-halfWidth, halfHeight, 0] as Vector3Tuple,
+    topRight: [halfWidth, halfHeight, 0] as Vector3Tuple,
+    bottomLeft: [-halfWidth, -halfHeight, 0] as Vector3Tuple,
+    bottomRight: [halfWidth, -halfHeight, 0] as Vector3Tuple,
+  }), [halfWidth, halfHeight]);
 
   // Create quaternion object
   const quatObj = useMemo(() => new THREE.Quaternion(...quaternion), [quaternion]);
@@ -74,44 +81,44 @@ export const CameraZone = React.memo(function CameraZone({
 
   return (
     <group position={position} quaternion={quatObj}>
-      {/* Frustum edges from origin to corners */}
+      {/* Frustum edges from camera optical center to surface corners */}
       <Line
-        points={[[0, 0, 0], corners.topLeft]}
+        points={[cameraPosition, surfaceCorners.topLeft]}
         color={color}
         lineWidth={lineWidth}
         transparent
         opacity={lineOpacity}
       />
       <Line
-        points={[[0, 0, 0], corners.topRight]}
+        points={[cameraPosition, surfaceCorners.topRight]}
         color={color}
         lineWidth={lineWidth}
         transparent
         opacity={lineOpacity}
       />
       <Line
-        points={[[0, 0, 0], corners.bottomLeft]}
+        points={[cameraPosition, surfaceCorners.bottomLeft]}
         color={color}
         lineWidth={lineWidth}
         transparent
         opacity={lineOpacity}
       />
       <Line
-        points={[[0, 0, 0], corners.bottomRight]}
+        points={[cameraPosition, surfaceCorners.bottomRight]}
         color={color}
         lineWidth={lineWidth}
         transparent
         opacity={lineOpacity}
       />
 
-      {/* Far plane rectangle */}
+      {/* Surface plane rectangle (where the camera is looking) */}
       <Line
         points={[
-          corners.topLeft,
-          corners.topRight,
-          corners.bottomRight,
-          corners.bottomLeft,
-          corners.topLeft,
+          surfaceCorners.topLeft,
+          surfaceCorners.topRight,
+          surfaceCorners.bottomRight,
+          surfaceCorners.bottomLeft,
+          surfaceCorners.topLeft,
         ]}
         color={color}
         lineWidth={lineWidth}
@@ -119,8 +126,8 @@ export const CameraZone = React.memo(function CameraZone({
         opacity={lineOpacity}
       />
 
-      {/* Far plane fill (semi-transparent) */}
-      <mesh position={[0, 0, -distance]}>
+      {/* Surface plane fill (semi-transparent) */}
+      <mesh position={[0, 0, 0]}>
         <planeGeometry args={[halfWidth * 2, halfHeight * 2]} />
         <meshBasicMaterial
           color={color}
@@ -131,8 +138,8 @@ export const CameraZone = React.memo(function CameraZone({
         />
       </mesh>
 
-      {/* Center crosshair on far plane */}
-      <group position={[0, 0, -distance]}>
+      {/* Center crosshair on surface (workpoint center) */}
+      <group position={[0, 0, 0]}>
         <Line
           points={[
             [-halfWidth * 0.1, 0, 0],
@@ -155,8 +162,10 @@ export const CameraZone = React.memo(function CameraZone({
         />
       </group>
 
-      {/* Camera icon at origin */}
-      <CameraIcon color={color} size={distance * 0.15} opacity={opacity} />
+      {/* Camera icon at optical center (offset from surface) */}
+      <group position={cameraPosition}>
+        <CameraIcon color={color} size={distance * 0.15} opacity={opacity} />
+      </group>
     </group>
   );
 });
