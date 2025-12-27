@@ -16,6 +16,7 @@ import {
 } from '@aspect/roboviz-core';
 import { RoboVizProvider, useRoboVizStore } from '../context/RoboVizProvider';
 import { RoboVizInstance } from '../core/RoboVizInstance';
+import { RoboVizErrorBoundary } from './RoboVizErrorBoundary';
 import type { RoboVizProps, RoboVizConfig, CameraState } from '../types';
 
 /**
@@ -134,16 +135,23 @@ function RoboVizInner({
   );
 
   return (
-    <RoboVizCore
-      config={scene}
-      camera={camera}
-      onCameraChange={handleCameraChange}
-      onObjectClick={handleObjectClick}
-      style={{ width: '100%', height: '100%' }}
+    <RoboVizErrorBoundary
+      onError={(error, errorInfo) => {
+        instance.emit('error', { error, context: '3D rendering' });
+        console.error('[RoboVizInner] Rendering error:', error, errorInfo);
+      }}
     >
-      <AutoRenderedEntities />
-      {children}
-    </RoboVizCore>
+      <RoboVizCore
+        config={scene}
+        camera={camera}
+        onCameraChange={handleCameraChange}
+        onObjectClick={handleObjectClick}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <AutoRenderedEntities />
+        {children}
+      </RoboVizCore>
+    </RoboVizErrorBoundary>
   );
 }
 

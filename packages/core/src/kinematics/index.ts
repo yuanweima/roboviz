@@ -72,6 +72,20 @@ export {
 } from './kinematics-manager';
 
 // ============================================================================
+// Solver Interface (Type Guards)
+// ============================================================================
+
+export {
+  hasMultiIk,
+  hasWorkspaceAnalysis,
+  isExtendedSolver,
+  computeIkAll,
+  computeWorkspaceAnalysis,
+  type IBaseSolver,
+  type IExtendedSolver,
+} from './solver-interface';
+
+// ============================================================================
 // React Hooks
 // ============================================================================
 

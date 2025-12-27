@@ -19,6 +19,7 @@ import { Line } from '@react-three/drei';
 import URDFLoader, { URDFRobot, URDFJoint } from 'urdf-loader';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import type { Vector3Like } from '../types';
+import { isURDFLink, findLastURDFLink } from '../types/urdf';
 import { EndEffectorProvider } from './EndEffector';
 
 /** Euler angles tuple [x, y, z] in radians */
@@ -235,13 +236,7 @@ function extractJointNames(robot: URDFRobot): string[] {
  * Get end effector world position from robot
  */
 function getEndEffectorPosition(robot: URDFRobot): THREE.Vector3 {
-  let lastLink: THREE.Object3D | undefined;
-  robot.traverse((child: THREE.Object3D) => {
-    if ((child as any).isURDFLink) {
-      lastLink = child;
-    }
-  });
-
+  const lastLink = findLastURDFLink(robot);
   const pos = new THREE.Vector3();
   if (lastLink) {
     lastLink.getWorldPosition(pos);
@@ -393,13 +388,8 @@ export function GhostRobot({
       return;
     }
 
-    // Find the last URDF link for EndEffectorProvider
-    let lastLink: THREE.Object3D | undefined;
-    robot.traverse((child: THREE.Object3D) => {
-      if ((child as any).isURDFLink) {
-        lastLink = child;
-      }
-    });
+    // Find the last URDF link for EndEffectorProvider using type guard
+    const lastLink = findLastURDFLink(robot);
     endEffectorRef.current = lastLink || null;
   }, [robot]);
 
