@@ -14,10 +14,12 @@
 import * as React from 'react';
 import { useRef, useEffect, useState, useMemo } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { Line } from '@react-three/drei';
 import URDFLoader, { URDFRobot, URDFJoint } from 'urdf-loader';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import type { Vector3Like } from '../types';
+import { EndEffectorProvider } from './EndEffector';
 
 /** Euler angles tuple [x, y, z] in radians */
 export type EulerTuple = [number, number, number];
@@ -91,6 +93,8 @@ export interface GhostRobotProps {
   onClick?: (id: string) => void;
   /** Callback when ghost robot is hovered */
   onHover?: (id: string | null) => void;
+  /** Children (tools) to render with ghost styling - will inherit ghost opacity and color */
+  children?: React.ReactNode;
 }
 
 /**
@@ -249,6 +253,74 @@ function getEndEffectorPosition(robot: URDFRobot): THREE.Vector3 {
 const Z_UP_TO_Y_UP_ROTATION = new THREE.Euler(-Math.PI / 2, 0, 0);
 
 /**
+ * Helper component to apply ghost styling to tool children
+ */
+function GhostToolWrapper({
+  children,
+  opacity,
+  color,
+}: {
+  children: React.ReactNode;
+  opacity: number;
+  color: string;
+}): React.JSX.Element {
+  const groupRef = useRef<THREE.Group>(null);
+
+  // Apply ghost material to all meshes in children
+  useEffect(() => {
+    if (!groupRef.current) return;
+
+    const applyGhostMaterial = () => {
+      if (!groupRef.current) return;
+
+      groupRef.current.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          const currentMaterial = mesh.material as THREE.Material;
+
+          // Check if material needs to be updated
+          const needsUpdate = !mesh.userData.isGhostToolMaterial ||
+            !(currentMaterial as THREE.MeshStandardMaterial).transparent;
+
+          if (needsUpdate) {
+            const originalMaterial = mesh.material as THREE.MeshStandardMaterial;
+            const ghostMaterial = new THREE.MeshStandardMaterial({
+              color: color,
+              transparent: true,
+              opacity: opacity,
+              depthWrite: false,
+              metalness: 0.1,
+              roughness: 0.9,
+            });
+            mesh.material = ghostMaterial;
+            mesh.userData.isGhostToolMaterial = true;
+            mesh.userData.originalMaterial = originalMaterial;
+          } else {
+            const mat = mesh.material as THREE.MeshStandardMaterial;
+            mat.color.set(color);
+            mat.opacity = opacity;
+          }
+        }
+      });
+    };
+
+    // Apply immediately
+    applyGhostMaterial();
+
+    // Apply again after a delay to catch late mesh additions
+    const timeoutId = setTimeout(applyGhostMaterial, 100);
+    const timeoutId2 = setTimeout(applyGhostMaterial, 300);
+
+    return () => {
+      clearTimeout(timeoutId);
+      clearTimeout(timeoutId2);
+    };
+  }, [opacity, color, children]);
+
+  return <group ref={groupRef}>{children}</group>;
+}
+
+/**
  * GhostRobot component
  */
 export function GhostRobot({
@@ -273,8 +345,10 @@ export function GhostRobot({
   trajectoryStyle = 'dashed',
   onClick,
   onHover,
+  children,
 }: GhostRobotProps): React.JSX.Element | null {
   const groupRef = useRef<THREE.Group>(null);
+  const endEffectorRef = useRef<THREE.Object3D | null>(null);
   const [endEffectorPos, setEndEffectorPos] = useState<THREE.Vector3 | null>(null);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -284,11 +358,50 @@ export function GhostRobot({
     meshData
   );
 
+  // Cleanup THREE.js resources when robot changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (robot) {
+        robot.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            if (mesh.geometry) {
+              mesh.geometry.dispose();
+            }
+            if (mesh.material) {
+              const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+              materials.forEach((mat) => {
+                mat.dispose();
+              });
+            }
+          }
+        });
+      }
+    };
+  }, [robot]);
+
   // Determine ghost color
   const ghostColor = useMemo(() => {
     if (color) return color;
     return GHOST_STATUS_COLORS[status];
   }, [color, status]);
+
+  // Set end effector ref when robot loads (same as Robot component)
+  useEffect(() => {
+    if (!robot) {
+      endEffectorRef.current = null;
+      return;
+    }
+
+    // Find the last URDF link for EndEffectorProvider
+    let lastLink: THREE.Object3D | undefined;
+    robot.traverse((child: THREE.Object3D) => {
+      if ((child as any).isURDFLink) {
+        lastLink = child;
+      }
+    });
+    endEffectorRef.current = lastLink || null;
+  }, [robot]);
 
   // Apply joint angles
   useEffect(() => {
@@ -304,38 +417,62 @@ export function GhostRobot({
       }
     });
 
-    // Update end effector position after setting joints
-    robot.updateMatrixWorld(true);
-    setEndEffectorPos(getEndEffectorPosition(robot));
+    // Note: Don't call updateMatrixWorld here - let R3F handle it during render
+    // This ensures the parent group transforms are properly applied before
+    // EndEffector reads world positions
   }, [robot, jointAngles, jointNames]);
 
+  // Update end effector position in useFrame (after R3F has updated all matrices)
+  useFrame(() => {
+    if (!robot) return;
+    const pos = getEndEffectorPosition(robot);
+    if (pos && (!endEffectorPos || !pos.equals(endEffectorPos))) {
+      setEndEffectorPos(pos);
+    }
+  });
+
   // Apply ghost material (transparency and color)
+  // This effect must run after the robot is loaded and on every render to ensure materials stay ghost-styled
   useEffect(() => {
     if (!robot) return;
 
-    robot.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const mesh = child as THREE.Mesh;
+    const applyGhostMaterial = () => {
+      robot.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          const currentMaterial = mesh.material as THREE.Material;
 
-        // Clone material to avoid affecting other instances
-        if (!mesh.userData.isGhostMaterial) {
-          const newMaterial = new THREE.MeshStandardMaterial({
-            color: ghostColor,
-            transparent: true,
-            opacity: opacity,
-            depthWrite: false, // Prevent z-fighting
-            metalness: 0.1,
-            roughness: 0.9,
-          });
-          mesh.material = newMaterial;
-          mesh.userData.isGhostMaterial = true;
-        } else {
-          const mat = mesh.material as THREE.MeshStandardMaterial;
-          mat.color.set(ghostColor);
-          mat.opacity = isHovered ? Math.min(opacity + 0.2, 1) : opacity;
+          // Always apply ghost material - materials might be reset by primitive re-render
+          const needsUpdate = !mesh.userData.isGhostMaterial ||
+            !(currentMaterial as THREE.MeshStandardMaterial).transparent;
+
+          if (needsUpdate) {
+            const newMaterial = new THREE.MeshStandardMaterial({
+              color: ghostColor,
+              transparent: true,
+              opacity: opacity,
+              depthWrite: false, // Prevent z-fighting
+              metalness: 0.1,
+              roughness: 0.9,
+            });
+            mesh.material = newMaterial;
+            mesh.userData.isGhostMaterial = true;
+          } else {
+            const mat = mesh.material as THREE.MeshStandardMaterial;
+            mat.color.set(ghostColor);
+            mat.opacity = isHovered ? Math.min(opacity + 0.2, 1) : opacity;
+          }
         }
-      }
-    });
+      });
+    };
+
+    // Apply immediately
+    applyGhostMaterial();
+
+    // Also apply after a short delay to catch any late material assignments
+    const timeoutId = setTimeout(applyGhostMaterial, 100);
+
+    return () => clearTimeout(timeoutId);
   }, [robot, ghostColor, opacity, isHovered]);
 
   // Trajectory line points - must be before early returns to maintain hooks order
@@ -406,7 +543,7 @@ export function GhostRobot({
     : undefined;
 
   return (
-    <>
+    <EndEffectorProvider endEffectorRef={endEffectorRef}>
       <group
         ref={groupRef}
         position={finalPosition as [number, number, number]}
@@ -434,6 +571,13 @@ export function GhostRobot({
             side={THREE.DoubleSide}
           />
         </mesh>
+
+        {/* Children (tools) with ghost styling - same as Robot component */}
+        {children && (
+          <GhostToolWrapper opacity={opacity} color={ghostColor}>
+            {children}
+          </GhostToolWrapper>
+        )}
       </group>
 
       {/* Trajectory line (rendered outside the group for proper world coordinates) */}
@@ -449,7 +593,7 @@ export function GhostRobot({
           gapSize={0.01}
         />
       )}
-    </>
+    </EndEffectorProvider>
   );
 }
 

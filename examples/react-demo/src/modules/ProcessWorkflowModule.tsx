@@ -18,7 +18,6 @@ import {
   usePlaybackState,
   TrajectoryPath,
   TrajectoryTimeline,
-  createTrajectory,
   createWaypoint,
   // Types from trajectory
   type WaypointStatus,
@@ -380,8 +379,8 @@ export function ProcessWorkflowModule() {
       }, i));
     }
 
-    // Create trajectory
-    const trajectory = createTrajectory({
+    // Create trajectory and add to store
+    const trajectory = trajectoryStore.getState().addTrajectory({
       name: `Weld_${selectedSeamId}`,
       processId: 'welding',
       processType: 'welding',
@@ -394,8 +393,6 @@ export function ProcessWorkflowModule() {
       },
     });
 
-    // Add to store
-    trajectoryStore.getState().addTrajectory(trajectory);
     trajectoryStore.getState().setActiveTrajectory(trajectory.id);
 
     addLog('info', `Generated trajectory "${trajectory.name}" with ${waypoints.length} waypoints`);

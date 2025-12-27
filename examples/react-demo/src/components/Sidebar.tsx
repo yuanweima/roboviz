@@ -6,57 +6,107 @@ interface SidebarProps {
   onModuleChange: (module: ModuleType) => void;
 }
 
-const MODULES: { id: ModuleType; label: string; icon: string; description: string; isNew?: boolean }[] = [
-  // New API Demos (highlighted)
-  { id: 'imperative', label: 'Imperative API', icon: '🔧', description: 'createRoboViz factory', isNew: true },
-  { id: 'multi-instance', label: 'Multi-Instance', icon: '📦', description: 'Instance isolation', isNew: true },
-  { id: 'events', label: 'Event System', icon: '📡', description: 'Event hooks & bus', isNew: true },
-  { id: 'headless', label: 'Headless Mode', icon: '🎭', description: 'State without render', isNew: true },
-  { id: 'workpoint', label: 'Workpoint System', icon: '📍', description: 'Surface work points', isNew: true },
-  { id: 'vision-stream', label: 'Vision Streaming', icon: '📹', description: 'Camera & point cloud streams', isNew: true },
-  { id: 'ghost-robot', label: 'Ghost Robot', icon: '👻', description: 'Target pose preview', isNew: true },
-  { id: 'trajx-wasm', label: 'Trajx WASM', icon: '⚙️', description: 'FK/IK, WASM solver', isNew: true },
-  { id: 'process-workflow', label: 'Process Workflow', icon: '🔥', description: 'Multi-process architecture', isNew: true },
-  // Original modules
-  { id: 'robot', label: 'Robot Control', icon: '🤖', description: 'URDF loading, joint control' },
-  { id: 'trajectory', label: 'Trajectory', icon: '📈', description: 'Playback, waypoints' },
-  { id: 'vision', label: 'Vision', icon: '👁️', description: 'Point cloud, cameras' },
-  { id: 'collision', label: 'Collision', icon: '⚡', description: 'Safety zones, detection' },
-  { id: 'multi-robot', label: 'Multi-Robot', icon: '👥', description: 'Coordination, frames' },
-  { id: 'performance', label: 'Performance', icon: '📊', description: 'Metrics, diagnostics' },
-  { id: 'remote', label: 'Remote Control', icon: '🌐', description: 'Python SDK, WebSocket' },
+// Category definitions
+type DemoCategory = 'scenes' | 'core' | 'robot' | 'trajectory' | 'vision' | 'advanced' | 'integration';
+
+const CATEGORY_INFO: Record<DemoCategory, { label: string; color: string; icon: string }> = {
+  scenes: { label: 'Process Scenes', color: '#ff6600', icon: '🏭' },
+  core: { label: 'Core Features', color: '#4ecdc4', icon: '⚡' },
+  robot: { label: 'Robot Control', color: '#ff6b6b', icon: '🤖' },
+  trajectory: { label: 'Trajectory', color: '#95e1d3', icon: '📐' },
+  vision: { label: 'Vision', color: '#a855f7', icon: '👁' },
+  advanced: { label: 'Advanced', color: '#f38181', icon: '🔬' },
+  integration: { label: 'Integration', color: '#00aaff', icon: '🔗' },
+};
+
+interface ModuleInfo {
+  id: ModuleType;
+  label: string;
+  icon: string;
+  description: string;
+  category: DemoCategory;
+  isFeatured?: boolean;
+}
+
+const MODULES: ModuleInfo[] = [
+  // Process Scenes - Featured
+  { id: 'welding', label: 'Welding', icon: '🔥', description: 'Industrial welding simulation', category: 'scenes', isFeatured: true },
+  { id: 'grinding', label: 'Grinding', icon: '⚙️', description: 'Force-controlled grinding', category: 'scenes', isFeatured: true },
+  { id: 'inspection', label: 'Inspection', icon: '🔍', description: 'AI defect detection', category: 'scenes', isFeatured: true },
+
+  // Core Features
+  { id: 'robot', label: 'Robot Basics', icon: '🤖', description: 'URDF loading, joint control', category: 'core' },
+  { id: 'workpoint', label: 'Workpoints', icon: '📍', description: 'Surface work points', category: 'core' },
+  { id: 'imperative', label: 'Imperative API', icon: '🔧', description: 'createRoboViz factory', category: 'core' },
+
+  // Robot Control
+  { id: 'multi-robot', label: 'Multi-Robot', icon: '👥', description: 'Robot coordination', category: 'robot' },
+  { id: 'ghost-robot', label: 'Ghost Robot', icon: '👻', description: 'Target pose preview', category: 'robot' },
+  { id: 'trajx-wasm', label: 'Trajx WASM', icon: '⚡', description: 'FK/IK solver', category: 'robot' },
+
+  // Trajectory
+  { id: 'trajectory', label: 'Trajectory', icon: '📈', description: 'Playback, waypoints', category: 'trajectory' },
+
+  // Vision
+  { id: 'vision', label: 'Point Cloud', icon: '👁️', description: 'Point cloud, cameras', category: 'vision' },
+  { id: 'vision-stream', label: 'Streaming', icon: '📹', description: 'Real-time streams', category: 'vision' },
+
+  // Advanced
+  { id: 'collision', label: 'Collision', icon: '🛡️', description: 'Safety zones', category: 'advanced' },
+  { id: 'events', label: 'Events', icon: '📡', description: 'Event system', category: 'advanced' },
+  { id: 'performance', label: 'Performance', icon: '📊', description: 'Metrics, LOD', category: 'advanced' },
+
+  // Integration
+  { id: 'multi-instance', label: 'Multi-Instance', icon: '📦', description: 'Instance isolation', category: 'integration' },
+  { id: 'headless', label: 'Headless', icon: '🎭', description: 'State without render', category: 'integration' },
+  { id: 'remote', label: 'Remote', icon: '🌐', description: 'Python SDK', category: 'integration' },
 ];
 
+// Group modules by category
+function groupByCategory(modules: ModuleInfo[]): Record<DemoCategory, ModuleInfo[]> {
+  const result = {} as Record<DemoCategory, ModuleInfo[]>;
+  for (const mod of modules) {
+    if (!result[mod.category]) {
+      result[mod.category] = [];
+    }
+    result[mod.category].push(mod);
+  }
+  return result;
+}
+
 export function Sidebar({ activeModule, onModuleChange }: SidebarProps) {
-  const newModules = MODULES.filter((m) => m.isNew);
-  const originalModules = MODULES.filter((m) => !m.isNew);
+  const featuredModules = MODULES.filter((m) => m.isFeatured);
+  const groupedModules = groupByCategory(MODULES.filter((m) => !m.isFeatured));
 
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h2>Modules</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '20px' }}>🤖</span>
+          RoboViz
+        </h2>
       </div>
 
       <nav className="sidebar-nav">
-        {/* New API Section */}
+        {/* Featured - Process Scenes */}
         <div className="sidebar-section">
           <div className="sidebar-section-title" style={{
-            color: '#4ecdc4',
+            color: '#ff6600',
             fontSize: '11px',
             fontWeight: 'bold',
             padding: '8px 16px 4px',
             textTransform: 'uppercase',
             letterSpacing: '1px',
           }}>
-            ✨ New API Features
+            🏭 Process Scenes
           </div>
-          {newModules.map((module) => (
+          {featuredModules.map((module) => (
             <button
               key={module.id}
               className={`sidebar-item ${activeModule === module.id ? 'active' : ''}`}
               onClick={() => onModuleChange(module.id)}
               style={{
-                borderLeft: activeModule === module.id ? '3px solid #4ecdc4' : '3px solid transparent',
+                borderLeft: activeModule === module.id ? `3px solid ${CATEGORY_INFO[module.category].color}` : '3px solid transparent',
               }}
             >
               <span className="sidebar-item-icon">{module.icon}</span>
@@ -64,65 +114,51 @@ export function Sidebar({ activeModule, onModuleChange }: SidebarProps) {
                 <span className="sidebar-item-label">{module.label}</span>
                 <span className="sidebar-item-desc">{module.description}</span>
               </div>
-              {module.isNew && (
-                <span style={{
-                  fontSize: '9px',
-                  background: '#4ecdc4',
-                  color: '#1a1a2e',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontWeight: 'bold',
-                }}>
-                  NEW
-                </span>
-              )}
             </button>
           ))}
         </div>
 
-        {/* Divider */}
-        <div style={{
-          height: '1px',
-          background: '#333',
-          margin: '12px 16px',
-        }} />
-
-        {/* Original Modules */}
-        <div className="sidebar-section">
-          <div className="sidebar-section-title" style={{
-            color: '#666',
-            fontSize: '11px',
-            fontWeight: 'bold',
-            padding: '8px 16px 4px',
-            textTransform: 'uppercase',
-            letterSpacing: '1px',
-          }}>
-            Core Features
-          </div>
-          {originalModules.map((module) => (
-            <button
-              key={module.id}
-              className={`sidebar-item ${activeModule === module.id ? 'active' : ''}`}
-              onClick={() => onModuleChange(module.id)}
-            >
-              <span className="sidebar-item-icon">{module.icon}</span>
-              <div className="sidebar-item-content">
-                <span className="sidebar-item-label">{module.label}</span>
-                <span className="sidebar-item-desc">{module.description}</span>
+        {/* Other categories */}
+        {(Object.keys(CATEGORY_INFO) as DemoCategory[])
+          .filter(cat => cat !== 'scenes' && groupedModules[cat]?.length > 0)
+          .map((category) => (
+            <div key={category} className="sidebar-section">
+              <div className="sidebar-section-title" style={{
+                color: CATEGORY_INFO[category].color,
+                fontSize: '10px',
+                fontWeight: 'bold',
+                padding: '12px 16px 4px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                opacity: 0.8,
+              }}>
+                {CATEGORY_INFO[category].icon} {CATEGORY_INFO[category].label}
               </div>
-            </button>
+              {groupedModules[category]?.map((module) => (
+                <button
+                  key={module.id}
+                  className={`sidebar-item ${activeModule === module.id ? 'active' : ''}`}
+                  onClick={() => onModuleChange(module.id)}
+                  style={{
+                    borderLeft: activeModule === module.id ? `3px solid ${CATEGORY_INFO[category].color}` : '3px solid transparent',
+                    padding: '8px 16px',
+                  }}
+                >
+                  <span className="sidebar-item-icon" style={{ fontSize: '14px' }}>{module.icon}</span>
+                  <div className="sidebar-item-content">
+                    <span className="sidebar-item-label" style={{ fontSize: '12px' }}>{module.label}</span>
+                    <span className="sidebar-item-desc" style={{ fontSize: '10px' }}>{module.description}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
           ))}
-        </div>
       </nav>
 
       <div className="sidebar-footer">
         <div className="sidebar-info">
-          <span className="info-label">@aspect/roboviz-react</span>
-          <span className="info-value">v0.2.0</span>
-        </div>
-        <div className="sidebar-info" style={{ marginTop: '4px' }}>
-          <span className="info-label">Test Fixtures</span>
-          <span className="info-value">/fixtures</span>
+          <span className="info-label">@aspect/roboviz</span>
+          <span className="info-value">v0.3.0</span>
         </div>
       </div>
     </aside>

@@ -97,8 +97,8 @@ importers:
         specifier: ^0.170.0
         version: 0.170.0
       trajx-wasm:
-        specifier: file:../../../../trajx/packages/trajx-wasm
-        version: file:../../trajx/packages/trajx-wasm
+        specifier: file:../../../../trajx/chennai-v1/crates/trajx-wasm/pkg
+        version: file:../../trajx/chennai-v1/crates/trajx-wasm/pkg
       urdf-loader:
         specifier: ^0.12.3
         version: 0.12.6(three@0.170.0)
@@ -2081,8 +2081,8 @@ packages:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
     engines: {node: '>=8.0'}
 
-  trajx-wasm@file:../../trajx/packages/trajx-wasm:
-    resolution: {directory: ../../trajx/packages/trajx-wasm, type: directory}
+  trajx-wasm@file:../../trajx/chennai-v1/crates/trajx-wasm/pkg:
+    resolution: {directory: ../../trajx/chennai-v1/crates/trajx-wasm/pkg, type: directory}
 
   tree-kill@1.2.2:
     resolution: {integrity: sha512-L0Orpi8qGpRG//Nd+H90vFB+3iHnue1zSSGmNOOCh1GLJ7rUKVwV2HvijphGQS2UmhUZewS9VgvxYIdgr+fG1A==}
@@ -4121,7 +4121,7 @@ snapshots:
     dependencies:
       is-number: 7.0.0
 
-  trajx-wasm@file:../../trajx/packages/trajx-wasm: {}
+  trajx-wasm@file:../../trajx/chennai-v1/crates/trajx-wasm/pkg: {}
 
   tree-kill@1.2.2: {}
 

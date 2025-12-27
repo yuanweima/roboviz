@@ -196,9 +196,50 @@ export function RoboVizCore({
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1,
+          powerPreference: 'high-performance',
+          preserveDrawingBuffer: false,
+          failIfMajorPerformanceCaveat: false,
         }}
-        onCreated={({ gl, camera }) => {
+        onCreated={({ gl, scene }) => {
           gl.setClearColor(config?.background || '#0a0a0a');
+
+          // Handle WebGL context loss
+          const canvas = gl.domElement;
+          canvas.addEventListener('webglcontextlost', (e) => {
+            e.preventDefault();
+            console.warn('[RoboVizCore] WebGL context lost. Waiting for restore...');
+          });
+          canvas.addEventListener('webglcontextrestored', () => {
+            console.log('[RoboVizCore] WebGL context restored.');
+          });
+
+          // Cleanup on unmount - dispose all scene resources
+          return () => {
+            scene.traverse((object) => {
+              if ((object as THREE.Mesh).isMesh) {
+                const mesh = object as THREE.Mesh;
+                if (mesh.geometry) {
+                  mesh.geometry.dispose();
+                }
+                if (mesh.material) {
+                  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                  materials.forEach((mat) => {
+                    // Dispose textures
+                    const stdMat = mat as THREE.MeshStandardMaterial;
+                    if (stdMat.map) stdMat.map.dispose();
+                    if (stdMat.normalMap) stdMat.normalMap.dispose();
+                    if (stdMat.roughnessMap) stdMat.roughnessMap.dispose();
+                    if (stdMat.metalnessMap) stdMat.metalnessMap.dispose();
+                    if (stdMat.aoMap) stdMat.aoMap.dispose();
+                    if (stdMat.emissiveMap) stdMat.emissiveMap.dispose();
+                    mat.dispose();
+                  });
+                }
+              }
+            });
+            gl.dispose();
+            console.log('[RoboVizCore] Canvas disposed');
+          };
         }}
       >
         <React.Suspense fallback={null}>

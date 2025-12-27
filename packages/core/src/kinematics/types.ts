@@ -302,6 +302,73 @@ export interface Trajectory {
 }
 
 // ============================================================================
+// Tool Types
+// ============================================================================
+
+/**
+ * TCP (Tool Center Point) definition
+ */
+export interface TcpPoint {
+  /** TCP name */
+  name: string;
+  /** Position offset [x, y, z] from tool base frame */
+  position: [number, number, number];
+  /** Orientation as quaternion [x, y, z, w] */
+  orientation: [number, number, number, number];
+  /** Default standoff distance */
+  standoff?: number;
+  /** Standoff range [min, max] */
+  standoffRange?: [number, number];
+  /** Approach axis direction [x, y, z] */
+  approachAxis?: [number, number, number];
+}
+
+/**
+ * Tool definition with multiple TCPs
+ */
+export interface ToolDefinition {
+  /** Tool name */
+  name: string;
+  /** Flange offset (from robot flange to tool base frame) */
+  flangeOffset?: {
+    position: [number, number, number];
+    orientation: [number, number, number, number];
+  };
+  /** TCP definitions */
+  tcps: TcpPoint[];
+  /** Active TCP name */
+  activeTcp?: string;
+  /** Tool mass (kg) */
+  mass?: number;
+  /** Center of mass [x, y, z] */
+  centerOfMass?: [number, number, number];
+}
+
+/**
+ * Tool attachment configuration
+ */
+export interface ToolAttachment {
+  /** Tool name */
+  name: string;
+  /** Active TCP name (defaults to first TCP) */
+  activeTcp?: string;
+  /** Standoff distance override */
+  standoff?: number;
+}
+
+/**
+ * Standoff pose computation request
+ */
+export interface StandoffPoseRequest {
+  /** Target point on workpiece [x, y, z] */
+  targetPoint: [number, number, number];
+  /** Approach direction [x, y, z] (normalized) */
+  approachDirection: [number, number, number];
+  /** Standoff distance from target */
+  standoffDistance: number;
+}
+
+// ============================================================================
 // Robot Solver Configuration
 // ============================================================================
 

@@ -13,6 +13,8 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { useVizStore } from '../store/vizStore';
 import type { RobotState, RobotInfo, Vector3Like, Pose } from '../types';
 import { toVector3 } from '../types';
+import { EndEffectorProvider } from './EndEffector';
+import { CoordinateTransform, type Pose3D } from '../coordinates';
 
 /** Euler angles tuple [x, y, z] in radians */
 export type EulerTuple = [number, number, number];
@@ -74,6 +76,23 @@ export interface RobotProps {
    */
   scale?: number | [number, number, number];
   /**
+   * Base pose in Z-up coordinates (robotics standard).
+   * When provided, automatically converts to Y-up for Three.js rendering.
+   * Takes precedence over position/rotation/quaternion props.
+   *
+   * @example
+   * ```tsx
+   * // Position robot at X=1m, Y=0.5m, Z=0m (Z-up)
+   * <Robot
+   *   basePoseZup={{
+   *     position: [1, 0.5, 0],
+   *     quaternion: [0, 0, 0, 1],
+   *   }}
+   * />
+   * ```
+   */
+  basePoseZup?: Pose3D;
+  /**
    * The up axis of the URDF model.
    * URDF/ROS uses Z-up by default, Three.js uses Y-up.
    * Set to 'Z' (default) to automatically rotate the model to Y-up for Three.js.
@@ -86,8 +105,18 @@ export interface RobotProps {
   onLoaded?: (info: RobotInfo) => void;
   /** Callback when joint angles change (e.g., from dragging) */
   onJointChange?: (id: string, angles: number[]) => void;
-  /** Callback when end effector pose updates (called every frame if enabled) */
+  /** Callback when end effector pose updates (called every frame if enabled) - Y-up coordinates */
   onEndEffectorUpdate?: (pose: Pose) => void;
+  /**
+   * Callback when end effector pose updates in Z-up coordinates (robotics standard).
+   * Called every frame if provided. Useful for IK/FK operations.
+   */
+  onEndEffectorUpdateZup?: (pose: Pose3D) => void;
+  /**
+   * Children to render. If you include EndEffector components as children,
+   * they will automatically receive the end-effector pose from this robot.
+   */
+  children?: React.ReactNode;
 }
 
 /**
@@ -335,21 +364,31 @@ export function Robot({
   rotation: rotationProp,
   quaternion: quaternionProp,
   scale: scaleProp,
+  basePoseZup, // Z-up base pose (robotics standard)
   upAxis = 'Z', // Default to Z-up (URDF/ROS standard)
   // Callbacks
   onSelect,
   onLoaded,
   onJointChange,
   onEndEffectorUpdate,
+  onEndEffectorUpdateZup,
+  // Children
+  children,
 }: RobotProps): React.JSX.Element | null {
   const groupRef = useRef<THREE.Group>(null);
+  const endEffectorRef = useRef<THREE.Object3D | null>(null);
   const { robots, updateRobot } = useVizStore();
   const onEndEffectorUpdateRef = useRef(onEndEffectorUpdate);
+  const onEndEffectorUpdateZupRef = useRef(onEndEffectorUpdateZup);
 
-  // Update ref when callback changes
+  // Update refs when callbacks change
   useEffect(() => {
     onEndEffectorUpdateRef.current = onEndEffectorUpdate;
   }, [onEndEffectorUpdate]);
+
+  useEffect(() => {
+    onEndEffectorUpdateZupRef.current = onEndEffectorUpdateZup;
+  }, [onEndEffectorUpdateZup]);
 
   // Build state from direct props if provided
   // Support both urdfPath and urdfContent modes
@@ -378,6 +417,31 @@ export function Robot({
     urdfContent,
     meshData
   );
+
+  // Cleanup THREE.js resources when robot changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (robot) {
+        robot.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            if (mesh.geometry) {
+              mesh.geometry.dispose();
+            }
+            if (mesh.material) {
+              const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+              materials.forEach((mat) => {
+                if ((mat as THREE.MeshStandardMaterial).map) {
+                  (mat as THREE.MeshStandardMaterial).map?.dispose();
+                }
+                mat.dispose();
+              });
+            }
+          }
+        });
+      }
+    };
+  }, [robot]);
 
   // Notify when loaded
   useEffect(() => {
@@ -420,6 +484,58 @@ export function Robot({
       }
     });
   }, [robot, state?.jointAngles, jointInfo.names]);
+
+  // Track the end effector (last link) reference
+  useEffect(() => {
+    if (!robot) {
+      endEffectorRef.current = null;
+      return;
+    }
+
+    // Find the last link (end effector)
+    let lastLink: THREE.Object3D | undefined;
+    robot.traverse((child: THREE.Object3D) => {
+      if ((child as any).isURDFLink) {
+        lastLink = child;
+      }
+    });
+
+    endEffectorRef.current = lastLink || null;
+  }, [robot]);
+
+  // Update end effector pose continuously (for both Y-up and Z-up callbacks)
+  useFrame(() => {
+    const hasYUpCallback = onEndEffectorUpdateRef.current;
+    const hasZUpCallback = onEndEffectorUpdateZupRef.current;
+
+    if (!robot || (!hasYUpCallback && !hasZUpCallback)) return;
+
+    const lastLink = endEffectorRef.current;
+    if (lastLink) {
+      const worldPos = new THREE.Vector3();
+      const worldQuat = new THREE.Quaternion();
+      lastLink.getWorldPosition(worldPos);
+      lastLink.getWorldQuaternion(worldQuat);
+
+      // Call Y-up callback (legacy, Three.js coordinates)
+      if (hasYUpCallback) {
+        onEndEffectorUpdateRef.current!({
+          position: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
+          orientation: { w: worldQuat.w, x: worldQuat.x, y: worldQuat.y, z: worldQuat.z },
+        });
+      }
+
+      // Call Z-up callback (robotics standard)
+      if (hasZUpCallback) {
+        // Convert Y-up to Z-up coordinates
+        const zUpPose = CoordinateTransform.poseToZUp({
+          position: [worldPos.x, worldPos.y, worldPos.z],
+          quaternion: [worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w],
+        });
+        onEndEffectorUpdateZupRef.current!(zUpPose);
+      }
+    }
+  });
 
   // Update opacity and color
   useEffect(() => {
@@ -489,30 +605,54 @@ export function Robot({
   // Apply coordinate system conversion if needed (Z-up to Y-up)
   const needsRotation = upAxis === 'Z';
 
-  // Compute final position - prop takes precedence over state
-  const finalPosition = positionProp
-    ? (Array.isArray(positionProp)
-        ? positionProp
-        : [positionProp.x, positionProp.y, positionProp.z])
-    : [state.transform.position.x, state.transform.position.y, state.transform.position.z];
-
-  // Compute final rotation/quaternion - props take precedence over state
+  // Compute final position and quaternion
+  // Priority: basePoseZup > position/rotation/quaternion props > state
+  let finalPosition: [number, number, number];
   let finalQuaternion: THREE.Quaternion;
-  if (quaternionProp) {
-    // Direct quaternion prop [x, y, z, w]
+
+  if (basePoseZup) {
+    // Convert Z-up pose to Y-up for Three.js rendering
+    const yUpPose = CoordinateTransform.poseToYUp(basePoseZup);
+    finalPosition = yUpPose.position;
     finalQuaternion = new THREE.Quaternion(
-      quaternionProp[0],
-      quaternionProp[1],
-      quaternionProp[2],
-      quaternionProp[3]
+      yUpPose.quaternion[0],
+      yUpPose.quaternion[1],
+      yUpPose.quaternion[2],
+      yUpPose.quaternion[3]
     );
-  } else if (rotationProp) {
-    // Euler angles [x, y, z]
-    finalQuaternion = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(rotationProp[0], rotationProp[1], rotationProp[2])
-    );
+  } else if (positionProp || quaternionProp || rotationProp) {
+    // Use Y-up props directly
+    finalPosition = positionProp
+      ? (Array.isArray(positionProp)
+          ? positionProp as [number, number, number]
+          : [positionProp.x, positionProp.y, positionProp.z])
+      : [state.transform.position.x, state.transform.position.y, state.transform.position.z];
+
+    if (quaternionProp) {
+      // Direct quaternion prop [x, y, z, w]
+      finalQuaternion = new THREE.Quaternion(
+        quaternionProp[0],
+        quaternionProp[1],
+        quaternionProp[2],
+        quaternionProp[3]
+      );
+    } else if (rotationProp) {
+      // Euler angles [x, y, z]
+      finalQuaternion = new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(rotationProp[0], rotationProp[1], rotationProp[2])
+      );
+    } else {
+      // From state transform
+      finalQuaternion = new THREE.Quaternion(
+        state.transform.rotation.x,
+        state.transform.rotation.y,
+        state.transform.rotation.z,
+        state.transform.rotation.w
+      );
+    }
   } else {
     // From state transform
+    finalPosition = [state.transform.position.x, state.transform.position.y, state.transform.position.z];
     finalQuaternion = new THREE.Quaternion(
       state.transform.rotation.x,
       state.transform.rotation.y,
@@ -529,26 +669,31 @@ export function Robot({
     : undefined;
 
   return (
-    <group
-      ref={groupRef}
-      position={finalPosition as [number, number, number]}
-      quaternion={finalQuaternion}
-      scale={finalScale as [number, number, number] | undefined}
-      onClick={handleClick}
-    >
-      {/* Apply Z-up to Y-up rotation if needed */}
-      <group rotation={needsRotation ? Z_UP_TO_Y_UP_ROTATION : undefined}>
-        <primitive object={robot} />
+    <EndEffectorProvider endEffectorRef={endEffectorRef}>
+      <group
+        ref={groupRef}
+        position={finalPosition as [number, number, number]}
+        quaternion={finalQuaternion}
+        scale={finalScale as [number, number, number] | undefined}
+        onClick={handleClick}
+      >
+        {/* Apply Z-up to Y-up rotation if needed */}
+        <group rotation={needsRotation ? Z_UP_TO_Y_UP_ROTATION : undefined}>
+          <primitive object={robot} />
+        </group>
+
+        {/* Axes helper */}
+        {state.options.showAxes && <axesHelper args={[0.3]} />}
+
+        {/* End effector marker */}
+        {state.options.showEndEffector && robot && (
+          <EndEffectorMarker robot={robot} />
+        )}
+
+        {/* Children (EndEffector components, tools, etc.) */}
+        {children}
       </group>
-
-      {/* Axes helper */}
-      {state.options.showAxes && <axesHelper args={[0.3]} />}
-
-      {/* End effector marker */}
-      {state.options.showEndEffector && robot && (
-        <EndEffectorMarker robot={robot} />
-      )}
-    </group>
+    </EndEffectorProvider>
   );
 }
 

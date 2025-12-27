@@ -5,6 +5,7 @@
  * - WASM initialization
  * - Forward Kinematics (FK)
  * - Inverse Kinematics (IK) - with analytical IK for supported robots
+ * - Tool API - creating tools, attaching to robot, FK with TCP
  * - Industrial Jog Control with bidirectional sync
  *
  * IMPORTANT: This module uses hybrid kinematics mode.
@@ -13,13 +14,14 @@
  * - For Fanuc LR Mate 200iD/7L, analytical IK provides up to 8 solutions
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useControls, button } from 'leva';
+import { useControls, button, folder } from 'leva';
 import {
   RoboVizCore,
   Robot,
   JogControlPanel,
   useTrajx,
   useHybridSolver,
+  getKinematicsManager,
   // Theme system imports
   RoboVizThemeProvider,
   darkTheme,
@@ -28,6 +30,7 @@ import {
   createRoboVizTheme,
   type RoboVizTheme,
   type Pose,
+  type TrajxTool,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../store';
 
@@ -73,12 +76,31 @@ const TEST_POSES: Record<string, Pose> = {
 };
 
 interface TestResult {
-  type: 'fk' | 'ik' | 'info';
+  type: 'fk' | 'ik' | 'fk-tcp' | 'tool' | 'info';
   success: boolean;
   message: string;
   data?: unknown;
   time: number;
 }
+
+// Preset tool configurations
+const TOOL_PRESETS = {
+  'welding-torch': {
+    name: 'welding-torch',
+    position: [0, 0, 0.15] as [number, number, number],
+    description: 'Welding torch with 150mm extension',
+  },
+  'gripper': {
+    name: 'gripper',
+    position: [0, 0, 0.08] as [number, number, number],
+    description: 'Parallel gripper with 80mm offset',
+  },
+  'camera': {
+    name: 'camera',
+    position: [0, 0, 0.05] as [number, number, number],
+    description: 'Inspection camera with 50mm offset',
+  },
+};
 
 export function TrajxWasmModule() {
   const { addLog } = useAppStore();
@@ -95,6 +117,11 @@ export function TrajxWasmModule() {
   // Theme state - for testing theme system
   const [selectedTheme, setSelectedTheme] = useState<string>('dark');
   const currentTheme = THEME_PRESETS[selectedTheme];
+
+  // Tool state
+  const [activeTool, setActiveTool] = useState<TrajxTool | null>(null);
+  const [selectedToolPreset, setSelectedToolPreset] = useState<string>('welding-torch');
+  const [toolAttached, setToolAttached] = useState(false);
 
   // URDF content state - fetched from the URDF path
   const [urdfContent, setUrdfContent] = useState<string | null>(null);
@@ -142,8 +169,12 @@ export function TrajxWasmModule() {
     hasAnalyticalIk,
     dhRobotName,
     fk,
+    fkTcp,
     ik,
     ikAll,
+    attachTool,
+    detachTool,
+    hasTool,
   } = useHybridSolver({
     robotId: ROBOT_ID,
     urdfContent: wasmReady ? urdfContent : null,
@@ -260,12 +291,164 @@ export function TrajxWasmModule() {
     }
   }, [solverReady, ikAll, selectedPose, currentJoints, addLog, addResult]);
 
+  // Create and attach tool
+  const handleCreateTool = useCallback(() => {
+    if (!wasmReady) {
+      addLog('warning', 'WASM not ready');
+      return;
+    }
+
+    const startTime = performance.now();
+    try {
+      const manager = getKinematicsManager();
+      const preset = TOOL_PRESETS[selectedToolPreset as keyof typeof TOOL_PRESETS];
+
+      // Create a simple tool with position offset
+      const tool = manager.createSimplePositionTool(
+        preset.name,
+        preset.position[0],
+        preset.position[1],
+        preset.position[2]
+      );
+
+      const time = performance.now() - startTime;
+      setActiveTool(tool);
+
+      addResult({
+        type: 'tool',
+        success: true,
+        message: `Created tool "${preset.name}" - ${preset.description}`,
+        data: { name: tool.name, toolLength: tool.toolLength, tcpCount: tool.tcpCount },
+        time,
+      });
+      addLog('info', `Tool "${preset.name}" created with length ${(tool.toolLength * 1000).toFixed(1)}mm`);
+    } catch (e) {
+      const time = performance.now() - startTime;
+      addResult({ type: 'tool', success: false, message: `Tool creation error: ${e}`, time });
+      addLog('error', `Failed to create tool: ${e}`);
+    }
+  }, [wasmReady, selectedToolPreset, addLog, addResult]);
+
+  // Attach tool to robot
+  const handleAttachTool = useCallback(() => {
+    if (!solverReady || !attachTool || !activeTool) {
+      addLog('warning', 'Solver not ready or no tool created');
+      return;
+    }
+
+    const startTime = performance.now();
+    try {
+      // Get the active TCP offset from the tool
+      const tcpOffset = activeTool.getActiveTcpOffset();
+      const pos = tcpOffset.getPositionArray();
+      const ori = tcpOffset.getOrientationArray();
+
+      // Attach to robot using pose
+      attachTool({
+        position: { x: pos[0], y: pos[1], z: pos[2] },
+        orientation: { x: ori[0], y: ori[1], z: ori[2], w: ori[3] },
+      });
+
+      const time = performance.now() - startTime;
+      setToolAttached(true);
+
+      addResult({
+        type: 'tool',
+        success: true,
+        message: `Attached tool "${activeTool.name}" to robot`,
+        data: { position: pos, orientation: ori },
+        time,
+      });
+      addLog('info', `Tool "${activeTool.name}" attached - FK TCP now includes tool offset`);
+    } catch (e) {
+      const time = performance.now() - startTime;
+      addResult({ type: 'tool', success: false, message: `Attach error: ${e}`, time });
+      addLog('error', `Failed to attach tool: ${e}`);
+    }
+  }, [solverReady, attachTool, activeTool, addLog, addResult]);
+
+  // Detach tool from robot
+  const handleDetachTool = useCallback(() => {
+    if (!solverReady || !detachTool) {
+      addLog('warning', 'Solver not ready');
+      return;
+    }
+
+    const startTime = performance.now();
+    try {
+      detachTool();
+      const time = performance.now() - startTime;
+      setToolAttached(false);
+
+      addResult({
+        type: 'tool',
+        success: true,
+        message: 'Tool detached from robot',
+        time,
+      });
+      addLog('info', 'Tool detached - FK now returns flange pose');
+    } catch (e) {
+      const time = performance.now() - startTime;
+      addResult({ type: 'tool', success: false, message: `Detach error: ${e}`, time });
+    }
+  }, [solverReady, detachTool, addLog, addResult]);
+
+  // Test FK with TCP (tool center point)
+  const testFKTcp = useCallback(() => {
+    if (!solverReady || !fkTcp) {
+      addLog('warning', 'Solver not ready');
+      return;
+    }
+
+    const startTime = performance.now();
+    try {
+      const result = fkTcp(currentJoints);
+      const time = performance.now() - startTime;
+
+      if (result) {
+        const hasToolNow = hasTool?.() ?? false;
+        addResult({
+          type: 'fk-tcp',
+          success: true,
+          message: `FK-TCP: pos=(${result.pose.position.x.toFixed(3)}, ${result.pose.position.y.toFixed(3)}, ${result.pose.position.z.toFixed(3)}) [tool: ${hasToolNow ? 'yes' : 'no'}]`,
+          data: { pose: result.pose, toolApplied: result.toolApplied },
+          time,
+        });
+        addLog('info', `FK-TCP computed in ${time.toFixed(2)}ms (tool applied: ${result.toolApplied})`);
+      } else {
+        addResult({ type: 'fk-tcp', success: false, message: 'FK-TCP failed', time });
+      }
+    } catch (e) {
+      const time = performance.now() - startTime;
+      addResult({ type: 'fk-tcp', success: false, message: `FK-TCP error: ${e}`, time });
+    }
+  }, [solverReady, fkTcp, hasTool, currentJoints, addLog, addResult]);
+
   // Test controls
-  useControls('IK Tests', {
+  useControls('Kinematics Tests', {
     targetPose: { value: selectedPose, options: Object.keys(TEST_POSES), onChange: setSelectedPose },
     'Run FK': button(() => testFK()),
+    'Run FK-TCP': button(() => testFKTcp()),
     'Run IK': button(() => testIK()),
-  }, [testFK, testIK, selectedPose]);
+  }, [testFK, testFKTcp, testIK, selectedPose]);
+
+  // Tool controls
+  useControls('Tool API', {
+    toolPreset: {
+      value: selectedToolPreset,
+      options: Object.keys(TOOL_PRESETS),
+      onChange: setSelectedToolPreset,
+    },
+    'Create Tool': button(() => handleCreateTool()),
+    'Attach Tool': button(() => handleAttachTool(), { disabled: !activeTool || toolAttached }),
+    'Detach Tool': button(() => handleDetachTool(), { disabled: !toolAttached }),
+    toolStatus: {
+      value: activeTool
+        ? `${activeTool.name} (${(activeTool.toolLength * 1000).toFixed(0)}mm) ${toolAttached ? '[ATTACHED]' : ''}`
+        : 'No tool created',
+      editable: false,
+    },
+  }, [selectedToolPreset, handleCreateTool, handleAttachTool, handleDetachTool, activeTool, toolAttached]);
 
   // View controls
   useControls('View', {
@@ -308,8 +491,8 @@ export function TrajxWasmModule() {
   return (
     <div className="module-container">
       <div className="module-header">
-        <h2>Trajx-WASM Industrial Jog Control</h2>
-        <p>Hybrid kinematics: URDF for visualization + DH database for analytical IK.</p>
+        <h2>Trajx-WASM Kinematics + Tool API</h2>
+        <p>Hybrid kinematics (URDF + DH) with Tool API for TCP management.</p>
       </div>
 
       <div className="module-content" style={{ display: 'flex', gap: '16px' }}>
@@ -440,6 +623,51 @@ export function TrajxWasmModule() {
               </div>
             </div>
           )}
+
+          {/* Tool API Info Panel */}
+          <div
+            style={{
+              background: '#1a1a2e',
+              borderRadius: 8,
+              padding: '12px',
+            }}
+          >
+            <div style={{ color: '#888', fontSize: 10, marginBottom: 8, textTransform: 'uppercase' }}>
+              Tool API (New)
+            </div>
+            {activeTool ? (
+              <>
+                <div style={{ color: '#ff6b9d', fontSize: 12, marginBottom: 4, fontWeight: 'bold' }}>
+                  {activeTool.name}
+                </div>
+                <div style={{ color: '#4ecdc4', fontSize: 11, marginBottom: 4 }}>
+                  Length: {(activeTool.toolLength * 1000).toFixed(1)}mm | TCPs: {activeTool.tcpCount}
+                </div>
+                <div style={{
+                  color: toolAttached ? '#00ff88' : '#ffaa00',
+                  fontSize: 11,
+                  fontWeight: 'bold',
+                  marginBottom: 4,
+                }}>
+                  {toolAttached ? '✓ Attached to robot' : '○ Not attached'}
+                </div>
+                <div style={{ color: '#666', fontSize: 10 }}>
+                  {toolAttached
+                    ? 'FK-TCP returns TCP pose (includes tool offset)'
+                    : 'Use Leva panel → Tool API → Attach Tool'}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ color: '#666', fontSize: 11 }}>
+                  No tool created
+                </div>
+                <div style={{ color: '#555', fontSize: 10, marginTop: 4 }}>
+                  Use Leva panel → Tool API → Create Tool
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Jog Control Panel - uses URDF-based solver via robotId */}
           {/* Wrapped in ThemeProvider for theme testing */}
