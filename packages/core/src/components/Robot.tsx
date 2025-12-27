@@ -13,6 +13,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { useVizStore } from '../store/vizStore';
 import type { RobotState, RobotInfo, Vector3Like, Pose } from '../types';
 import { toVector3 } from '../types';
+import { isURDFLink, findLastURDFLink } from '../types/urdf';
 import { EndEffectorProvider } from './EndEffector';
 import { CoordinateTransform, type Pose3D } from '../coordinates';
 
@@ -311,17 +312,12 @@ function EndEffectorMarker({ robot }: { robot: URDFRobot }) {
   useFrame(() => {
     if (!markerRef.current || !robot) return;
 
-    // Find the last link (end effector)
-    let lastLink: THREE.Object3D | undefined;
-    robot.traverse((child: THREE.Object3D) => {
-      if ((child as any).isURDFLink) {
-        lastLink = child;
-      }
-    });
+    // Find the last link (end effector) using type guard
+    const lastLink = findLastURDFLink(robot);
 
     if (lastLink) {
       const worldPos = new THREE.Vector3();
-      (lastLink as THREE.Object3D).getWorldPosition(worldPos);
+      lastLink.getWorldPosition(worldPos);
 
       const localPos = markerRef.current.parent?.worldToLocal(worldPos.clone());
       if (localPos) {
@@ -492,14 +488,8 @@ export function Robot({
       return;
     }
 
-    // Find the last link (end effector)
-    let lastLink: THREE.Object3D | undefined;
-    robot.traverse((child: THREE.Object3D) => {
-      if ((child as any).isURDFLink) {
-        lastLink = child;
-      }
-    });
-
+    // Find the last link (end effector) using type guard
+    const lastLink = findLastURDFLink(robot);
     endEffectorRef.current = lastLink || null;
   }, [robot]);
 
@@ -709,13 +699,8 @@ export function useEndEffectorPose(robot: URDFRobot | null): Pose | null {
       return;
     }
 
-    // Find the last link (end effector)
-    let lastLink: THREE.Object3D | undefined;
-    robot.traverse((child: THREE.Object3D) => {
-      if ((child as any).isURDFLink) {
-        lastLink = child;
-      }
-    });
+    // Find the last link (end effector) using type guard
+    const lastLink = findLastURDFLink(robot);
 
     if (lastLink) {
       const worldPos = new THREE.Vector3();

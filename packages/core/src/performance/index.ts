@@ -31,3 +31,10 @@ export {
   getPerformanceManager,
   resetPerformanceManager,
 } from './performance-manager';
+
+// Performance Panel Component
+export {
+  PerformancePanel,
+  type PerformancePanelProps,
+  type PanelPosition,
+} from './PerformancePanel';
