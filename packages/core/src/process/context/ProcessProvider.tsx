@@ -16,7 +16,7 @@ import {
   useEffect,
 } from 'react';
 import {
-  useProcessRegistry,
+  getAllProcesses,
   getProcess,
   hasProcess,
 } from '../registry/processRegistry';
@@ -63,7 +63,10 @@ export function ProcessProvider({
   onProcessChange,
   onStateChange,
 }: ProcessProviderProps): React.JSX.Element {
-  const processes = useProcessRegistry();
+  // Note: We use getAllProcesses() directly instead of useProcessRegistry() hook
+  // to avoid infinite render loops. The processes list is only needed for the
+  // context value and doesn't need to trigger re-renders.
+  const processesRef = useRef<ProcessDefinition[]>([]);
 
   // Active process
   const [activeProcessId, setActiveProcessId] = useState<string | null>(
@@ -76,11 +79,20 @@ export function ProcessProvider({
   // Ref to track if we're in the middle of an async operation
   const operationRef = useRef<AbortController | null>(null);
 
-  // Get active process definition
+  // Ref for callbacks to avoid circular dependencies
+  const activeProcessIdRef = useRef(activeProcessId);
+  activeProcessIdRef.current = activeProcessId;
+
+  // Get active process definition (don't depend on processes array to avoid re-renders)
   const activeProcess = useMemo(() => {
     if (!activeProcessId) return null;
     return getProcess(activeProcessId) ?? null;
-  }, [activeProcessId, processes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProcessId]);
+
+  // Ref for active process to use in callbacks
+  const activeProcessRef = useRef(activeProcess);
+  activeProcessRef.current = activeProcess;
 
   // Create initial state for a process
   const createInitialState = useCallback(
@@ -99,7 +111,7 @@ export function ProcessProvider({
     []
   );
 
-  // Activate a process
+  // Activate a process (use refs to avoid circular dependencies)
   const activateProcess = useCallback(
     async (processId: string) => {
       // Check if process exists
@@ -114,13 +126,14 @@ export function ProcessProvider({
         operationRef.current = null;
       }
 
-      // Deactivate current process
-      if (activeProcess?.onDeactivate) {
+      // Deactivate current process (use ref)
+      const currentProcess = activeProcessRef.current;
+      if (currentProcess?.onDeactivate) {
         try {
-          await activeProcess.onDeactivate();
+          await currentProcess.onDeactivate();
         } catch (error) {
           console.error(
-            `[ProcessProvider] Error deactivating process ${activeProcessId}:`,
+            `[ProcessProvider] Error deactivating process ${activeProcessIdRef.current}:`,
             error
           );
         }
@@ -153,10 +166,10 @@ export function ProcessProvider({
 
       console.debug(`[ProcessProvider] Activated process: ${processId}`);
     },
-    [activeProcess, activeProcessId, createInitialState, onProcessChange, onStateChange]
+    [createInitialState, onProcessChange, onStateChange]
   );
 
-  // Deactivate current process
+  // Deactivate current process (use refs to avoid circular dependencies)
   const deactivateProcess = useCallback(async () => {
     // Cancel any ongoing operation
     if (operationRef.current) {
@@ -164,13 +177,14 @@ export function ProcessProvider({
       operationRef.current = null;
     }
 
-    // Call deactivation hook
-    if (activeProcess?.onDeactivate) {
+    // Call deactivation hook (use ref)
+    const currentProcess = activeProcessRef.current;
+    if (currentProcess?.onDeactivate) {
       try {
-        await activeProcess.onDeactivate();
+        await currentProcess.onDeactivate();
       } catch (error) {
         console.error(
-          `[ProcessProvider] Error deactivating process ${activeProcessId}:`,
+          `[ProcessProvider] Error deactivating process ${activeProcessIdRef.current}:`,
           error
         );
       }
@@ -183,7 +197,7 @@ export function ProcessProvider({
     onStateChange?.(null);
 
     console.debug('[ProcessProvider] Deactivated process');
-  }, [activeProcess, activeProcessId, onProcessChange, onStateChange]);
+  }, [onProcessChange, onStateChange]);
 
   // Create process actions
   const processActions = useMemo<ProcessActions | null>(() => {
@@ -290,10 +304,14 @@ export function ProcessProvider({
     }
   }, [initialProcessId, activeProcessId, activateProcess]);
 
+  // Update processes ref when context value is computed
+  // This avoids using the reactive hook which can cause infinite loops
+  processesRef.current = getAllProcesses();
+
   // Context value
   const contextValue = useMemo<ProcessContextValue>(
     () => ({
-      processes,
+      processes: processesRef.current,
       activeProcess,
       processState,
       processActions,
@@ -303,7 +321,6 @@ export function ProcessProvider({
       getProcess,
     }),
     [
-      processes,
       activeProcess,
       processState,
       processActions,

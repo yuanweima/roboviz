@@ -702,6 +702,8 @@ export interface UseUrdfSolverState {
 export interface UseUrdfSolverActions {
   /** Compute forward kinematics */
   fk: (jointAngles: number[]) => FkResult | null;
+  /** Compute forward kinematics including tool offset (TCP pose) */
+  fkTcp: (jointAngles: number[]) => FkResult | null;
   /** Compute FK chain for all links */
   fkChain: (jointAngles: number[]) => FkChainResult | null;
   /** Compute inverse kinematics */
@@ -712,6 +714,8 @@ export interface UseUrdfSolverActions {
   attachTool: (toolPose: Pose) => void;
   /** Detach tool */
   detachTool: () => void;
+  /** Check if tool is attached */
+  hasTool: () => boolean;
 }
 
 export interface UseUrdfSolverReturn extends UseUrdfSolverState, UseUrdfSolverActions {}
@@ -821,6 +825,14 @@ export function useUrdfSolver(options: UseUrdfSolverOptions): UseUrdfSolverRetur
     [solver]
   );
 
+  const fkTcp = useCallback(
+    (jointAngles: number[]): FkResult | null => {
+      if (!solver) return null;
+      return solver.forwardKinematicsTcp(jointAngles);
+    },
+    [solver]
+  );
+
   const fkChain = useCallback(
     (jointAngles: number[]): FkChainResult | null => {
       if (!solver) return null;
@@ -860,6 +872,11 @@ export function useUrdfSolver(options: UseUrdfSolverOptions): UseUrdfSolverRetur
     }
   }, [solver]);
 
+  const hasTool = useCallback((): boolean => {
+    if (!solver) return false;
+    return solver.hasTool();
+  }, [solver]);
+
   return {
     solver,
     ready,
@@ -868,12 +885,132 @@ export function useUrdfSolver(options: UseUrdfSolverOptions): UseUrdfSolverRetur
     linkNames,
     jointLimits,
     fk,
+    fkTcp,
     fkChain,
     ik,
     isValidConfig,
     attachTool,
     detachTool,
+    hasTool,
   };
+}
+
+// ============================================================================
+// Coordinate System Conversion Utilities
+// ============================================================================
+
+/**
+ * Coordinate system options for kinematics operations.
+ *
+ * - 'Y-up': Three.js / WebGL standard (Y is up, right-handed)
+ * - 'Z-up': URDF / ROS standard (Z is up, right-handed)
+ *
+ * When using RoboViz with Three.js, you typically work in Y-up coordinates,
+ * but URDF/trajx-wasm internally uses Z-up. The useHybridSolver hook can
+ * automatically convert between these coordinate systems.
+ */
+export type CoordinateSystem = 'Y-up' | 'Z-up';
+
+/**
+ * Convert a pose from Y-up (Three.js) to Z-up (URDF) coordinate system.
+ *
+ * The Robot component applies a -90° rotation around X to convert Z-up URDF to Y-up display.
+ * This function performs the inverse transformation:
+ *   URDF_x = ThreeJS_x
+ *   URDF_y = -ThreeJS_z
+ *   URDF_z = ThreeJS_y
+ *
+ * For orientation, we also need to transform the quaternion.
+ */
+export function poseYupToZup(pose: Pose): Pose {
+  return {
+    position: {
+      x: pose.position.x,
+      y: -pose.position.z,
+      z: pose.position.y,
+    },
+    orientation: quaternionYupToZup(pose.orientation),
+  };
+}
+
+/**
+ * Convert a pose from Z-up (URDF) to Y-up (Three.js) coordinate system.
+ *
+ * This is the inverse of poseYupToZup:
+ *   ThreeJS_x = URDF_x
+ *   ThreeJS_y = URDF_z
+ *   ThreeJS_z = -URDF_y
+ */
+export function poseZupToYup(pose: Pose): Pose {
+  return {
+    position: {
+      x: pose.position.x,
+      y: pose.position.z,
+      z: -pose.position.y,
+    },
+    orientation: quaternionZupToYup(pose.orientation),
+  };
+}
+
+/**
+ * Convert a quaternion from Y-up (Three.js) to Z-up (URDF) coordinate system.
+ *
+ * The Robot component applies a -90° rotation around X to display URDF (Z-up) in Three.js (Y-up).
+ * To convert an orientation from Three.js back to URDF, we use RIGHT-MULTIPLICATION:
+ *   q_URDF = q_ThreeJS * R_display
+ *
+ * Where R_display is the rotation from URDF to Three.js (-90° around X).
+ *
+ * This ensures that "tool pointing down" in Three.js (tool +Z → world -Y)
+ * correctly converts to "tool pointing down" in URDF (tool +Z → world -Z).
+ *
+ * Note: Conjugation (R * q * R^-1) is WRONG for this use case because it preserves
+ * the rotation action but NOT the target direction in world space.
+ */
+export function quaternionYupToZup(q: Pose['orientation']): Pose['orientation'] {
+  // R_display = -90° around X (rotation from URDF to Three.js)
+  // R = {w: cos(-45°), x: sin(-45°), y: 0, z: 0} = {w: 0.707, x: -0.707, y: 0, z: 0}
+  const r_w = Math.SQRT1_2;  // cos(-45°)
+  const r_x = -Math.SQRT1_2; // sin(-45°)
+
+  // Compute q * R (right-multiplication)
+  // Quaternion multiplication: (a, b) -> a * b
+  // (w1, x1, y1, z1) * (w2, x2, y2, z2) =
+  //   w = w1*w2 - x1*x2 - y1*y2 - z1*z2
+  //   x = w1*x2 + x1*w2 + y1*z2 - z1*y2
+  //   y = w1*y2 - x1*z2 + y1*w2 + z1*x2
+  //   z = w1*z2 + x1*y2 - y1*x2 + z1*w2
+
+  const result_w = q.w * r_w - q.x * r_x; // q.y * 0 - q.z * 0
+  const result_x = q.w * r_x + q.x * r_w; // + q.y * 0 - q.z * 0
+  const result_y = -q.x * 0 + q.y * r_w + q.z * r_x; // q.w * 0 + q.z * r_x
+  const result_z = q.w * 0 + q.x * 0 - q.y * r_x + q.z * r_w; // simplified
+
+  return { w: result_w, x: result_x, y: result_y, z: result_z };
+}
+
+/**
+ * Convert a quaternion from Z-up (URDF) to Y-up (Three.js) coordinate system.
+ *
+ * This is the inverse of quaternionYupToZup.
+ * We use LEFT-MULTIPLICATION by R_display^-1 (or equivalently, right-multiply by R_display^-1):
+ *   q_ThreeJS = q_URDF * R_display^-1
+ *
+ * Where R_display^-1 is +90° around X (inverse of the -90° rotation from URDF to Three.js).
+ */
+export function quaternionZupToYup(q: Pose['orientation']): Pose['orientation'] {
+  // R_display^-1 = +90° around X (inverse rotation)
+  // R^-1 = {w: cos(45°), x: sin(45°), y: 0, z: 0} = {w: 0.707, x: 0.707, y: 0, z: 0}
+  const r_w = Math.SQRT1_2;  // cos(45°)
+  const r_x = Math.SQRT1_2;  // sin(45°)
+
+  // Compute q * R^-1 (right-multiplication)
+  const result_w = q.w * r_w - q.x * r_x;
+  const result_x = q.w * r_x + q.x * r_w;
+  const result_y = q.y * r_w + q.z * r_x;
+  const result_z = -q.y * r_x + q.z * r_w;
+
+  return { w: result_w, x: result_x, y: result_y, z: result_z };
 }
 
 // ============================================================================
@@ -922,6 +1059,19 @@ export interface UseHybridSolverOptions {
   dhRobotName?: string;
   /** Auto-create solver when URDF content is available */
   autoCreate?: boolean;
+  /**
+   * Coordinate system for input/output poses.
+   *
+   * - 'Y-up' (default): Three.js / WebGL standard. Use this when working with
+   *   poses from Three.js scene (e.g., trajectory points, workpiece positions).
+   *   The hook will automatically convert to/from URDF's Z-up internally.
+   *
+   * - 'Z-up': URDF / ROS standard. Use this if you're already working in
+   *   URDF coordinates (no conversion applied).
+   *
+   * @default 'Y-up'
+   */
+  coordinateSystem?: CoordinateSystem;
 }
 
 export interface UseHybridSolverState {
@@ -948,10 +1098,22 @@ export interface UseHybridSolverState {
 export interface UseHybridSolverActions {
   /** Compute forward kinematics */
   fk: (jointAngles: number[]) => FkResult | null;
+  /** Compute forward kinematics including tool offset (TCP pose) */
+  fkTcp: (jointAngles: number[]) => FkResult | null;
   /** Compute FK chain for all links */
   fkChain: (jointAngles: number[]) => FkChainResult | null;
   /** Compute inverse kinematics (single best solution) */
   ik: (targetPose: Pose, seed?: number[]) => IkResult | null;
+  /**
+   * Compute inverse kinematics for TCP position (single solution)
+   *
+   * This method directly solves IK for the Tool Center Point (TCP) position,
+   * automatically accounting for the attached tool offset. Requires a tool
+   * to be attached via attachTool() first.
+   *
+   * Unlike ik() which targets the flange position, this targets the TCP directly.
+   */
+  ikTcp: (targetTcpPose: Pose, seed?: number[]) => IkResult | null;
   /** Compute inverse kinematics (all solutions - uses analytical IK if available) */
   ikAll: (targetPose: Pose, seed?: number[]) => MultiIkResult | null;
   /** Check if configuration is valid */
@@ -960,6 +1122,8 @@ export interface UseHybridSolverActions {
   attachTool: (toolPose: Pose) => void;
   /** Detach tool */
   detachTool: () => void;
+  /** Check if tool is attached */
+  hasTool: () => boolean;
 }
 
 export interface UseHybridSolverReturn extends UseHybridSolverState, UseHybridSolverActions {}
@@ -1004,7 +1168,16 @@ export interface UseHybridSolverReturn extends UseHybridSolverState, UseHybridSo
  * ```
  */
 export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolverReturn {
-  const { robotId, urdfContent, dhRobotName: forcedDhName, autoCreate = true } = options;
+  const {
+    robotId,
+    urdfContent,
+    dhRobotName: forcedDhName,
+    autoCreate = true,
+    coordinateSystem = 'Y-up',
+  } = options;
+
+  // Whether to convert coordinates (Y-up input needs conversion to Z-up for solver)
+  const needsCoordinateConversion = coordinateSystem === 'Y-up';
 
   const [urdfSolver, setUrdfSolver] = useState<UrdfRobotSolver | null>(null);
   const [dhSolver, setDhSolver] = useState<RobotSolver | null>(null);
@@ -1140,41 +1313,68 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
   }, [disposeSolver]);
 
   // All kinematics now use the unified urdfSolver (which may have DH params loaded)
+  // When coordinateSystem is 'Y-up', we convert input poses to Z-up before solving
+  // and convert output poses back to Y-up.
+
   const fk = useCallback(
     (jointAngles: number[]): FkResult | null => {
-      if (urdfSolver) return urdfSolver.forwardKinematics(jointAngles);
-      return null;
+      if (!urdfSolver) return null;
+      const result = urdfSolver.forwardKinematics(jointAngles);
+      // Convert output pose from Z-up (URDF) to Y-up (Three.js) if needed
+      if (needsCoordinateConversion && result) {
+        return {
+          ...result,
+          pose: poseZupToYup(result.pose),
+        };
+      }
+      return result;
     },
-    [urdfSolver]
+    [urdfSolver, needsCoordinateConversion]
   );
 
   const fkChain = useCallback(
     (jointAngles: number[]): FkChainResult | null => {
-      if (urdfSolver) return urdfSolver.forwardKinematicsChain(jointAngles);
-      return null;
+      if (!urdfSolver) return null;
+      const result = urdfSolver.forwardKinematicsChain(jointAngles);
+      // Convert all output poses from Z-up to Y-up if needed
+      if (needsCoordinateConversion && result) {
+        return {
+          poses: result.poses.map(poseZupToYup),
+        };
+      }
+      return result;
     },
-    [urdfSolver]
+    [urdfSolver, needsCoordinateConversion]
   );
 
   const ik = useCallback(
     (targetPose: Pose, seed?: number[]): IkResult | null => {
-      // Unified solver handles analytical/numerical IK internally
-      if (urdfSolver) return urdfSolver.inverseKinematics(targetPose, seed);
-      return null;
+      if (!urdfSolver) return null;
+      // Convert input pose from Y-up (Three.js) to Z-up (URDF) if needed
+      const solverPose = needsCoordinateConversion ? poseYupToZup(targetPose) : targetPose;
+      return urdfSolver.inverseKinematics(solverPose, seed);
     },
-    [urdfSolver]
+    [urdfSolver, needsCoordinateConversion]
+  );
+
+  const ikTcp = useCallback(
+    (targetTcpPose: Pose, seed?: number[]): IkResult | null => {
+      if (!urdfSolver) return null;
+      // Convert input pose from Y-up (Three.js) to Z-up (URDF) if needed
+      const solverPose = needsCoordinateConversion ? poseYupToZup(targetTcpPose) : targetTcpPose;
+      return urdfSolver.inverseKinematicsTcp(solverPose, seed);
+    },
+    [urdfSolver, needsCoordinateConversion]
   );
 
   const ikAll = useCallback(
     (targetPose: Pose, seed?: number[]): MultiIkResult | null => {
-      // Unified solver handles analytical/numerical IK internally
-      // Returns all solutions (up to 8 for analytical, 1 for numerical)
-      if (urdfSolver) {
-        return urdfSolver.inverseKinematicsAll(targetPose, seed);
-      }
-      return null;
+      if (!urdfSolver) return null;
+      // Convert input pose from Y-up (Three.js) to Z-up (URDF) if needed
+      const solverPose = needsCoordinateConversion ? poseYupToZup(targetPose) : targetPose;
+      return urdfSolver.inverseKinematicsAll(solverPose, seed);
     },
-    [urdfSolver]
+    [urdfSolver, needsCoordinateConversion]
   );
 
   const isValidConfig = useCallback(
@@ -1187,13 +1387,45 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
 
   const attachTool = useCallback(
     (toolPose: Pose): void => {
-      if (urdfSolver) urdfSolver.attachTool(toolPose);
+      if (!urdfSolver) return;
+
+      // The tool pose is in the flange's LOCAL coordinate frame.
+      // The flange's local frame is defined by URDF kinematics and is the same
+      // regardless of display transformations (which only affect world coordinates).
+      //
+      // Standard URDF convention: flange +Z points along the tool axis.
+      // WeldingTorch geometry: extends along +Z, so TCP offset is simply (0, 0, distance).
+      //
+      // No coordinate conversion needed - the flange's local frame is invariant.
+      console.log('[HybridSolver] TCP attached:', toolPose.position);
+      urdfSolver.attachTool(toolPose);
     },
     [urdfSolver]
   );
 
   const detachTool = useCallback((): void => {
     if (urdfSolver) urdfSolver.detachTool();
+  }, [urdfSolver]);
+
+  const fkTcp = useCallback(
+    (jointAngles: number[]): FkResult | null => {
+      if (!urdfSolver) return null;
+      const result = urdfSolver.forwardKinematicsTcp(jointAngles);
+      // Convert output pose from Z-up (URDF) to Y-up (Three.js) if needed
+      if (needsCoordinateConversion && result) {
+        return {
+          ...result,
+          pose: poseZupToYup(result.pose),
+        };
+      }
+      return result;
+    },
+    [urdfSolver, needsCoordinateConversion]
+  );
+
+  const hasTool = useCallback((): boolean => {
+    if (urdfSolver) return urdfSolver.hasTool();
+    return false;
   }, [urdfSolver]);
 
   return {
@@ -1209,9 +1441,12 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
     fk,
     fkChain,
     ik,
+    ikTcp,
     ikAll,
     isValidConfig,
     attachTool,
     detachTool,
+    fkTcp,
+    hasTool,
   };
 }

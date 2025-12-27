@@ -12,6 +12,37 @@
 export * from './types';
 
 // =============================================================================
+// Coordinates (Z-up Robotics Standard)
+// =============================================================================
+export {
+  // Types (using Zup suffix to avoid collision with core types)
+  type Position3D,
+  type Quaternion as QuaternionZup,
+  type EulerAngles,
+  type Pose3D,
+  type Pose3DWithEuler,
+  type JointAngles,
+  type TCPOffset as TCPOffsetZup,
+  type RobotBasePose,
+  type CoordinateSystem as CoordinateSystemZup,
+  // Internal types
+  type Position3DYUp,
+  type QuaternionYUp,
+  type Pose3DYUp,
+  // Transform utilities
+  CoordinateTransform,
+  coordinateTransform,
+  // Kinematics hook
+  useRobotKinematics,
+  type UseRobotKinematicsOptions,
+  type UseRobotKinematicsReturn,
+  type FkResult3D,
+  type FkChainResult3D,
+  type IkResult3D,
+  type MultiIkResult3D,
+} from './coordinates';
+
+// =============================================================================
 // Store
 // =============================================================================
 export { useVizStore, type VizState } from './store/vizStore';
@@ -87,6 +118,11 @@ export * from './server';
 export * from './hooks';
 
 // =============================================================================
+// Interaction System (Global Shortcuts & Keyboard Handling)
+// =============================================================================
+export * from './interaction';
+
+// =============================================================================
 // Kinematics (FK/IK, Motion Planning)
 // =============================================================================
 export * from './kinematics';
@@ -96,6 +132,16 @@ export * from './kinematics';
 // =============================================================================
 export { Scene, type SceneProps } from './components/Scene';
 export { Robot, type RobotProps, type EulerTuple, type QuaternionTuple, type MeshDataMap, useEndEffectorPose } from './components/Robot';
+export {
+  EndEffector,
+  StandaloneEndEffector,
+  useEndEffector,
+  type EndEffectorProps,
+  type StandaloneEndEffectorProps,
+  type TCPOffset,
+  type EndEffectorPose,
+  type EndEffectorContextValue,
+} from './components/EndEffector';
 export {
   GhostRobot,
   GhostRobotTrajectory,
@@ -163,6 +209,16 @@ export {
 // Helper Components
 // =============================================================================
 export * from './components/helpers';
+
+// =============================================================================
+// Tool Components (End-Effector Visualizations)
+// =============================================================================
+export * from './components/tools';
+
+// =============================================================================
+// Workpiece Components (Industrial Workpiece Visualizations)
+// =============================================================================
+export * from './components/workpiece';
 
 // =============================================================================
 // Vision Components (Camera & Point Cloud Streaming)

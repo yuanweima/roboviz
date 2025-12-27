@@ -5,7 +5,7 @@
  * register, retrieve, and list available processes.
  */
 
-import { useSyncExternalStore, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type {
   ProcessDefinition,
   ProcessRegistrationOptions,
@@ -33,6 +33,30 @@ const capabilityStore = new Map<CapabilityId, CapabilityDefinition>();
 const subscribers = new Set<() => void>();
 
 /**
+ * Cached snapshots for useSyncExternalStore
+ * These MUST be cached to avoid infinite loops
+ * IMPORTANT: Only create new array references when content actually changes
+ */
+let processSnapshotCache: ProcessDefinition[] = [];
+let capabilitySnapshotCache: CapabilityDefinition[] = [];
+let processStoreVersion = 0;
+let capabilityStoreVersion = 0;
+
+/**
+ * Update snapshot caches when store changes
+ * Only creates new arrays when the version changes
+ */
+function updateProcessSnapshotCache(): void {
+  processSnapshotCache = Array.from(processStore.values());
+  processStoreVersion++;
+}
+
+function updateCapabilitySnapshotCache(): void {
+  capabilitySnapshotCache = Array.from(capabilityStore.values());
+  capabilityStoreVersion++;
+}
+
+/**
  * Notify all subscribers of store changes
  */
 function notifySubscribers(): void {
@@ -50,17 +74,19 @@ function subscribe(callback: () => void): () => void {
 }
 
 /**
- * Get current snapshot of process store
+ * Get current snapshot of process store (cached)
+ * MUST return the same reference if store hasn't changed
  */
 function getProcessSnapshot(): ProcessDefinition[] {
-  return Array.from(processStore.values());
+  return processSnapshotCache;
 }
 
 /**
- * Get current snapshot of capability store
+ * Get current snapshot of capability store (cached)
+ * MUST return the same reference if store hasn't changed
  */
 function getCapabilitySnapshot(): CapabilityDefinition[] {
-  return Array.from(capabilityStore.values());
+  return capabilitySnapshotCache;
 }
 
 // ============================================================================
@@ -106,6 +132,7 @@ export function registerProcess(
   }
 
   processStore.set(process.id, process);
+  updateProcessSnapshotCache();
   notifySubscribers();
 
   console.debug(`[ProcessRegistry] Registered process: ${process.id}`);
@@ -120,6 +147,7 @@ export function registerProcess(
 export function unregisterProcess(processId: string): boolean {
   const result = processStore.delete(processId);
   if (result) {
+    updateProcessSnapshotCache();
     notifySubscribers();
     console.debug(`[ProcessRegistry] Unregistered process: ${processId}`);
   }
@@ -217,6 +245,7 @@ export function registerCapability(
   }
 
   capabilityStore.set(capability.id, capability);
+  updateCapabilitySnapshotCache();
   notifySubscribers();
 
   console.debug(`[ProcessRegistry] Registered capability: ${capability.id}`);
@@ -228,6 +257,7 @@ export function registerCapability(
 export function unregisterCapability(capabilityId: CapabilityId): boolean {
   const result = capabilityStore.delete(capabilityId);
   if (result) {
+    updateCapabilitySnapshotCache();
     notifySubscribers();
     console.debug(`[ProcessRegistry] Unregistered capability: ${capabilityId}`);
   }
@@ -290,18 +320,42 @@ export function getCapabilities(
  * ```
  */
 export function useProcessRegistry(): ProcessDefinition[] {
-  return useSyncExternalStore(subscribe, getProcessSnapshot, getProcessSnapshot);
+  const [processes, setProcesses] = useState<ProcessDefinition[]>(() => processSnapshotCache);
+
+  useEffect(() => {
+    // Update on mount in case the cache changed
+    setProcesses(processSnapshotCache);
+
+    // Subscribe to changes
+    const unsubscribe = subscribe(() => {
+      setProcesses(processSnapshotCache);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return processes;
 }
 
 /**
  * Hook to access all registered capabilities
  */
 export function useCapabilityRegistry(): CapabilityDefinition[] {
-  return useSyncExternalStore(
-    subscribe,
-    getCapabilitySnapshot,
-    getCapabilitySnapshot
-  );
+  const [capabilities, setCapabilities] = useState<CapabilityDefinition[]>(() => capabilitySnapshotCache);
+
+  useEffect(() => {
+    // Update on mount in case the cache changed
+    setCapabilities(capabilitySnapshotCache);
+
+    // Subscribe to changes
+    const unsubscribe = subscribe(() => {
+      setCapabilities(capabilitySnapshotCache);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return capabilities;
 }
 
 /**
@@ -350,6 +404,8 @@ export function useProcessCapabilities(
 export function clearRegistry(): void {
   processStore.clear();
   capabilityStore.clear();
+  updateProcessSnapshotCache();
+  updateCapabilitySnapshotCache();
   notifySubscribers();
   console.debug('[ProcessRegistry] Cleared all registrations');
 }

@@ -159,6 +159,16 @@ export function WorkpointManager({
   );
 
   /**
+   * Determine if Z-axis should point into surface based on workpoint type
+   * Standard convention: Z points ALONG the normal (outward) - the "approach direction"
+   * This matches industrial robot tool frame conventions where Z is the approach direction
+   */
+  const shouldFlipZ = useCallback((_type: string): boolean => {
+    // Use standard approach convention for all types: Z points away from surface
+    return false;
+  }, []);
+
+  /**
    * Handle mouse move for preview
    */
   const handlePointerMove = useCallback(
@@ -171,12 +181,13 @@ export function WorkpointManager({
         const state = store.getState();
         const rotationOffset = state.preview?.rotationOffset ?? 0;
         const { lockTiltAngle, defaultTiltAngle } = state.displayConfig;
+        const flipZ = shouldFlipZ(currentType);
 
         // Create preview workpoint orientation
         // Use tilted orientation when tilt is locked (for welding etc.)
         const quaternion = lockTiltAngle && defaultTiltAngle !== 0
-          ? createTiltedWorkpointOrientation(hit.normal, defaultTiltAngle, rotationOffset)
-          : createWorkpointOrientation(hit.normal, rotationOffset);
+          ? createTiltedWorkpointOrientation(hit.normal, defaultTiltAngle, rotationOffset, flipZ)
+          : createWorkpointOrientation(hit.normal, rotationOffset, flipZ);
 
         // Calculate workpoint position (may be offset for camera type)
         const position = calculateWorkpointPosition(hit.position, hit.normal, currentType);
@@ -209,7 +220,7 @@ export function WorkpointManager({
         }
       }
     },
-    [enabled, mode, currentType, raycast, calculateWorkpointPosition]
+    [enabled, mode, currentType, raycast, calculateWorkpointPosition, shouldFlipZ]
   );
 
   /**
@@ -221,17 +232,20 @@ export function WorkpointManager({
 
     const { workpoint } = state.preview;
     const { lockTiltAngle, defaultTiltAngle } = state.displayConfig;
+    const flipZ = shouldFlipZ(workpoint.type);
 
     // Apply rotation offset (and tilt if enabled) to final quaternion
     const finalQuaternion = lockTiltAngle && defaultTiltAngle !== 0
       ? createTiltedWorkpointOrientation(
           workpoint.surfaceNormal!,
           defaultTiltAngle,
-          state.preview.rotationOffset
+          state.preview.rotationOffset,
+          flipZ
         )
       : createWorkpointOrientation(
           workpoint.surfaceNormal!,
-          state.preview.rotationOffset
+          state.preview.rotationOffset,
+          flipZ
         );
 
     // Position is always the surface position for all workpoint types
@@ -259,7 +273,7 @@ export function WorkpointManager({
 
     // Notify callback
     callbacks?.onWorkpointAdded?.(created);
-  }, [callbacks]);
+  }, [callbacks, shouldFlipZ]);
 
   /**
    * Handle workpoint deletion

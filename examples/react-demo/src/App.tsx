@@ -1,87 +1,162 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Leva } from 'leva';
+import { InteractionProvider } from '@aspect/roboviz-core';
 import { Sidebar } from './components/Sidebar';
+import { StatusBar } from './components/StatusBar';
+
+// Process Scenes - Featured demos
+import { WeldingScene } from './modules/scenes/WeldingScene';
+import { GrindingScene } from './modules/scenes/GrindingScene';
+import { InspectionScene } from './modules/scenes/InspectionScene';
+
+// Core Features
 import { RobotModule } from './modules/RobotModule';
-import { TrajectoryModule } from './modules/TrajectoryModule';
-import { VisionModule } from './modules/VisionModule';
-import { CollisionModule } from './modules/CollisionModule';
-import { MultiRobotModule } from './modules/MultiRobotModule';
-import { PerformanceModule } from './modules/PerformanceModule';
-import { RemoteControlModule } from './modules/RemoteControlModule';
-// New modules showcasing refactored API
-import { ImperativeModule } from './modules/ImperativeModule';
-import { MultiInstanceModule } from './modules/MultiInstanceModule';
-import { EventSystemModule } from './modules/EventSystemModule';
-import { HeadlessModule } from './modules/HeadlessModule';
 import { WorkpointModule } from './modules/WorkpointModule';
-import { VisionStreamModule } from './modules/VisionStreamModule';
+import { ImperativeModule } from './modules/ImperativeModule';
+
+// Robot Control
+import { MultiRobotModule } from './modules/MultiRobotModule';
 import { GhostRobotModule } from './modules/GhostRobotModule';
 import { TrajxWasmModule } from './modules/TrajxWasmModule';
-import { ProcessWorkflowModule } from './modules/ProcessWorkflowModule';
-import { StatusBar } from './components/StatusBar';
-import { useAppStore } from './store';
+
+// Trajectory
+import { TrajectoryModule } from './modules/TrajectoryModule';
+
+// Vision
+import { VisionModule } from './modules/VisionModule';
+import { VisionStreamModule } from './modules/VisionStreamModule';
+
+// Advanced
+import { CollisionModule } from './modules/CollisionModule';
+import { EventSystemModule } from './modules/EventSystemModule';
+import { PerformanceModule } from './modules/PerformanceModule';
+
+// Integration
+import { MultiInstanceModule } from './modules/MultiInstanceModule';
+import { HeadlessModule } from './modules/HeadlessModule';
+import { RemoteControlModule } from './modules/RemoteControlModule';
 
 export type ModuleType =
+  // Process Scenes
+  | 'welding'
+  | 'grinding'
+  | 'inspection'
+  // Core Features
   | 'robot'
-  | 'trajectory'
-  | 'vision'
-  | 'collision'
-  | 'multi-robot'
-  | 'performance'
-  | 'remote'
-  // New module types
-  | 'imperative'
-  | 'multi-instance'
-  | 'events'
-  | 'headless'
   | 'workpoint'
-  | 'vision-stream'
+  | 'imperative'
+  // Robot Control
+  | 'multi-robot'
   | 'ghost-robot'
   | 'trajx-wasm'
-  | 'process-workflow';
+  // Trajectory
+  | 'trajectory'
+  // Vision
+  | 'vision'
+  | 'vision-stream'
+  // Advanced
+  | 'collision'
+  | 'events'
+  | 'performance'
+  // Integration
+  | 'multi-instance'
+  | 'headless'
+  | 'remote';
 
 const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
+  // Process Scenes
+  'welding': WeldingScene,
+  'grinding': GrindingScene,
+  'inspection': InspectionScene,
+  // Core Features
   'robot': RobotModule,
-  'trajectory': TrajectoryModule,
-  'vision': VisionModule,
-  'collision': CollisionModule,
-  'multi-robot': MultiRobotModule,
-  'performance': PerformanceModule,
-  'remote': RemoteControlModule,
-  // New modules
-  'imperative': ImperativeModule,
-  'multi-instance': MultiInstanceModule,
-  'events': EventSystemModule,
-  'headless': HeadlessModule,
   'workpoint': WorkpointModule,
-  'vision-stream': VisionStreamModule,
+  'imperative': ImperativeModule,
+  // Robot Control
+  'multi-robot': MultiRobotModule,
   'ghost-robot': GhostRobotModule,
   'trajx-wasm': TrajxWasmModule,
-  'process-workflow': ProcessWorkflowModule,
+  // Trajectory
+  'trajectory': TrajectoryModule,
+  // Vision
+  'vision': VisionModule,
+  'vision-stream': VisionStreamModule,
+  // Advanced
+  'collision': CollisionModule,
+  'events': EventSystemModule,
+  'performance': PerformanceModule,
+  // Integration
+  'multi-instance': MultiInstanceModule,
+  'headless': HeadlessModule,
+  'remote': RemoteControlModule,
 };
 
+// Process scenes that don't use Leva
+const PROCESS_SCENES: ModuleType[] = ['welding', 'grinding', 'inspection'];
+
 export default function App() {
-  const [activeModule, setActiveModule] = useState<ModuleType>('imperative');
+  // TEST: Start with inspection scene to verify first load works
+  const [activeModule, setActiveModule] = useState<ModuleType>('inspection');
+  // Transitioning state to add delay between unmount and mount
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const pendingModuleRef = useRef<ModuleType | null>(null);
+
   const ActiveModuleComponent = MODULE_COMPONENTS[activeModule];
 
+  // Hide Leva for process scenes (they use native UI controls)
+  const hideLeva = PROCESS_SCENES.includes(activeModule);
+
+  // Handle module change with delay for proper cleanup
+  const handleModuleChange = useCallback((newModule: ModuleType) => {
+    if (newModule === activeModule) return;
+
+    // Start transition - unmount current scene
+    setIsTransitioning(true);
+    pendingModuleRef.current = newModule;
+  }, [activeModule]);
+
+  // Complete transition after delay
+  useEffect(() => {
+    if (isTransitioning && pendingModuleRef.current) {
+      // Wait a frame for cleanup to complete, then mount new scene
+      const timeoutId = setTimeout(() => {
+        setActiveModule(pendingModuleRef.current!);
+        pendingModuleRef.current = null;
+        setIsTransitioning(false);
+      }, 50); // 50ms delay for WebGL cleanup
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isTransitioning]);
+
   return (
-    <div className="app">
-      <Leva collapsed />
+    <InteractionProvider>
+      <div className="app">
+        {/* Leva controls - hidden for process scenes */}
+        <Leva collapsed hidden={hideLeva} />
 
-      <header className="header">
-        <h1>RoboViz Test Suite</h1>
-        <span className="version">v0.2.0</span>
-      </header>
+        <header className="header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h1 style={{ margin: 0 }}>RoboViz Demo</h1>
+            <span className="version">v0.3.0</span>
+          </div>
+        </header>
 
-      <div className="main-layout">
-        <Sidebar activeModule={activeModule} onModuleChange={setActiveModule} />
+        <div className="main-layout">
+          <Sidebar
+            activeModule={activeModule}
+            onModuleChange={handleModuleChange}
+          />
 
-        <main className="main-content">
-          <ActiveModuleComponent />
-        </main>
+          <main className="main-content">
+            {/* Key ensures full unmount/remount on module switch to prevent WebGL resource leaks */}
+            {/* During transition, render nothing to allow cleanup */}
+            {!isTransitioning && <ActiveModuleComponent key={activeModule} />}
+          </main>
+        </div>
+
+        <StatusBar />
       </div>
-
-      <StatusBar />
-    </div>
+    </InteractionProvider>
   );
 }

@@ -48,6 +48,12 @@ export type {
   KinematicsEventType,
   KinematicsEvent,
   KinematicsEventListener,
+
+  // Tool types
+  TcpPoint,
+  ToolDefinition,
+  ToolAttachment,
+  StandoffPoseRequest,
 } from './types';
 
 // ============================================================================
@@ -60,6 +66,9 @@ export {
   RobotSolver,
   UrdfRobotSolver,
   type AnySolver,
+  type TrajxTool,
+  type TrajxTcpPoint,
+  type TrajxToolLibrary,
 } from './kinematics-manager';
 
 // ============================================================================
@@ -94,6 +103,13 @@ export {
   type UseHybridSolverState,
   type UseHybridSolverActions,
   type UseHybridSolverReturn,
+
+  // Coordinate system utilities
+  type CoordinateSystem,
+  poseYupToZup,
+  poseZupToYup,
+  quaternionYupToZup,
+  quaternionZupToYup,
 
   // Focused IK hook
   useIK,

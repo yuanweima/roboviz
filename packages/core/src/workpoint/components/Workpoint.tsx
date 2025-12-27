@@ -98,13 +98,15 @@ function WorkpointIcon({
 
     case 'weld':
       // Welding torch icon
+      // Z-axis points AWAY from surface (approach direction), so visual extends in +Z
+      // This shows the tool approaching from above the surface
       return (
         <group>
-          <Cone args={[size * 0.3, size * 1.2, 8]} position={[0, 0, size * 0.6]}>
+          <Cone args={[size * 0.3, size * 1.2, 8]} position={[0, 0, size * 0.6]} rotation={[Math.PI / 2, 0, 0]}>
             <meshStandardMaterial color={color} />
           </Cone>
-          {/* Spark effect */}
-          <Sphere args={[size * 0.15, 8, 8]} position={[0, 0, size * 1.3]}>
+          {/* Spark/weld point indicator at surface (origin) */}
+          <Sphere args={[size * 0.15, 8, 8]} position={[0, 0, 0]}>
             <meshStandardMaterial color="#ffff00" emissive="#ff8800" emissiveIntensity={0.5} />
           </Sphere>
         </group>

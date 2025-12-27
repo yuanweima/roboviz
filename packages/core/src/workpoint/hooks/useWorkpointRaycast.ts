@@ -247,18 +247,28 @@ export function useWorkpointRaycast(
 
 /**
  * Utility: Create quaternion from normal with optional rotation around normal
+ *
+ * @param normal - Surface normal vector (pointing outward from surface)
+ * @param rotationAroundNormal - Rotation around the normal axis in radians
+ * @param flipZ - If true, Z-axis points INTO the surface (for tools like welding torch)
+ *                If false (default), Z-axis points ALONG the normal (outward)
+ * @returns Quaternion tuple [x, y, z, w]
  */
 export function createWorkpointOrientation(
   normal: Vector3Tuple,
-  rotationAroundNormal: number = 0
+  rotationAroundNormal: number = 0,
+  flipZ: boolean = false
 ): QuaternionTuple {
   const up = new THREE.Vector3(0, 0, 1);
-  const normalVec = new THREE.Vector3(...normal).normalize();
+  // If flipZ, we want Z to point opposite to normal (into the surface)
+  const targetDir = flipZ
+    ? new THREE.Vector3(-normal[0], -normal[1], -normal[2]).normalize()
+    : new THREE.Vector3(...normal).normalize();
 
   const quaternion = new THREE.Quaternion();
 
   // Handle parallel case
-  const dot = up.dot(normalVec);
+  const dot = up.dot(targetDir);
   if (Math.abs(dot) > 0.9999) {
     if (dot > 0) {
       quaternion.set(0, 0, 0, 1);
@@ -266,11 +276,13 @@ export function createWorkpointOrientation(
       quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
     }
   } else {
-    quaternion.setFromUnitVectors(up, normalVec);
+    quaternion.setFromUnitVectors(up, targetDir);
   }
 
-  // Apply rotation around normal if specified
+  // Apply rotation around the normal (not targetDir) if specified
+  // This ensures rotation is around the surface normal regardless of flipZ
   if (rotationAroundNormal !== 0) {
+    const normalVec = new THREE.Vector3(...normal).normalize();
     const rotQuat = new THREE.Quaternion().setFromAxisAngle(
       normalVec,
       rotationAroundNormal
@@ -285,15 +297,17 @@ export function createWorkpointOrientation(
 /**
  * Utility: Create quaternion from normal with tilt angle and rotation around normal
  *
- * @param normal - Surface normal vector
- * @param tiltAngleDegrees - Tilt angle from normal in degrees (0 = aligned with normal)
+ * @param normal - Surface normal vector (pointing outward from surface)
+ * @param tiltAngleDegrees - Tilt angle from normal in degrees (0 = aligned with normal/anti-normal)
  * @param rotationAroundNormal - Rotation around the normal axis in radians
+ * @param flipZ - If true, Z-axis points INTO the surface (opposite to normal)
+ *                If false (default), Z-axis points ALONG the normal (outward)
  * @returns Quaternion tuple [x, y, z, w]
  *
  * The orientation is computed as:
- * 1. Start with Z-axis aligned to surface normal
- * 2. Apply tilt by rotating around the local X-axis (perpendicular to normal)
- * 3. Apply rotation around the normal (original surface normal, not tilted Z)
+ * 1. Start with Z-axis aligned to surface normal (or anti-normal if flipZ)
+ * 2. Apply rotation around the normal
+ * 3. Apply tilt by rotating around the local X-axis (perpendicular to normal)
  *
  * This is useful for welding where the tool needs to be tilted at a fixed angle
  * (e.g., 15°-45°) relative to the surface, while the rotation direction can vary.
@@ -301,14 +315,20 @@ export function createWorkpointOrientation(
 export function createTiltedWorkpointOrientation(
   normal: Vector3Tuple,
   tiltAngleDegrees: number = 0,
-  rotationAroundNormal: number = 0
+  rotationAroundNormal: number = 0,
+  flipZ: boolean = false
 ): QuaternionTuple {
   const normalVec = new THREE.Vector3(...normal).normalize();
   const up = new THREE.Vector3(0, 0, 1);
 
-  // Step 1: Create base quaternion that aligns Z to normal
+  // Target direction: normal or anti-normal based on flipZ
+  const targetDir = flipZ
+    ? normalVec.clone().negate()
+    : normalVec.clone();
+
+  // Step 1: Create base quaternion that aligns Z to target direction
   const baseQuat = new THREE.Quaternion();
-  const dot = up.dot(normalVec);
+  const dot = up.dot(targetDir);
   if (Math.abs(dot) > 0.9999) {
     if (dot > 0) {
       baseQuat.set(0, 0, 0, 1);
@@ -316,10 +336,11 @@ export function createTiltedWorkpointOrientation(
       baseQuat.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
     }
   } else {
-    baseQuat.setFromUnitVectors(up, normalVec);
+    baseQuat.setFromUnitVectors(up, targetDir);
   }
 
   // Step 2: Apply rotation around normal first (this determines the tilt direction)
+  // Note: We rotate around the original normal, not targetDir
   if (rotationAroundNormal !== 0) {
     const rotQuat = new THREE.Quaternion().setFromAxisAngle(
       normalVec,

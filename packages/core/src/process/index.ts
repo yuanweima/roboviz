@@ -83,5 +83,20 @@ export {
   type ProcessProviderProps,
 } from './context/ProcessProvider';
 
+// Robot-Process Integration Context
+export {
+  RobotProcessProvider,
+  useRobotProcessContext,
+  useRobotProcessState,
+  useRobotProcessActions,
+  useProcessRobot,
+  useProcessGhost,
+  useProcessPlayback,
+  type RobotProcessState,
+  type RobotProcessActions,
+  type RobotProcessContextValue,
+  type RobotProcessProviderProps,
+} from './context/RobotProcessContext';
+
 // Components
 export * from './components';

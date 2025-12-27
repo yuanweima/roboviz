@@ -71,8 +71,10 @@ interface TrajxUrdfRobot {
   getVelocityLimits(): number[] | undefined;
   getAccelerationLimits(): number[] | undefined;
   forwardKinematics(jointAngles: number[]): TrajxPose;
+  forwardKinematicsTcp(jointAngles: number[]): TrajxPose;
   forwardKinematicsChain(jointAngles: number[]): TrajxPose[];
   inverseKinematics(targetPose: unknown, seed?: number[]): unknown;
+  inverseKinematicsTcp(targetPose: unknown, seed?: number[]): unknown;
   inverseKinematicsAll(targetPose: unknown, seed?: number[]): unknown;
   supportsAnalyticalIk(): boolean;
   computeJacobian(jointAngles: number[]): number[];
@@ -93,12 +95,88 @@ interface TrajxUrdfRobot {
   computeManipulability(jointAngles: number[]): number;
 }
 
+// Tool-related interfaces
+export interface TrajxTcpPoint {
+  readonly name: string;
+  readonly defaultStandoff: number;
+  getOffset(): TrajxPose;
+  getApproachAxis(): number[];
+  getStandoffRange(): number[] | undefined;
+  setStandoff(standoff: number): void;
+  setApproachAxis(x: number, y: number, z: number): void;
+  setStandoffRange(min: number, max: number): void;
+  validateStandoff(standoff: number): boolean;
+}
+
+export interface TrajxTool {
+  readonly name: string;
+  readonly toolLength: number;
+  readonly isMultiTcp: boolean;
+  readonly hasCollision: boolean;
+  readonly activeTcpName: string | undefined;
+  readonly mass: number | undefined;
+  readonly tcpCount: number;
+  tcpNames(): string[];
+  addTcp(name: string, position: number[], orientation: number[], standoff?: number | null): void;
+  addSimpleTcp(name: string, x: number, y: number, z: number): void;
+  addTcpFull(
+    name: string,
+    position: number[],
+    orientation: number[],
+    standoff: number,
+    standoffMin: number,
+    standoffMax: number,
+    approachAxis: number[]
+  ): void;
+  removeTcp(name: string): boolean;
+  getTcpOffset(name: string): TrajxPose;
+  setActiveTcp(name: string): void;
+  clearActiveTcp(): void;
+  getActiveTcpOffset(): TrajxPose;
+  getActiveStandoffRange(): number[] | undefined;
+  getActiveDefaultStandoff(): number;
+  getFlangeOffset(): TrajxPose;
+  setFlangeOffset(position: number[], orientation: number[]): void;
+  computeStandoffPose(targetPoint: number[], approachDirection: number[], standoffDistance: number): TrajxPose;
+  setCenterOfMass(x: number, y: number, z: number): void;
+  getCenterOfMass(): number[] | undefined;
+  setMass(mass: number): void;
+  excludeObstacle(obstacleId: string): void;
+  includeObstacle(obstacleId: string): void;
+  isObstacleExcluded(obstacleId: string): boolean;
+  getExcludedObstacles(): string[];
+  clearExclusions(): void;
+}
+
+export interface TrajxToolLibrary {
+  readonly activeToolName: string | undefined;
+  readonly len: number;
+  readonly isEmpty: boolean;
+  toolNames(): string[];
+  addTool(tool: TrajxTool): void;
+  removeTool(name: string): boolean;
+  hasTool(name: string): boolean;
+  activateTool(name: string): void;
+  deactivateTool(): void;
+  setActiveTcp(tcpName: string): void;
+  activate(toolName: string, tcpName?: string | null): void;
+  getActiveToolOffset(): TrajxPose | undefined;
+}
+
+// DH Database interface
+interface TrajxDhDatabase {
+  listRobots(): string[];
+  getDhParams(name: string): unknown[];
+  getJointLimits(name: string): unknown;
+  lookup(name: string): unknown | undefined;
+  isEmpty(): boolean;
+  readonly len: number;
+}
+
 interface TrajxModule {
   init(): Promise<void>;
   // Unified Robot API - creates robot from URDF, auto-detects DH params
   createRobot(urdfContent: string): TrajxUrdfRobot;
-  // List available robots in DH database
-  listDhDatabase(): string[];
   Pose: {
     fromPositionEuler(
       x: number, y: number, z: number,
@@ -108,6 +186,22 @@ interface TrajxModule {
   };
   JointLimits: new (lower: number[], upper: number[]) => unknown;
   DhParam: new (a: number, alpha: number, d: number, theta: number) => unknown;
+  // Tool API
+  WasmTool: {
+    new (name: string): TrajxTool;
+    simple(name: string, position: number[], orientation: number[]): TrajxTool;
+    simplePosition(name: string, x: number, y: number, z: number): TrajxTool;
+  };
+  WasmTcpPoint: {
+    new (name: string, position: number[], orientation: number[]): TrajxTcpPoint;
+    simple(name: string, x: number, y: number, z: number): TrajxTcpPoint;
+  };
+  WasmToolLibrary: new () => TrajxToolLibrary;
+  // DH Database class
+  WasmDhDatabase: {
+    new(): TrajxDhDatabase;
+    withDefaults(): TrajxDhDatabase;
+  };
 }
 
 // ============================================================================
@@ -533,11 +627,60 @@ export class UrdfRobotSolver {
   }
 
   /**
+   * Compute forward kinematics including tool offset (TCP pose)
+   *
+   * Returns the pose of the Tool Center Point (TCP) if a tool is attached,
+   * otherwise returns the end-effector pose.
+   */
+  forwardKinematicsTcp(jointAngles: number[]): FkResult {
+    const pose = this.robot.forwardKinematicsTcp(jointAngles);
+    return {
+      pose: this.trajxPoseToRobovizPose(pose),
+      toolApplied: true,
+    };
+  }
+
+  /**
    * Compute inverse kinematics (single solution)
    */
   inverseKinematics(targetPose: Pose, seed?: number[]): IkResult {
     const trajxPose = this.robovizPoseToTrajxPose(targetPose);
     const result = this.robot.inverseKinematics(trajxPose, seed) as {
+      success: boolean;
+      solution?: number[];
+      error?: number;
+      positionError?: number;
+      iterations?: number;
+      errorMessage?: string;
+    };
+
+    return {
+      success: result.success,
+      solution: result.solution,
+      error: result.error,
+      positionError: result.positionError,
+      iterations: result.iterations,
+      errorMessage: result.errorMessage,
+    };
+  }
+
+  /**
+   * Compute inverse kinematics for TCP position (single solution)
+   *
+   * This method directly solves IK for the Tool Center Point (TCP) position,
+   * automatically accounting for the attached tool offset. Requires a tool
+   * to be attached via attachTool() first.
+   *
+   * Unlike inverseKinematics() which targets the flange position,
+   * this method targets the TCP position directly.
+   *
+   * @param targetTcpPose - Target pose for the TCP (not the flange)
+   * @param seed - Optional seed joint configuration
+   * @returns IK result with joint angles that place the TCP at the target pose
+   */
+  inverseKinematicsTcp(targetTcpPose: Pose, seed?: number[]): IkResult {
+    const trajxPose = this.robovizPoseToTrajxPose(targetTcpPose);
+    const result = this.robot.inverseKinematicsTcp(trajxPose, seed) as {
       success: boolean;
       solution?: number[];
       error?: number;
@@ -601,7 +744,7 @@ export class UrdfRobotSolver {
   }
 
   // ============================================================================
-  // New unified Robot API methods
+  // Tool API - New methods for advanced tool management
   // ============================================================================
 
   /**
@@ -781,6 +924,7 @@ export type AnySolver = RobotSolver | UrdfRobotSolver;
 
 class KinematicsManager {
   private trajx: TrajxModule | null = null;
+  private dhDatabase: TrajxDhDatabase | null = null;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
   private solvers: Map<string, RobotSolver> = new Map();
@@ -842,6 +986,10 @@ class KinematicsManager {
       }
 
       this.trajx = trajxModule as unknown as TrajxModule;
+
+      // Create DH database instance using the class-based API
+      this.dhDatabase = this.trajx.WasmDhDatabase.withDefaults();
+
       this.initialized = true;
     } catch (error) {
       this.initPromise = null;
@@ -860,11 +1008,11 @@ class KinematicsManager {
    * Get available robot names from the DH database
    */
   getAvailableRobots(): string[] {
-    if (!this.trajx) {
+    if (!this.dhDatabase) {
       throw new Error('Kinematics not initialized');
     }
 
-    return this.trajx.listDhDatabase();
+    return this.dhDatabase.listRobots();
   }
 
   /**
@@ -1019,6 +1167,97 @@ class KinematicsManager {
     for (const robotId of this.urdfSolvers.keys()) {
       this.disposeSolver(robotId);
     }
+  }
+
+  // ============================================================================
+  // Tool Factory Methods
+  // ============================================================================
+
+  /**
+   * Create a new empty tool
+   *
+   * @param name - Tool name
+   * @returns WasmTool instance
+   */
+  createTool(name: string): TrajxTool {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return new this.trajx.WasmTool(name);
+  }
+
+  /**
+   * Create a simple tool with a single default TCP
+   *
+   * @param name - Tool name
+   * @param position - Position offset [x, y, z] from flange
+   * @param orientation - Quaternion [x, y, z, w] orientation
+   * @returns WasmTool instance
+   */
+  createSimpleTool(name: string, position: [number, number, number], orientation: [number, number, number, number]): TrajxTool {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return this.trajx.WasmTool.simple(name, position, orientation);
+  }
+
+  /**
+   * Create a simple tool with just position offset
+   *
+   * @param name - Tool name
+   * @param x - X offset
+   * @param y - Y offset
+   * @param z - Z offset
+   * @returns WasmTool instance
+   */
+  createSimplePositionTool(name: string, x: number, y: number, z: number): TrajxTool {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return this.trajx.WasmTool.simplePosition(name, x, y, z);
+  }
+
+  /**
+   * Create a new tool library for managing multiple tools
+   *
+   * @returns WasmToolLibrary instance
+   */
+  createToolLibrary(): TrajxToolLibrary {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return new this.trajx.WasmToolLibrary();
+  }
+
+  /**
+   * Create a TCP point
+   *
+   * @param name - TCP name
+   * @param position - Position offset [x, y, z]
+   * @param orientation - Quaternion [x, y, z, w]
+   * @returns WasmTcpPoint instance
+   */
+  createTcpPoint(name: string, position: [number, number, number], orientation: [number, number, number, number]): TrajxTcpPoint {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return new this.trajx.WasmTcpPoint(name, position, orientation);
+  }
+
+  /**
+   * Create a simple TCP point with just position offset
+   *
+   * @param name - TCP name
+   * @param x - X offset
+   * @param y - Y offset
+   * @param z - Z offset
+   * @returns WasmTcpPoint instance
+   */
+  createSimpleTcpPoint(name: string, x: number, y: number, z: number): TrajxTcpPoint {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return this.trajx.WasmTcpPoint.simple(name, x, y, z);
   }
 
   // ============================================================================
