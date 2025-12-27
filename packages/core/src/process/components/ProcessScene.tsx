@@ -34,6 +34,18 @@ import { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
+// =============================================================================
+// Constants
+// =============================================================================
+
+/**
+ * Default "raised" pose joint angles for 6-DOF robots when IK fails.
+ * This shows the robot in a safe, recognizable position with red color
+ * to indicate the IK solution could not be found.
+ * Values in radians: [J1, J2, J3, J4, J5, J6]
+ */
+const IK_FAILURE_RAISED_POSE = [0, -0.5, 1.0, 0, 0.5, 0];
+
 import { Robot, type RobotProps } from '../../components/Robot';
 import { GhostRobot, type GhostStatus } from '../../components/GhostRobot';
 import { Line } from '@react-three/drei';
@@ -168,20 +180,23 @@ export function ProcessScene({
         </Robot>
       )}
 
-      {/* Ghost Robot */}
-      {showGhost && state.ghostJointAngles && (urdfPath || urdfContent) && (
-        <GhostRobot
-          urdfPath={urdfPath}
-          urdfContent={urdfContent}
-          meshData={meshData}
-          jointAngles={state.ghostJointAngles}
-          status={toGhostStatus(state.ghostStatus)}
-          position={position}
-          opacity={ghostOpacity}
-        >
-          {/* Pass children (EndEffector with tools) to ghost robot */}
-          {children}
-        </GhostRobot>
+      {/* Ghost Robot - hidden during trajectory playback */}
+      {showGhost && !state.isPlaying && (urdfPath || urdfContent) && (
+        // Show ghost when we have valid joint angles OR when IK failed (show raised pose)
+        (state.ghostJointAngles || state.ghostStatus === 'error') && (
+          <GhostRobot
+            urdfPath={urdfPath}
+            urdfContent={urdfContent}
+            meshData={meshData}
+            jointAngles={state.ghostJointAngles || IK_FAILURE_RAISED_POSE}
+            status={toGhostStatus(state.ghostStatus)}
+            position={position}
+            opacity={ghostOpacity}
+          >
+            {/* Pass children (EndEffector with tools) to ghost robot */}
+            {children}
+          </GhostRobot>
+        )
       )}
 
       {/* Trajectory Visualization */}
