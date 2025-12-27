@@ -43,6 +43,15 @@ import {
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import { IndustrialInspectionWorkpiece } from '../welding/components';
+import {
+  TcpDebugPanel,
+  type TcpDebugState,
+  computeTcpFromDebug,
+  createDefaultTcpDebug,
+} from '../../components/TcpDebugPanel';
+
+// Default TCP debug state from tool metadata
+const DEFAULT_TCP_DEBUG = createDefaultTcpDebug(INSPECTION_CAMERA_METADATA);
 
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';
 
@@ -1118,9 +1127,10 @@ function InspectionSceneContent({
           />
         ))}
 
-      <ambientLight intensity={0.3} color={THEME.primary} />
-      <pointLight position={[1, 2, 1]} intensity={0.6} />
-      <spotLight position={[0.5, 0.5, 0]} angle={0.8} intensity={0.4} color={THEME.accent} />
+      {/* Enhanced workpiece lighting */}
+      <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
+      <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
+      <spotLight position={[0.5, 0.8, 0]} angle={0.6} intensity={0.4} color="#ffffff" />
     </>
   );
 }
@@ -1235,8 +1245,8 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
     const newViewpoints: CameraViewpoint[] = [];
 
     // Camera pointing down (-Z in Z-up frame)
-    const SQRT1_2 = Math.SQRT1_2;
-    const downQuat: [number, number, number, number] = [SQRT1_2, 0, 0, SQRT1_2];
+    // 180° around X to flip TCP Z-axis from +Z to -Z (pointing down toward workpiece)
+    const downQuat: [number, number, number, number] = [1, 0, 0, 0];
 
     // Calculate how many viewpoints needed to cover the region
     const fovRad = (cameraFOV / 2) * (Math.PI / 180);
@@ -1299,7 +1309,6 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
     if (!region) return;
 
     const { cameraFOV, cameraDistance } = inspectionSettings;
-    const SQRT1_2 = Math.SQRT1_2;
 
     const newVp: CameraViewpoint = {
       id: `vp-manual-${Date.now()}`,
@@ -1308,7 +1317,7 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
         region.center[1],
         0.052 + cameraDistance,
       ],
-      quaternion: [SQRT1_2, 0, 0, SQRT1_2],
+      quaternion: [1, 0, 0, 0], // 180° around X to point down
       regionId: selectedRegionId,
       fov: cameraFOV,
       distance: cameraDistance,
@@ -1371,10 +1380,10 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
     setSelectedRegionId(id);
     const region = inspectionRegions.find(r => r.id === id);
     if (region) {
-      const SQRT1_2 = Math.SQRT1_2;
+      // 180° around X to point TCP Z-axis down toward workpiece
       const targetPose = {
         position: [0.5 + region.center[0], region.center[1], 0.052 + inspectionSettings.cameraDistance] as [number, number, number],
-        quaternion: [SQRT1_2, 0, 0, SQRT1_2] as [number, number, number, number],
+        quaternion: [1, 0, 0, 0] as [number, number, number, number],
       };
       console.log('[InspectionScene] Setting ghost target:', targetPose);
       ghost.setTarget(targetPose);
@@ -1553,12 +1562,6 @@ function eulerToQuaternion(rx: number, ry: number, rz: number): [number, number,
 // ============================================================================
 
 export function InspectionScene() {
-  // Working distance is the only adjustable parameter for TCP
-  // Tool TCP offset comes from INSPECTION_CAMERA_METADATA
-  const [workingDistance, setWorkingDistance] = useState(
-    INSPECTION_CAMERA_METADATA.defaultWorkingDistance
-  );
-
   // TCP settings for debug panel (shows computed values)
   const [tcpSettings, setTcpSettings] = useState({
     positionX: 0,
@@ -1569,10 +1572,12 @@ export function InspectionScene() {
     rotationZ: 0,
   });
 
-  // Compute TCP from tool metadata + working distance (unified pattern)
+  // Compute TCP from tool metadata WITHOUT working distance
+  // Working distance is handled by the scene's viewpoint positioning (0.052 + cameraDistance)
+  // TCP should only represent the lens front position
   const tcp = useMemo(
-    () => computeTcpFromMetadata(INSPECTION_CAMERA_METADATA, workingDistance),
-    [workingDistance]
+    () => computeTcpFromMetadata(INSPECTION_CAMERA_METADATA, 0),
+    []
   );
 
   // Sync computed TCP to settings for display in debug panel
