@@ -93,6 +93,22 @@ interface TrajxUrdfRobot {
   isReachable(targetPose: unknown): boolean;
   isNearSingularity(jointAngles: number[], threshold?: number): boolean;
   computeManipulability(jointAngles: number[]): number;
+  // Tool library management (NEW in daegu)
+  addTool(name: string, flangeOffset: unknown): void;
+  addTcpToTool(toolName: string, tcpName: string, tcpOffset: unknown): void;
+  addTcpWithStandoff(toolName: string, tcpName: string, tcpOffset: unknown, standoff: number): void;
+  activateTool(toolName: string, tcpName?: string | null): void;
+  deactivateTool(): void;
+  setActiveTcp(tcpName: string): void;
+  getActiveToolName(): string | undefined;
+  getActiveTcpName(): string | undefined;
+  getTcpStandoff(toolName: string, tcpName: string): number;
+  listTools(): string[];
+  listTcps(toolName: string): string[];
+  getToolOffset(): unknown | undefined;
+  // Named TCP FK/IK (NEW in daegu)
+  forwardKinematicsNamedTcp(jointAngles: number[], toolName: string, tcpName: string): TrajxPose;
+  inverseKinematicsNamedTcp(targetPose: unknown, toolName: string, tcpName: string, seed?: number[]): unknown;
 }
 
 // Tool-related interfaces
@@ -173,6 +189,54 @@ interface TrajxDhDatabase {
   readonly len: number;
 }
 
+// Motion-Centric API types (NEW in daegu)
+interface TrajxMotionResult {
+  readonly executed: boolean;
+  readonly dof: number;
+  readonly numPoints: number;
+  readonly trajectoryDuration: number;
+  readonly pathLength: number;
+  readonly planningTimeMs: number;
+  readonly collisionFree: boolean;
+  getPositionsAt(index: number): number[];
+  getTimeAt(index: number): number;
+  getTrajectory(): number[];
+}
+
+interface TrajxWasmMotion {
+  to(joints: number[]): TrajxWasmMotion;
+  from(joints: number[]): TrajxWasmMotion;
+  joint(): TrajxWasmMotion;
+  linear(): TrajxWasmMotion;
+  linearAt(speed: number): TrajxWasmMotion;
+  spline(): TrajxWasmMotion;
+  speed(scale: number): TrajxWasmMotion;
+  fast(): TrajxWasmMotion;
+  slow(): TrajxWasmMotion;
+  smooth(): TrajxWasmMotion;
+  verySmooth(): TrajxWasmMotion;
+  precise(): TrajxWasmMotion;
+  safe(): TrajxWasmMotion;
+  verified(): TrajxWasmMotion;
+  adaptive(): TrajxWasmMotion;
+  dwellMs(ms: number): TrajxWasmMotion;
+  run(robot: TrajxUrdfRobot): TrajxMotionResult;
+  plan(robot: TrajxUrdfRobot): TrajxMotionResult;
+}
+
+interface TrajxWasmPath {
+  through(waypoints: number[], dof: number): TrajxWasmPath;
+  linear(): TrajxWasmPath;
+  speed(scale: number): TrajxWasmPath;
+  run(robot: TrajxUrdfRobot): TrajxMotionResult;
+}
+
+interface TrajxWasmSequence {
+  start(motion: TrajxWasmMotion): TrajxWasmSequence;
+  then(motion: TrajxWasmMotion): TrajxWasmSequence;
+  run(robot: TrajxUrdfRobot): TrajxMotionResult;
+}
+
 interface TrajxModule {
   init(): Promise<void>;
   // Unified Robot API - creates robot from URDF, auto-detects DH params
@@ -181,6 +245,10 @@ interface TrajxModule {
     fromPositionEuler(
       x: number, y: number, z: number,
       roll: number, pitch: number, yaw: number
+    ): TrajxPose;
+    fromPositionQuaternion(
+      x: number, y: number, z: number,
+      qw: number, qx: number, qy: number, qz: number
     ): TrajxPose;
     identity(): TrajxPose;
   };
@@ -201,6 +269,16 @@ interface TrajxModule {
   WasmDhDatabase: {
     new(): TrajxDhDatabase;
     withDefaults(): TrajxDhDatabase;
+  };
+  // Motion-Centric API (NEW in daegu)
+  WasmMotion: {
+    to(joints: number[]): TrajxWasmMotion;
+  };
+  WasmPath: {
+    through(waypoints: number[], dof: number): TrajxWasmPath;
+  };
+  WasmSequence: {
+    start(motion: TrajxWasmMotion): TrajxWasmSequence;
   };
 }
 
@@ -744,7 +822,7 @@ export class UrdfRobotSolver {
   }
 
   // ============================================================================
-  // Tool API - New methods for advanced tool management
+  // DH and Link Transform API
   // ============================================================================
 
   /**
@@ -779,6 +857,163 @@ export class UrdfRobotSolver {
       result[name] = this.trajxPoseToRobovizPose(pose as TrajxPose);
     }
     return result;
+  }
+
+  // ============================================================================
+  // Tool Library Management API (NEW in daegu)
+  // ============================================================================
+
+  /**
+   * Add a tool to the robot's tool library
+   * @param toolName - Name of the tool
+   * @param flangeOffset - Pose offset from flange to tool base frame
+   */
+  addTool(toolName: string, flangeOffset: Pose): void {
+    const trajxPose = this.robovizPoseToTrajxPose(flangeOffset);
+    this.robot.addTool(toolName, trajxPose);
+  }
+
+  /**
+   * Add a TCP point to an existing tool
+   * @param toolName - Name of the tool
+   * @param tcpName - Name of the TCP point
+   * @param tcpOffset - Pose offset from tool base to TCP
+   */
+  addTcpToTool(toolName: string, tcpName: string, tcpOffset: Pose): void {
+    const trajxPose = this.robovizPoseToTrajxPose(tcpOffset);
+    this.robot.addTcpToTool(toolName, tcpName, trajxPose);
+  }
+
+  /**
+   * Add a TCP point with standoff distance to an existing tool
+   * @param toolName - Name of the tool
+   * @param tcpName - Name of the TCP point
+   * @param tcpOffset - Pose offset from tool base to TCP
+   * @param standoff - Default standoff distance in meters
+   */
+  addTcpWithStandoff(toolName: string, tcpName: string, tcpOffset: Pose, standoff: number): void {
+    const trajxPose = this.robovizPoseToTrajxPose(tcpOffset);
+    this.robot.addTcpWithStandoff(toolName, tcpName, trajxPose, standoff);
+  }
+
+  /**
+   * Activate a tool from the library
+   * @param toolName - Name of the tool to activate
+   * @param tcpName - Optional TCP name to set as active
+   */
+  activateTool(toolName: string, tcpName?: string): void {
+    this.robot.activateTool(toolName, tcpName);
+  }
+
+  /**
+   * Deactivate the current tool
+   */
+  deactivateTool(): void {
+    this.robot.deactivateTool();
+  }
+
+  /**
+   * Set the active TCP for the current tool
+   * @param tcpName - Name of the TCP to activate
+   */
+  setActiveTcp(tcpName: string): void {
+    this.robot.setActiveTcp(tcpName);
+  }
+
+  /**
+   * Get the name of the currently active tool
+   */
+  getActiveToolName(): string | undefined {
+    return this.robot.getActiveToolName();
+  }
+
+  /**
+   * Get the name of the currently active TCP
+   */
+  getActiveTcpName(): string | undefined {
+    return this.robot.getActiveTcpName();
+  }
+
+  /**
+   * Get the standoff distance for a specific TCP
+   * @param toolName - Name of the tool
+   * @param tcpName - Name of the TCP
+   * @returns Standoff distance in meters
+   */
+  getTcpStandoff(toolName: string, tcpName: string): number {
+    return this.robot.getTcpStandoff(toolName, tcpName);
+  }
+
+  /**
+   * List all tools in the robot's tool library
+   */
+  listTools(): string[] {
+    return this.robot.listTools();
+  }
+
+  /**
+   * List all TCPs for a given tool
+   * @param toolName - Name of the tool
+   */
+  listTcps(toolName: string): string[] {
+    return this.robot.listTcps(toolName);
+  }
+
+  /**
+   * Get the current tool offset (if any tool is active)
+   */
+  getToolOffset(): Pose | null {
+    const offset = this.robot.getToolOffset() as TrajxPose | undefined;
+    if (!offset) return null;
+    return this.trajxPoseToRobovizPose(offset);
+  }
+
+  // ============================================================================
+  // Named TCP FK/IK API (NEW in daegu)
+  // ============================================================================
+
+  /**
+   * Compute FK for a specific tool/TCP combination without changing the active tool
+   * @param jointAngles - Joint angles in radians
+   * @param toolName - Name of the tool
+   * @param tcpName - Name of the TCP point
+   * @returns FK result with TCP pose
+   */
+  forwardKinematicsNamedTcp(jointAngles: number[], toolName: string, tcpName: string): FkResult {
+    const pose = this.robot.forwardKinematicsNamedTcp(jointAngles, toolName, tcpName);
+    return {
+      pose: this.trajxPoseToRobovizPose(pose),
+      toolApplied: true,
+    };
+  }
+
+  /**
+   * Compute IK for a specific tool/TCP combination without changing the active tool
+   * @param targetPose - Target pose for the TCP
+   * @param toolName - Name of the tool
+   * @param tcpName - Name of the TCP point
+   * @param seed - Optional seed joint configuration
+   * @returns IK result
+   */
+  inverseKinematicsNamedTcp(targetPose: Pose, toolName: string, tcpName: string, seed?: number[]): IkResult {
+    const trajxPose = this.robovizPoseToTrajxPose(targetPose);
+    const result = this.robot.inverseKinematicsNamedTcp(trajxPose, toolName, tcpName, seed) as {
+      success: boolean;
+      solution?: number[];
+      error?: number;
+      positionError?: number;
+      iterations?: number;
+      errorMessage?: string;
+    };
+
+    return {
+      success: result.success,
+      solution: result.solution,
+      error: result.error,
+      positionError: result.positionError,
+      iterations: result.iterations,
+      errorMessage: result.errorMessage,
+    };
   }
 
   /**
