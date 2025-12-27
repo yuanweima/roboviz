@@ -13,6 +13,21 @@ import type { WeldingTorchProps, ToolMetadata } from './types';
 
 /**
  * Tool metadata for registration
+ *
+ * Coordinate System (same as GrindingWheel):
+ * - Origin (0,0,0) = Flange mounting surface
+ * - +Z = Tool extends outward (toward workpiece)
+ * - Handle/body behind (in -Z), wire tip in front (+Z)
+ *
+ * TCP is at the wire tip (the welding contact point).
+ * Geometry layout (at scale=1.0, s=0.1):
+ * - Handle: Z = -0.06 (center), extends behind flange
+ * - Neck: Z = +0.025
+ * - Diffuser: Z = +0.0625
+ * - Tip holder: Z = +0.0825
+ * - Nozzle: Z = +0.1025
+ * - Wire: Z = +0.121
+ * - Wire tip end: Z = +0.127m
  */
 export const WELDING_TORCH_METADATA: ToolMetadata = {
   id: 'welding-torch',
@@ -20,8 +35,8 @@ export const WELDING_TORCH_METADATA: ToolMetadata = {
   description: 'MIG/TIG welding torch for arc welding processes',
   category: 'welding',
   defaultTcpOffset: {
-    position: [0, 0, -0.08], // Offset to wire tip
-    rotation: [0, 0, 0],
+    position: [0, 0, 0.127], // Offset to wire tip end (in +Z direction)
+    rotation: [0, 0, 0], // TCP Z-axis aligned with flange Z-axis
   },
   defaultScale: 1.0,
 };
@@ -53,53 +68,76 @@ function TorchGeometry({
   // Rotation to align cylinders from Y-axis to Z-axis (tool forward direction)
   const ROT_Y_TO_Z: [number, number, number] = [Math.PI / 2, 0, 0];
 
+  // Part dimensions (heights along Z-axis after rotation)
+  const handleHeight = s * 1.2;
+  const neckHeight = s * 0.5;
+  const diffuserHeight = s * 0.25;
+  const tipHolderHeight = s * 0.15;
+  const nozzleHeight = s * 0.25;
+  const wireHeight = s * 0.12;
+
+  // Calculate Z positions so parts connect end-to-end
+  // Coordinate system: +Z = toward workpiece, -Z = behind (toward robot)
+  // Handle is behind the flange (in -Z direction)
+  const handleZ = -handleHeight / 2;
+  // Neck connects at handle front, extends in +Z direction
+  const neckZ = neckHeight / 2;
+  // Diffuser connects at neck end
+  const diffuserZ = neckHeight + diffuserHeight / 2;
+  // Tip holder connects at diffuser end
+  const tipHolderZ = neckHeight + diffuserHeight + tipHolderHeight / 2;
+  // Nozzle (cone) connects at tip holder end
+  const nozzleZ = neckHeight + diffuserHeight + tipHolderHeight + nozzleHeight / 2;
+  // Wire tip extends from nozzle (toward workpiece)
+  const wireZ = neckHeight + diffuserHeight + tipHolderHeight + nozzleHeight + wireHeight / 2;
+
   return (
     <>
-      {/* Handle/Grip */}
-      <mesh position={[0, 0, s * 0.8]} rotation={ROT_Y_TO_Z}>
-        <cylinderGeometry args={[s * 0.25, s * 0.3, s * 1.2, 16]} />
+      {/* Handle/Grip - main body behind the flange */}
+      <mesh position={[0, 0, handleZ]} rotation={ROT_Y_TO_Z}>
+        <cylinderGeometry args={[s * 0.22, s * 0.28, handleHeight, 16]} />
         <meshStandardMaterial color="#333333" metalness={0.7} roughness={0.3} />
       </mesh>
 
-      {/* Neck */}
-      <mesh position={[0, 0, s * 0.1]} rotation={ROT_Y_TO_Z}>
-        <cylinderGeometry args={[s * 0.15, s * 0.2, s * 0.6, 12]} />
+      {/* Neck - tapers down from handle */}
+      <mesh position={[0, 0, neckZ]} rotation={ROT_Y_TO_Z}>
+        <cylinderGeometry args={[s * 0.12, s * 0.18, neckHeight, 12]} />
         <meshStandardMaterial color="#444444" metalness={0.6} roughness={0.4} />
       </mesh>
 
       {/* Gas diffuser */}
-      <mesh position={[0, 0, -s * 0.2]} rotation={ROT_Y_TO_Z}>
-        <cylinderGeometry args={[s * 0.12, s * 0.15, s * 0.3, 12]} />
+      <mesh position={[0, 0, diffuserZ]} rotation={ROT_Y_TO_Z}>
+        <cylinderGeometry args={[s * 0.10, s * 0.12, diffuserHeight, 12]} />
         <meshStandardMaterial color="#886644" metalness={0.8} roughness={0.2} />
       </mesh>
 
       {/* Contact tip holder */}
-      <mesh position={[0, 0, -s * 0.4]} rotation={ROT_Y_TO_Z}>
-        <cylinderGeometry args={[s * 0.1, s * 0.12, s * 0.15, 12]} />
+      <mesh position={[0, 0, tipHolderZ]} rotation={ROT_Y_TO_Z}>
+        <cylinderGeometry args={[s * 0.08, s * 0.10, tipHolderHeight, 12]} />
         <meshStandardMaterial color={color} metalness={0.9} roughness={0.1} />
       </mesh>
 
-      {/* Nozzle (copper) */}
-      <mesh position={[0, 0, -s * 0.55]} rotation={ROT_Y_TO_Z}>
-        <coneGeometry args={[s * 0.18, s * 0.25, 16]} />
+      {/* Nozzle (copper cone) - base (wide end) toward workpiece (+Z) */}
+      <mesh position={[0, 0, nozzleZ]} rotation={[-Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[s * 0.14, nozzleHeight, 16]} />
         <meshStandardMaterial color="#b87333" metalness={0.95} roughness={0.1} />
       </mesh>
 
-      {/* Wire tip */}
-      <mesh position={[0, 0, -s * 0.72]} rotation={ROT_Y_TO_Z}>
-        <cylinderGeometry args={[s * 0.015, s * 0.015, s * 0.1, 8]} />
+      {/* Wire tip - extends from nozzle */}
+      <mesh position={[0, 0, wireZ]} rotation={ROT_Y_TO_Z}>
+        <cylinderGeometry args={[s * 0.012, s * 0.012, wireHeight, 8]} />
         <meshStandardMaterial color="#cccccc" metalness={0.9} roughness={0.2} />
       </mesh>
 
-      {/* Gas tube connection */}
-      <mesh position={[s * 0.2, 0, s * 0.9]} rotation={[Math.PI / 2, 0, Math.PI / 6]}>
-        <cylinderGeometry args={[s * 0.08, s * 0.08, s * 0.4, 8]} />
+      {/* Gas tube connection - on the side of handle (behind) */}
+      <mesh position={[s * 0.25, 0, handleZ]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[s * 0.06, s * 0.06, s * 0.3, 8]} />
         <meshStandardMaterial color="#222222" roughness={0.8} />
       </mesh>
 
-      {/* Active welding effects */}
+      {/* Active welding effects - at wire tip (front) */}
       {isActive && (
-        <group position={[0, 0, -s * 0.75]}>
+        <group position={[0, 0, wireZ + wireHeight / 2]}>
           {/* Arc light */}
           <pointLight
             ref={sparkRef}

@@ -6,6 +6,10 @@
  * - ProcessScene for robot/ghost/trajectory rendering
  * - useProcessPlayback for trajectory control
  * - useProcessGhost for IK preview
+ *
+ * TCP Debug Mode:
+ * - Enable debug mode to manually adjust TCP position and rotation
+ * - Final values can be copied back to WELDING_TORCH_METADATA
  */
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { RoboViz } from '@aspect/roboviz-react';
@@ -33,6 +37,15 @@ import {
   computeTcpFromMetadata,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
+import {
+  TcpDebugPanel,
+  type TcpDebugState,
+  computeTcpFromDebug,
+  createDefaultTcpDebug,
+} from '../../components/TcpDebugPanel';
+
+// Default TCP debug state from tool metadata
+const DEFAULT_TCP_DEBUG = createDefaultTcpDebug(WELDING_TORCH_METADATA);
 
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';
 
@@ -233,8 +246,9 @@ function WeldingSceneContent({
       <WeldingWorkpiece seams={seams} selectedSeamId={selectedSeamId} onSeamSelect={onSeamSelect} />
       <WeldingSparks position={sparkPosition} active={isWelding} />
 
-      <ambientLight intensity={0.3} color={THEME.primary} />
-      <pointLight position={[1, 2, 1]} intensity={0.8} />
+      {/* Enhanced workpiece lighting */}
+      <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
+      <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
     </>
   );
 }
@@ -243,7 +257,12 @@ function WeldingSceneContent({
 // Demo Inner Component (with context access)
 // ============================================================================
 
-function WeldingDemoInner() {
+interface WeldingDemoInnerProps {
+  tcpDebug: TcpDebugState;
+  onTcpDebugChange: (update: Partial<TcpDebugState>) => void;
+}
+
+function WeldingDemoInner({ tcpDebug, onTcpDebugChange }: WeldingDemoInnerProps) {
   const { addLog } = useAppStore();
 
   // State
@@ -273,9 +292,11 @@ function WeldingDemoInner() {
     const seam = seams.find(s => s.id === selectedSeamId);
     if (!seam) return;
 
-    // Tool pointing down (-Z in Z-up frame)
-    const SQRT1_2 = Math.SQRT1_2;
-    const downQuat: [number, number, number, number] = [SQRT1_2, 0, 0, SQRT1_2];
+    // TCP Z-axis pointing down toward workpiece
+    // For a tool with TCP Z pointing forward (+Z), we need 180° rotation around X
+    // to flip Z from +Z to -Z (pointing down in world coordinates)
+    // Quaternion for 180° around X: [1, 0, 0, 0] (same as GrindingScene)
+    const downQuat: [number, number, number, number] = [1, 0, 0, 0];
 
     const waypoints = [];
     const numPoints = 20;
@@ -330,10 +351,10 @@ function WeldingDemoInner() {
     setSelectedSeamId(id);
     const seam = seams.find(s => s.id === id);
     if (seam) {
-      const SQRT1_2 = Math.SQRT1_2;
+      // 180° around X to point tool Z down toward workpiece (same as trajectory)
       ghost.setTarget({
         position: seam.start,
-        quaternion: [SQRT1_2, 0, 0, SQRT1_2],
+        quaternion: [1, 0, 0, 0],
       });
     }
     addLog('info', `Selected: ${id}`);
@@ -389,6 +410,15 @@ function WeldingDemoInner() {
         <div style={{ width: '280px', flexShrink: 0 }}>
           <WeldingPanel settings={weldingSettings} onChange={(partial) => setWeldingSettings(prev => ({ ...prev, ...partial }))} />
 
+          {/* TCP Debug Panel */}
+          <TcpDebugPanel
+            tcpDebug={tcpDebug}
+            onTcpDebugChange={onTcpDebugChange}
+            toolName="WeldingTorch"
+            backgroundColor={THEME.background}
+            accentColor={THEME.primary}
+          />
+
           {state.trajectory && (
             <div style={{ marginTop: '12px', padding: '16px', background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40` }}>
               <h4 style={{ margin: '0 0 12px 0', color: THEME.secondary }}>Progress</h4>
@@ -431,20 +461,35 @@ try {
 }
 
 export function WeldingScene() {
-  // Compute TCP from tool metadata (unified pattern)
-  const tcp = useMemo(
-    () => computeTcpFromMetadata(WELDING_TORCH_METADATA),
-    []
-  );
+  // TCP Debug state - lifted to this level to control RobotProcessProvider
+  const [tcpDebug, setTcpDebug] = useState<TcpDebugState>(DEFAULT_TCP_DEBUG);
+
+  const handleTcpDebugChange = useCallback((update: Partial<TcpDebugState>) => {
+    setTcpDebug(prev => ({ ...prev, ...update }));
+  }, []);
+
+  // Compute TCP - use debug values if enabled, otherwise use metadata
+  const tcp = useMemo(() => {
+    if (tcpDebug.enabled) {
+      return computeTcpFromDebug(tcpDebug);
+    }
+    return computeTcpFromMetadata(WELDING_TORCH_METADATA);
+  }, [tcpDebug.enabled, tcpDebug.position, tcpDebug.rotation]);
+
+  // Key changes when TCP debug changes to force re-mount of RobotProcessProvider
+  const providerKey = tcpDebug.enabled
+    ? `debug-${tcpDebug.position.join('-')}-${tcpDebug.rotation.join('-')}`
+    : 'default';
 
   return (
     <ProcessProvider>
       <RobotProcessProvider
+        key={providerKey}
         urdfPath={URDF_PATH}
         robotId="welding-robot"
         tool={{ position: tcp.position, quaternion: tcp.quaternion }}
       >
-        <WeldingDemoInner />
+        <WeldingDemoInner tcpDebug={tcpDebug} onTcpDebugChange={handleTcpDebugChange} />
       </RobotProcessProvider>
     </ProcessProvider>
   );

@@ -16,3 +16,10 @@ export {
   type IndustrialGrindingWorkpieceProps,
   type IndustrialInspectionWorkpieceProps,
 } from './Workpieces';
+
+export {
+  PolyhedronWorkpiece,
+  createPolyhedronRegions,
+  type PolyhedronWorkpieceProps,
+  type GrindingSurfaceRegion,
+} from './PolyhedronWorkpiece';
