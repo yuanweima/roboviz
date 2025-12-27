@@ -12,6 +12,27 @@
 export * from './types';
 
 // =============================================================================
+// URDF Types and Type Guards
+// =============================================================================
+export {
+  // Types
+  type URDFJointType,
+  type URDFJoint,
+  type URDFLink,
+  type URDFRobot,
+  // Type Guards
+  isURDFLink,
+  isURDFJoint,
+  isURDFRobot,
+  // Helper Functions
+  findLastURDFLink,
+  findAllURDFJoints,
+  findMovableJoints,
+  findURDFLinkByName,
+  findURDFJointByName,
+} from './types/urdf';
+
+// =============================================================================
 // Coordinates (Z-up Robotics Standard)
 // =============================================================================
 export {

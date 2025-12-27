@@ -19,6 +19,10 @@ export { EventBus, createEventBus } from './core/EventBus';
 // =============================================================================
 
 export { RoboViz, RoboVizHeadless } from './components/RoboViz';
+export {
+  RoboVizErrorBoundary,
+  type RoboVizErrorBoundaryProps,
+} from './components/RoboVizErrorBoundary';
 
 // =============================================================================
 // React Context

@@ -244,20 +244,23 @@ export function useRobotJogControl(options: UseRobotJogControlOptions): [JogCont
   const ikAll = useCallback((pose: Pose, seed?: number[]): MultiIkResult | null => {
     if (!solver) return null;
 
-    // Check if solver has ikAll (DH-based solver)
-    if ('inverseKinematicsAll' in solver && typeof solver.inverseKinematicsAll === 'function') {
-      return (solver as any).inverseKinematicsAll(pose, seed);
+    // Check if solver supports multi-solution IK at runtime
+    // Both RobotSolver and UrdfRobotSolver may have this method
+    const solverAny = solver as { inverseKinematicsAll?: (pose: Pose, seed?: number[]) => MultiIkResult; inverseKinematics: (pose: Pose, seed?: number[]) => IkResult };
+
+    if (typeof solverAny.inverseKinematicsAll === 'function') {
+      return solverAny.inverseKinematicsAll(pose, seed);
     }
 
-    // Fallback for URDF solver: use single IK and wrap in MultiIkResult format
-    const result = solver.inverseKinematics(pose, seed);
+    // Fallback for solvers without multi-IK: use single IK and wrap in MultiIkResult format
+    const result = solverAny.inverseKinematics(pose, seed);
     if (result && result.success && result.solution) {
       return {
         success: true,
         solutionCount: 1,
         solutions: [result.solution],
         positionErrors: [result.positionError || 0],
-        isAnalytical: false, // URDF solver uses numerical IK
+        isAnalytical: false, // Fallback uses numerical IK
         errorMessage: undefined,
       };
     }
@@ -274,10 +277,14 @@ export function useRobotJogControl(options: UseRobotJogControlOptions): [JogCont
   // analyzeWorkspace is only available on DH-based solver
   const analyzeWorkspace = useCallback((joints: number[]): WorkspaceAnalysis | null => {
     if (!solver) return null;
-    if ('analyzeWorkspace' in solver && typeof solver.analyzeWorkspace === 'function') {
-      return (solver as any).analyzeWorkspace(joints);
+
+    // Check if solver supports workspace analysis at runtime
+    const solverAny = solver as { analyzeWorkspace?: (joints: number[]) => WorkspaceAnalysis };
+
+    if (typeof solverAny.analyzeWorkspace === 'function') {
+      return solverAny.analyzeWorkspace(joints);
     }
-    // Return default analysis for URDF solver
+    // Return default analysis for solvers without workspace analysis
     return {
       isValid: true,
       manipulability: 0.5,
