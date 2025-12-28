@@ -36,6 +36,7 @@ const MODULES: ModuleInfo[] = [
   { id: 'inspection', label: 'Inspection', icon: '🔍', description: 'AI defect detection', category: 'scenes', isFeatured: true },
   { id: 'cable-management', label: 'Cable Management', icon: '🔌', description: 'Cable twist tracking', category: 'scenes', isFeatured: true },
   { id: 'collision-analysis', label: 'Collision Analysis', icon: '📊', description: 'Timeline + Robot integration', category: 'scenes', isFeatured: true },
+  { id: 'rendering-showcase', label: 'Rendering Showcase', icon: '✨', description: 'Post-processing & shaders', category: 'scenes', isFeatured: true },
 
   // Core Features
   { id: 'robot', label: 'Robot Basics', icon: '🤖', description: 'URDF loading, joint control', category: 'core' },

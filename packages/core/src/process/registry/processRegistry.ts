@@ -11,7 +11,132 @@ import type {
   ProcessRegistrationOptions,
   CapabilityDefinition,
   CapabilityId,
+  BuiltinCapability,
 } from '../types';
+
+// ============================================================================
+// Builtin Capability Definitions (lazy loaded to avoid circular deps)
+// ============================================================================
+
+/**
+ * Map of builtin capability IDs to their definitions
+ * These are created lazily when needed
+ */
+const builtinCapabilityDefinitions: Record<BuiltinCapability, () => CapabilityDefinition> = {
+  'edge-selection': () => ({
+    id: 'edge-selection',
+    name: 'Edge Selection',
+    description: 'Select edges on workpieces for seam-based processes',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: { showAllEdges: true, lineWidth: 2 },
+  }),
+  'surface-selection': () => ({
+    id: 'surface-selection',
+    name: 'Surface Selection',
+    description: 'Select surfaces or regions on workpieces',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: {},
+  }),
+  'point-selection': () => ({
+    id: 'point-selection',
+    name: 'Point Selection',
+    description: 'Select individual points on workpieces',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: {},
+  }),
+  'region-selection': () => ({
+    id: 'region-selection',
+    name: 'Region Selection',
+    description: 'Select or draw regions on workpieces',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: {},
+  }),
+  'angle-lock': () => ({
+    id: 'angle-lock',
+    name: 'Angle Lock',
+    description: 'Lock tool orientation angles for consistent processing',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: { workAngle: 15, travelAngle: 10, stickout: 15 },
+  }),
+  'force-control': () => ({
+    id: 'force-control',
+    name: 'Force Control',
+    description: 'Force-based control for grinding and polishing',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: { targetForce: 10, maxForce: 50 },
+  }),
+  'coverage-planning': () => ({
+    id: 'coverage-planning',
+    name: 'Coverage Planning',
+    description: 'Generate surface coverage patterns',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: {},
+  }),
+  'viewpoint-planning': () => ({
+    id: 'viewpoint-planning',
+    name: 'Viewpoint Planning',
+    description: 'Camera viewpoint optimization for inspection',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: {},
+  }),
+  'collision-preview': () => ({
+    id: 'collision-preview',
+    name: 'Collision Preview',
+    description: 'Preview and detect collisions in real-time',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: { enabled: true, showVolumes: false },
+  }),
+  'seam-tracking': () => ({
+    id: 'seam-tracking',
+    name: 'Seam Tracking',
+    description: 'Real-time seam tracking for adaptive path following',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: { enabled: false, sensitivity: 0.5 },
+  }),
+  'multi-robot': () => ({
+    id: 'multi-robot',
+    name: 'Multi-Robot',
+    description: 'Coordinate multiple robots for collaborative tasks',
+    hooks: {},
+    components: {},
+    visualization: {},
+    defaultConfig: {},
+  }),
+};
+
+/**
+ * Check if a capability ID is a builtin capability
+ */
+function isBuiltinCapability(id: CapabilityId): id is BuiltinCapability {
+  return id in builtinCapabilityDefinitions;
+}
+
+/**
+ * Get a builtin capability definition by ID
+ */
+function getBuiltinCapabilityDefinition(id: BuiltinCapability): CapabilityDefinition {
+  return builtinCapabilityDefinitions[id]();
+}
 
 // ============================================================================
 // Process Registry Store
@@ -121,13 +246,23 @@ export function registerProcess(
     );
   }
 
-  // Validate required capabilities are registered
+  // Auto-register missing builtin capabilities
+  // This ensures processes can be registered without manual capability setup
   for (const capabilityId of process.capabilities) {
     if (!capabilityStore.has(capabilityId)) {
-      console.warn(
-        `Process "${process.id}" requires capability "${capabilityId}" ` +
-        `which is not registered. Make sure to register it before using this process.`
-      );
+      if (isBuiltinCapability(capabilityId)) {
+        // Auto-register builtin capability
+        const definition = getBuiltinCapabilityDefinition(capabilityId);
+        capabilityStore.set(capabilityId, definition);
+        updateCapabilitySnapshotCache();
+        console.debug(`[ProcessRegistry] Auto-registered builtin capability: ${capabilityId}`);
+      } else {
+        // Custom capability not registered - warn user
+        console.warn(
+          `Process "${process.id}" requires custom capability "${capabilityId}" ` +
+          `which is not registered. Make sure to register it before using this process.`
+        );
+      }
     }
   }
 

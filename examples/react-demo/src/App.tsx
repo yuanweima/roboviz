@@ -10,6 +10,7 @@ import { GrindingScene } from './modules/scenes/GrindingScene';
 import { InspectionScene } from './modules/scenes/InspectionScene';
 import { CableManagementScene } from './modules/scenes/CableManagementScene';
 import { CollisionAnalysisScene } from './modules/scenes/CollisionAnalysisScene';
+import RenderingShowcaseScene from './modules/scenes/RenderingShowcaseScene';
 
 // Core Features
 import { RobotModule } from './modules/RobotModule';
@@ -50,6 +51,7 @@ export type ModuleType =
   | 'inspection'
   | 'cable-management'
   | 'collision-analysis'
+  | 'rendering-showcase'
   // Core Features
   | 'robot'
   | 'workpoint'
@@ -83,6 +85,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'inspection': InspectionScene,
   'cable-management': CableManagementScene,
   'collision-analysis': CollisionAnalysisScene,
+  'rendering-showcase': RenderingShowcaseScene,
   // Core Features
   'robot': RobotModule,
   'workpoint': WorkpointModule,
