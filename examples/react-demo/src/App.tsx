@@ -19,6 +19,7 @@ import { ImperativeModule } from './modules/ImperativeModule';
 import { MultiRobotModule } from './modules/MultiRobotModule';
 import { GhostRobotModule } from './modules/GhostRobotModule';
 import { TrajxWasmModule } from './modules/TrajxWasmModule';
+import { GamepadControlModule } from './modules/GamepadControlModule';
 
 // Trajectory
 import { TrajectoryModule } from './modules/TrajectoryModule';
@@ -55,6 +56,7 @@ export type ModuleType =
   | 'multi-robot'
   | 'ghost-robot'
   | 'trajx-wasm'
+  | 'gamepad-control'
   // Trajectory
   | 'trajectory'
   // Vision
@@ -86,6 +88,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'multi-robot': MultiRobotModule,
   'ghost-robot': GhostRobotModule,
   'trajx-wasm': TrajxWasmModule,
+  'gamepad-control': GamepadControlModule,
   // Trajectory
   'trajectory': TrajectoryModule,
   // Vision
