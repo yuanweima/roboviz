@@ -98,7 +98,14 @@ export const PropertyGroup: React.FC<PropertyGroupProps> = ({
 
       // Handle computed values - derive value from other fields
       const isComputed = typeof field.computedValue === 'function';
-      const value = isComputed ? field.computedValue!(values) : values[field.key];
+      const rawValue = isComputed ? field.computedValue!(values) : values[field.key];
+
+      // Apply value transformation (internal -> display)
+      const hasTransform = field.transform !== undefined;
+      const displayValue = hasTransform && rawValue !== undefined
+        ? field.transform!.toDisplay(rawValue)
+        : rawValue;
+
       const error = errors[field.key];
       const isHighlighted = highlightedFields.has(field.key);
       const isDisabled =
@@ -106,10 +113,20 @@ export const PropertyGroup: React.FC<PropertyGroupProps> = ({
       // Computed fields are automatically read-only
       const isReadOnly = isComputed || field.readOnly;
 
+      // Handle onChange with value transformation (display -> internal)
+      const handleChange = isComputed
+        ? () => {}
+        : (newDisplayValue: unknown) => {
+            const internalValue = hasTransform
+              ? field.transform!.toInternal(newDisplayValue)
+              : newDisplayValue;
+            onChange(field.key, internalValue);
+          };
+
       const fieldProps: PropertyFieldProps = {
         field,
-        value,
-        onChange: isComputed ? () => {} : (newValue) => onChange(field.key, newValue),
+        value: displayValue,
+        onChange: handleChange,
         disabled: isDisabled,
         readOnly: isReadOnly,
         hasError: !!error,
