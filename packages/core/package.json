@@ -30,7 +30,7 @@
     "@react-three/fiber": "^9.0.0",
     "nanoid": "^5.0.0",
     "three": "^0.170.0",
-    "trajx-wasm": "file:../../../../trajx/daegu/crates/trajx-wasm/pkg",
+    "trajx-wasm": "file:./vendor/trajx-wasm",
     "urdf-loader": "^0.12.3",
     "zustand": "^5.0.0"
   },
