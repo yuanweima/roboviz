@@ -14,7 +14,7 @@
  * - useProcessGhost for IK preview
  */
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { RoboViz } from '@aspect/roboviz-react';
+import { RoboViz, PropertyEditor, type PropertySchema } from '@aspect/roboviz-react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
@@ -30,6 +30,8 @@ import {
   GrindingWheel,
   GRINDING_WHEEL_METADATA,
   computeTcpFromMetadata,
+  // History hook for undo/redo
+  usePropertyHistory,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import {
@@ -89,6 +91,126 @@ const DEFAULT_GRINDING_SETTINGS: GrindingSettings = {
   passes: 3,
   pattern: 'raster',
   stepover: 8,
+};
+
+// ============================================================================
+// PropertyEditor Schema - 打磨参数
+// ============================================================================
+
+/**
+ * 打磨参数 Schema
+ *
+ * 展示 PropertyEditor 特性:
+ * 1. showSlider - 滑块控制力/速度参数
+ * 2. 条件显示 - 根据 pattern 显示不同参数
+ * 3. 单位显示 - mm, N, RPM 等
+ * 4. 分组管理 - 工艺/运动/质量参数分组
+ */
+const GRINDING_SETTINGS_SCHEMA: PropertySchema = {
+  groups: [
+    {
+      id: 'process',
+      label: '工艺参数 / Process',
+      collapsible: false,
+      fields: [
+        {
+          key: 'pattern',
+          type: 'enum',
+          label: '走刀模式',
+          description: '选择打磨路径生成模式',
+          options: [
+            { value: 'raster', label: 'Raster - 栅格走刀' },
+            { value: 'spiral', label: 'Spiral - 螺旋走刀' },
+            { value: 'contour', label: 'Contour - 轮廓走刀' },
+          ],
+        },
+        {
+          key: 'rpm',
+          type: 'number',
+          label: '主轴转速',
+          unit: 'RPM',
+          min: 500,
+          max: 10000,
+          step: 100,
+          precision: 0,
+          description: '砂轮旋转速度',
+          showSlider: true,
+        },
+        {
+          key: 'passes',
+          type: 'number',
+          label: '加工遍数',
+          min: 1,
+          max: 10,
+          step: 1,
+          precision: 0,
+          description: '重复加工的遍数',
+        },
+      ],
+    },
+    {
+      id: 'motion',
+      label: '运动参数 / Motion',
+      collapsible: true,
+      fields: [
+        {
+          key: 'feedRate',
+          type: 'number',
+          label: '进给速度',
+          unit: 'mm/s',
+          min: 5,
+          max: 200,
+          step: 5,
+          precision: 0,
+          description: '工具移动速度',
+          showSlider: true,
+        },
+        {
+          key: 'stepover',
+          type: 'number',
+          label: '行距',
+          unit: 'mm',
+          min: 1,
+          max: 20,
+          step: 1,
+          precision: 0,
+          description: '相邻走刀路径间距',
+          // 只在 raster 模式显示
+          visible: (values) => values.pattern === 'raster',
+        },
+        {
+          key: 'depthOfCut',
+          type: 'number',
+          label: '切深',
+          unit: 'mm',
+          min: 0.01,
+          max: 0.5,
+          step: 0.01,
+          precision: 2,
+          description: '每遍的切削深度',
+        },
+      ],
+    },
+    {
+      id: 'force',
+      label: '力控参数 / Force Control',
+      collapsible: true,
+      fields: [
+        {
+          key: 'targetForce',
+          type: 'number',
+          label: '目标力',
+          unit: 'N',
+          min: 5,
+          max: 50,
+          step: 1,
+          precision: 0,
+          description: '打磨时的目标接触力',
+          showSlider: true,
+        },
+      ],
+    },
+  ],
 };
 
 // ============================================================================
@@ -235,39 +357,7 @@ function ForceFeedbackPanel({ force, targetForce, active }: { force: number; tar
   );
 }
 
-// ============================================================================
-// Grinding Parameters Panel
-// ============================================================================
-
-function GrindingPanel({ settings, onChange }: { settings: GrindingSettings; onChange: (s: Partial<GrindingSettings>) => void }) {
-  const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' };
-  const labelStyle: React.CSSProperties = { fontSize: '12px', color: THEME.textSecondary };
-  const inputStyle: React.CSSProperties = { width: '80px', padding: '6px 10px', background: THEME.background, border: `1px solid ${THEME.primary}40`, borderRadius: '4px', color: THEME.text, fontSize: '12px', textAlign: 'right' };
-
-  return (
-    <div style={{ padding: '16px', background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40` }}>
-      <h4 style={{ margin: '0 0 16px 0', color: THEME.primary }}>Grinding Parameters</h4>
-      <div style={rowStyle}>
-        <span style={labelStyle}>Pattern</span>
-        <select
-          value={settings.pattern}
-          onChange={(e) => onChange({ pattern: e.target.value as GrindingSettings['pattern'] })}
-          style={{ ...inputStyle, width: '100px' }}
-        >
-          <option value="raster">Raster</option>
-          <option value="spiral">Spiral</option>
-          <option value="contour">Contour</option>
-        </select>
-      </div>
-      <div style={rowStyle}><span style={labelStyle}>Spindle RPM</span><input type="number" value={settings.rpm} onChange={(e) => onChange({ rpm: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Feed Rate (mm/s)</span><input type="number" value={settings.feedRate} onChange={(e) => onChange({ feedRate: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Target Force (N)</span><input type="number" value={settings.targetForce} onChange={(e) => onChange({ targetForce: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Depth (mm)</span><input type="number" step="0.01" value={settings.depthOfCut} onChange={(e) => onChange({ depthOfCut: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Stepover (mm)</span><input type="number" value={settings.stepover} onChange={(e) => onChange({ stepover: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Passes</span><input type="number" value={settings.passes} onChange={(e) => onChange({ passes: Number(e.target.value) })} style={inputStyle} /></div>
-    </div>
-  );
-}
+// GrindingPanel replaced by PropertyEditor with GRINDING_SETTINGS_SCHEMA
 
 // ============================================================================
 // Region Selector Panel
@@ -632,6 +722,13 @@ function GrindingDemoInner({ tcpDebug, onTcpDebugChange }: GrindingDemoInnerProp
   const [grindingProgress, setGrindingProgress] = useState<Record<string, number>>({});
   const [dustPosition, setDustPosition] = useState<[number, number, number]>([0.5, 0.15, 0]);
 
+  // 新功能: usePropertyHistory - 撤销/重做
+  const settingsHistory = usePropertyHistory<GrindingSettings>(
+    grindingSettings,
+    setGrindingSettings,
+    { maxHistory: 30, debounceMs: 500 }
+  );
+
   // Playback from context
   const playback = useProcessPlayback();
   const ghost = useProcessGhost();
@@ -803,14 +900,72 @@ function GrindingDemoInner({ tcpDebug, onTcpDebugChange }: GrindingDemoInnerProp
 
       <div style={{ display: 'flex', gap: '16px' }}>
         {/* Left Panel */}
-        <div style={{ width: '280px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ width: '320px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <RegionSelectorPanel
             regions={surfaceRegions}
             selectedRegionId={selectedRegionId}
             grindingProgress={grindingProgress}
             onSelect={handleRegionSelect}
           />
-          <GrindingPanel settings={grindingSettings} onChange={(partial) => setGrindingSettings(prev => ({ ...prev, ...partial }))} />
+
+          {/* PropertyEditor 替代原有的 GrindingPanel */}
+          <div style={{ background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40`, overflow: 'hidden' }}>
+            {/* Undo/Redo 工具栏 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '8px 12px',
+              borderBottom: `1px solid ${THEME.primary}30`,
+              background: THEME.surface,
+            }}>
+              <span style={{ fontSize: '12px', color: THEME.primary, fontWeight: 'bold' }}>打磨参数</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                <button
+                  onClick={settingsHistory.undo}
+                  disabled={!settingsHistory.canUndo}
+                  style={{
+                    padding: '4px 8px',
+                    border: `1px solid ${THEME.primary}40`,
+                    borderRadius: '4px',
+                    background: settingsHistory.canUndo ? THEME.panel : 'transparent',
+                    color: settingsHistory.canUndo ? THEME.text : THEME.textSecondary,
+                    cursor: settingsHistory.canUndo ? 'pointer' : 'not-allowed',
+                    fontSize: '11px',
+                  }}
+                  title={`撤销 (${settingsHistory.undoCount} 步可用)`}
+                >
+                  ↶ 撤销
+                </button>
+                <button
+                  onClick={settingsHistory.redo}
+                  disabled={!settingsHistory.canRedo}
+                  style={{
+                    padding: '4px 8px',
+                    border: `1px solid ${THEME.primary}40`,
+                    borderRadius: '4px',
+                    background: settingsHistory.canRedo ? THEME.panel : 'transparent',
+                    color: settingsHistory.canRedo ? THEME.text : THEME.textSecondary,
+                    cursor: settingsHistory.canRedo ? 'pointer' : 'not-allowed',
+                    fontSize: '11px',
+                  }}
+                  title={`重做 (${settingsHistory.redoCount} 步可用)`}
+                >
+                  ↷ 重做
+                </button>
+              </div>
+            </div>
+            <PropertyEditor
+              schema={GRINDING_SETTINGS_SCHEMA}
+              value={settingsHistory.value as unknown as Record<string, unknown>}
+              onChange={(v) => settingsHistory.push(v as unknown as GrindingSettings)}
+              theme="dark"
+              compact={true}
+              hideActions={true}
+              autoSave={true}
+            />
+          </div>
+
           <ForceFeedbackPanel force={currentForce} targetForce={grindingSettings.targetForce} active={isGrinding} />
 
           {/* TCP Debug Panel */}
@@ -853,6 +1008,7 @@ function GrindingDemoInner({ tcpDebug, onTcpDebugChange }: GrindingDemoInnerProp
           </div>
         </div>
       </div>
+
     </div>
   );
 }
