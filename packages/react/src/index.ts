@@ -261,3 +261,85 @@ export type {
   CollisionVisualizationConfig,
   SafetyZoneTriggerState,
 } from '@aspect/roboviz-core';
+
+// =============================================================================
+// Timeline Components (Collision Visualization & Playback)
+// =============================================================================
+
+export {
+  // Main components
+  CollisionTimeline,
+  TimelineContainer,
+  Lane as TimelineLane,
+  EventMarker,
+  LaneGroup,
+  TimeRuler,
+  Playhead,
+  // Hooks
+  useTimelineZoom,
+  useTimelineKeyboard,
+  // Types
+  type CollisionTimelineProps,
+  type TimelineContainerProps,
+  type LaneProps as TimelineLaneProps,
+  type EventMarkerProps,
+  type LaneGroupProps,
+  type TimelineCollisionEvent,
+  type TimelineCollisionEventType,
+  type TimelineLane as TimelineLaneType,
+  type LaneGroup as LaneGroupType,
+  type TimeRange,
+  type EventSeverity,
+  type TimelineEvent,
+  type TimelinePlaybackState,
+  type TimelineSelectionState,
+  type TimelineShortcutHelp,
+  type TimeRulerProps,
+  type PlayheadProps,
+} from '@aspect/roboviz-core';
+
+// =============================================================================
+// Property Editor (Schema-driven Property Editing)
+// =============================================================================
+
+export {
+  // Main components
+  PropertyEditor,
+  PropertyGroup,
+  PropertyRow,
+  // Field components
+  NumberField,
+  TextField,
+  BooleanField,
+  EnumField,
+  Position3DField,
+  Pose3DField,
+  JointArrayField,
+  // Registry
+  registerPropertyField,
+  getFieldComponent,
+  hasFieldType,
+  getRegisteredFieldTypes,
+  // Validation
+  validateSchema,
+  validateField,
+  validateGroup,
+  // Types
+  type PropertyEditorProps,
+  type PropertyGroupProps,
+  type PropertyRowProps,
+  type PropertySchema,
+  type PropertyGroup as PropertyGroupSchema,
+  type PropertyField,
+  type PropertyFieldProps,
+  type PropertyValidationResult,
+  type PropertyValidationError,
+  type PropertyFieldType as FieldType,
+  type NumberFieldProps,
+  type TextFieldProps,
+  type BooleanFieldProps,
+  type EnumFieldProps,
+  type Position3DFieldProps,
+  type Pose3DFieldProps,
+  type JointArrayFieldProps,
+} from '@aspect/roboviz-core';
