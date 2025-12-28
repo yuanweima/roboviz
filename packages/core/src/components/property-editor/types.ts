@@ -117,6 +117,22 @@ export interface PropertyField {
   /** Show slider for number fields (requires min/max) */
   showSlider?: boolean;
 
+  // Value transformation
+  /**
+   * Value transformer for converting between display and internal formats.
+   * Useful for unit conversion (e.g., display mm but store m internally).
+   *
+   * @example
+   * // Display millimeters, store meters
+   * transform: ValueTransformers.metersToMillimeters
+   *
+   * @example
+   * // Custom scale factor
+   * transform: ValueTransformers.scale(1000)
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  transform?: ValueTransformer<any, any>;
+
   // Position3D field options
   /** Whether to allow linking X/Y/Z for uniform scaling (Position3D only) */
   allowLink?: boolean;
@@ -175,6 +191,77 @@ export interface PropertySchema {
   // Global validation
   validate?: (values: Record<string, unknown>) => PropertyValidationResult;
 }
+
+// =============================================================================
+// Value Transformation Types
+// =============================================================================
+
+/**
+ * Value transformer for converting between display and internal formats.
+ * Useful for unit conversion (e.g., mm display but m internal storage).
+ */
+export interface ValueTransformer<TInternal = unknown, TDisplay = unknown> {
+  /**
+   * Transform internal value to display value.
+   * Called when rendering the field.
+   * @example (meters) => meters * 1000  // m to mm
+   */
+  toDisplay: (internal: TInternal) => TDisplay;
+
+  /**
+   * Transform display value to internal value.
+   * Called when user changes the field.
+   * @example (mm) => mm / 1000  // mm to m
+   */
+  toInternal: (display: TDisplay) => TInternal;
+}
+
+/**
+ * Common value transformers for typical use cases.
+ */
+export const ValueTransformers = {
+  /** Meters to millimeters (display mm, store m) */
+  metersToMillimeters: {
+    toDisplay: (m: number) => m * 1000,
+    toInternal: (mm: number) => mm / 1000,
+  } as ValueTransformer<number, number>,
+
+  /** Radians to degrees (display deg, store rad) */
+  radiansToDegrees: {
+    toDisplay: (rad: number) => rad * (180 / Math.PI),
+    toInternal: (deg: number) => deg * (Math.PI / 180),
+  } as ValueTransformer<number, number>,
+
+  /** Percentage (display 0-100%, store 0-1) */
+  percentage: {
+    toDisplay: (ratio: number) => ratio * 100,
+    toInternal: (percent: number) => percent / 100,
+  } as ValueTransformer<number, number>,
+
+  /** Seconds to milliseconds (display ms, store s) */
+  secondsToMilliseconds: {
+    toDisplay: (s: number) => s * 1000,
+    toInternal: (ms: number) => ms / 1000,
+  } as ValueTransformer<number, number>,
+
+  /** Newtons to kilonewtons (display kN, store N) */
+  newtonsToKilonewtons: {
+    toDisplay: (n: number) => n / 1000,
+    toInternal: (kn: number) => kn * 1000,
+  } as ValueTransformer<number, number>,
+
+  /** Create a scale transformer */
+  scale: (factor: number): ValueTransformer<number, number> => ({
+    toDisplay: (internal) => internal * factor,
+    toInternal: (display) => display / factor,
+  }),
+
+  /** Create an offset transformer */
+  offset: (offset: number): ValueTransformer<number, number> => ({
+    toDisplay: (internal) => internal + offset,
+    toInternal: (display) => display - offset,
+  }),
+} as const;
 
 // =============================================================================
 // Validation Types

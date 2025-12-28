@@ -24,7 +24,7 @@
  * - Interactive Controls: Toggle visibility of each element
  */
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { RoboViz } from '@aspect/roboviz-react';
+import { RoboViz, PropertyEditor, type PropertySchema } from '@aspect/roboviz-react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
@@ -40,6 +40,10 @@ import {
   InspectionCamera,
   INSPECTION_CAMERA_METADATA,
   computeTcpFromMetadata,
+  // History hook for undo/redo
+  usePropertyHistory,
+  // Value transformers for unit conversion
+  ValueTransformers,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import { IndustrialInspectionWorkpiece } from '../welding/components';
@@ -162,6 +166,182 @@ const DEFAULT_INSPECTION_SETTINGS: InspectionSettings = {
   tcpRotationZ: INSPECTION_CAMERA_METADATA.defaultTcpOffset!.rotation[2] * 180 / Math.PI,
   cameraScale: 1.0,
   showDebugAxes: true,
+};
+
+// ============================================================================
+// PropertyEditor Schema - 检测参数
+// ============================================================================
+
+/**
+ * 检测相机参数 Schema
+ *
+ * 展示 PropertyEditor 特性:
+ * 1. 条件显示 - stereo 模式下显示额外参数
+ * 2. showSlider - FOV 和曝光时间滑块
+ * 3. 分组管理 - 相机/AI/可视化参数分组
+ * 4. 单位显示 - mm, ms, deg 等
+ */
+const INSPECTION_SETTINGS_SCHEMA: PropertySchema = {
+  groups: [
+    {
+      id: 'camera',
+      label: '相机参数 / Camera',
+      collapsible: false,
+      fields: [
+        {
+          key: 'cameraType',
+          type: 'enum',
+          label: '相机类型',
+          description: '选择单目或双目相机',
+          options: [
+            { value: 'monocular', label: 'Monocular - 单目相机' },
+            { value: 'stereo', label: 'Stereo - 双目相机' },
+          ],
+        },
+        {
+          key: 'resolution',
+          type: 'enum',
+          label: '分辨率',
+          options: [
+            { value: '1080p', label: '1080p HD' },
+            { value: '4K', label: '4K UHD' },
+            { value: '8K', label: '8K UHD' },
+          ],
+        },
+        {
+          key: 'cameraFOV',
+          type: 'number',
+          label: '视场角',
+          unit: '°',
+          min: 5,
+          max: 60,
+          step: 1,
+          precision: 0,
+          description: '相机视场角',
+          showSlider: true,
+        },
+        {
+          key: 'cameraDistance',
+          type: 'number',
+          label: '工作距离',
+          unit: 'mm',
+          min: 50,
+          max: 500,
+          step: 10,
+          precision: 0,
+          description: '相机到工件的距离',
+          // 使用 ValueTransformers 进行单位转换: 内部使用米,显示毫米
+          transform: ValueTransformers.metersToMillimeters,
+        },
+        {
+          key: 'exposureTime',
+          type: 'number',
+          label: '曝光时间',
+          unit: 'ms',
+          min: 1,
+          max: 100,
+          step: 1,
+          precision: 0,
+          description: '相机曝光时间',
+          showSlider: true,
+        },
+        // 双目相机特有参数
+        {
+          key: 'stereoBaseline',
+          type: 'number',
+          label: '基线距离',
+          unit: 'mm',
+          min: 30,
+          max: 200,
+          step: 5,
+          precision: 0,
+          description: '双目相机左右镜头间距',
+          visible: (values) => values.cameraType === 'stereo',
+          // 使用 ValueTransformers 进行单位转换
+          transform: ValueTransformers.metersToMillimeters,
+        },
+      ],
+    },
+    {
+      id: 'lighting',
+      label: '光照参数 / Lighting',
+      collapsible: true,
+      fields: [
+        {
+          key: 'lighting',
+          type: 'enum',
+          label: '照明方式',
+          description: '选择照明类型',
+          options: [
+            { value: 'ambient', label: 'Ambient - 环境光' },
+            { value: 'ring', label: 'Ring Light - 环形光' },
+            { value: 'structured', label: 'Structured - 结构光' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'ai',
+      label: 'AI 模型 / Detection',
+      collapsible: true,
+      fields: [
+        {
+          key: 'aiModel',
+          type: 'enum',
+          label: '检测模型',
+          description: '选择缺陷检测 AI 模型',
+          options: [
+            { value: 'fast', label: 'Fast - 快速模式' },
+            { value: 'accurate', label: 'Accurate - 精确模式' },
+            { value: 'ensemble', label: 'Ensemble - 集成模式' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'visualization',
+      label: '可视化 / Visualization',
+      collapsible: true,
+      defaultCollapsed: true,
+      fields: [
+        {
+          key: 'showFrustum',
+          type: 'boolean',
+          label: '显示视锥',
+          description: '在 3D 场景中显示相机视锥',
+        },
+        {
+          key: 'showPreview',
+          type: 'boolean',
+          label: '显示预览',
+          description: '显示相机预览面板',
+        },
+        {
+          key: 'showDepthMap',
+          type: 'boolean',
+          label: '显示深度图',
+          description: '显示双目深度图 (仅双目模式)',
+          visible: (values) => values.cameraType === 'stereo',
+        },
+        {
+          key: 'showDebugAxes',
+          type: 'boolean',
+          label: '显示调试轴',
+          description: '在末端执行器上显示坐标轴',
+        },
+        {
+          key: 'cameraScale',
+          type: 'number',
+          label: '相机模型缩放',
+          min: 0.5,
+          max: 2.0,
+          step: 0.1,
+          precision: 1,
+          description: '3D 相机模型的缩放比例',
+        },
+      ],
+    },
+  ],
 };
 
 // ============================================================================
@@ -718,221 +898,7 @@ function InspectionRegionOverlay({
   );
 }
 
-// ============================================================================
-// Inspection Parameters Panel
-// ============================================================================
-
-function InspectionPanel({
-  settings,
-  onChange,
-}: {
-  settings: InspectionSettings;
-  onChange: (s: Partial<InspectionSettings>) => void;
-}) {
-  const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' };
-  const labelStyle: React.CSSProperties = { fontSize: '12px', color: THEME.textSecondary };
-  const inputStyle: React.CSSProperties = { width: '90px', padding: '6px 10px', background: THEME.background, border: `1px solid ${THEME.primary}40`, borderRadius: '4px', color: THEME.text, fontSize: '12px', textAlign: 'right' };
-  const checkboxStyle: React.CSSProperties = { width: '18px', height: '18px', accentColor: THEME.primary };
-  const sectionStyle: React.CSSProperties = { borderTop: `1px solid ${THEME.primary}30`, paddingTop: '12px', marginTop: '12px' };
-
-  return (
-    <div style={{ padding: '16px', background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40` }}>
-      <h4 style={{ margin: '0 0 16px 0', color: THEME.primary }}>Camera Settings</h4>
-
-      {/* Camera Type */}
-      <div style={rowStyle}>
-        <span style={labelStyle}>Camera Type</span>
-        <select
-          value={settings.cameraType}
-          onChange={(e) => onChange({
-            cameraType: e.target.value as 'monocular' | 'stereo',
-            // Auto-enable depth map for stereo
-            showDepthMap: e.target.value === 'stereo' ? settings.showDepthMap : false,
-          })}
-          style={{ ...inputStyle, width: '100px' }}
-        >
-          <option value="monocular">Monocular</option>
-          <option value="stereo">Stereo</option>
-        </select>
-      </div>
-
-      {/* Stereo Baseline (only for stereo) */}
-      {settings.cameraType === 'stereo' && (
-        <div style={rowStyle}>
-          <span style={labelStyle}>Baseline (mm)</span>
-          <input
-            type="number"
-            value={Math.round(settings.stereoBaseline * 1000)}
-            onChange={(e) => onChange({ stereoBaseline: Number(e.target.value) / 1000 })}
-            style={inputStyle}
-          />
-        </div>
-      )}
-
-      <div style={rowStyle}>
-        <span style={labelStyle}>Resolution</span>
-        <select
-          value={settings.resolution}
-          onChange={(e) => onChange({ resolution: e.target.value as InspectionSettings['resolution'] })}
-          style={{ ...inputStyle, width: '100px' }}
-        >
-          <option value="1080p">1080p HD</option>
-          <option value="4K">4K UHD</option>
-          <option value="8K">8K UHD</option>
-        </select>
-      </div>
-      <div style={rowStyle}><span style={labelStyle}>FOV (deg)</span><input type="number" value={settings.cameraFOV} onChange={(e) => onChange({ cameraFOV: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Distance (mm)</span><input type="number" value={Math.round(settings.cameraDistance * 1000)} onChange={(e) => onChange({ cameraDistance: Number(e.target.value) / 1000 })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Exposure (ms)</span><input type="number" value={settings.exposureTime} onChange={(e) => onChange({ exposureTime: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}>
-        <span style={labelStyle}>Lighting</span>
-        <select
-          value={settings.lighting}
-          onChange={(e) => onChange({ lighting: e.target.value as InspectionSettings['lighting'] })}
-          style={{ ...inputStyle, width: '100px' }}
-        >
-          <option value="ambient">Ambient</option>
-          <option value="ring">Ring Light</option>
-          <option value="structured">Structured</option>
-        </select>
-      </div>
-      <div style={rowStyle}>
-        <span style={labelStyle}>AI Model</span>
-        <select
-          value={settings.aiModel}
-          onChange={(e) => onChange({ aiModel: e.target.value as InspectionSettings['aiModel'] })}
-          style={{ ...inputStyle, width: '100px' }}
-        >
-          <option value="fast">Fast</option>
-          <option value="accurate">Accurate</option>
-          <option value="ensemble">Ensemble</option>
-        </select>
-      </div>
-
-      {/* Visualization Options */}
-      <div style={sectionStyle}>
-        <h5 style={{ margin: '0 0 12px 0', color: THEME.secondary, fontSize: '12px' }}>3D Visualization</h5>
-        <div style={rowStyle}>
-          <span style={labelStyle}>Show FOV Frustum</span>
-          <input
-            type="checkbox"
-            checked={settings.showFrustum}
-            onChange={(e) => onChange({ showFrustum: e.target.checked })}
-            style={checkboxStyle}
-          />
-        </div>
-        <div style={rowStyle}>
-          <span style={labelStyle}>Show Preview Panel</span>
-          <input
-            type="checkbox"
-            checked={settings.showPreview}
-            onChange={(e) => onChange({ showPreview: e.target.checked })}
-            style={checkboxStyle}
-          />
-        </div>
-        {settings.cameraType === 'stereo' && (
-          <div style={rowStyle}>
-            <span style={labelStyle}>Show Depth Map</span>
-            <input
-              type="checkbox"
-              checked={settings.showDepthMap}
-              onChange={(e) => onChange({ showDepthMap: e.target.checked })}
-              style={checkboxStyle}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* TCP Debug Section */}
-      <div style={sectionStyle}>
-        <h5 style={{ margin: '0 0 12px 0', color: THEME.warning, fontSize: '12px' }}>🔧 TCP Debug</h5>
-
-        <div style={rowStyle}>
-          <span style={labelStyle}>Show Axes</span>
-          <input
-            type="checkbox"
-            checked={settings.showDebugAxes}
-            onChange={(e) => onChange({ showDebugAxes: e.target.checked })}
-            style={checkboxStyle}
-          />
-        </div>
-
-        <div style={{ marginBottom: '8px', fontSize: '11px', color: THEME.textSecondary }}>Position (mm)</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', marginBottom: '10px' }}>
-          <div>
-            <label style={{ fontSize: '10px', color: '#ff6666' }}>X</label>
-            <input
-              type="number"
-              value={Math.round(settings.tcpPositionX * 1000)}
-              onChange={(e) => onChange({ tcpPositionX: Number(e.target.value) / 1000 })}
-              style={{ ...inputStyle, width: '100%', textAlign: 'center' }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '10px', color: '#66ff66' }}>Y</label>
-            <input
-              type="number"
-              value={Math.round(settings.tcpPositionY * 1000)}
-              onChange={(e) => onChange({ tcpPositionY: Number(e.target.value) / 1000 })}
-              style={{ ...inputStyle, width: '100%', textAlign: 'center' }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '10px', color: '#6666ff' }}>Z</label>
-            <input
-              type="number"
-              value={Math.round(settings.tcpPositionZ * 1000)}
-              onChange={(e) => onChange({ tcpPositionZ: Number(e.target.value) / 1000 })}
-              style={{ ...inputStyle, width: '100%', textAlign: 'center' }}
-            />
-          </div>
-        </div>
-
-        <div style={{ marginBottom: '8px', fontSize: '11px', color: THEME.textSecondary }}>Rotation (deg)</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', marginBottom: '10px' }}>
-          <div>
-            <label style={{ fontSize: '10px', color: '#ff6666' }}>RX</label>
-            <input
-              type="number"
-              value={settings.tcpRotationX}
-              onChange={(e) => onChange({ tcpRotationX: Number(e.target.value) })}
-              style={{ ...inputStyle, width: '100%', textAlign: 'center' }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '10px', color: '#66ff66' }}>RY</label>
-            <input
-              type="number"
-              value={settings.tcpRotationY}
-              onChange={(e) => onChange({ tcpRotationY: Number(e.target.value) })}
-              style={{ ...inputStyle, width: '100%', textAlign: 'center' }}
-            />
-          </div>
-          <div>
-            <label style={{ fontSize: '10px', color: '#6666ff' }}>RZ</label>
-            <input
-              type="number"
-              value={settings.tcpRotationZ}
-              onChange={(e) => onChange({ tcpRotationZ: Number(e.target.value) })}
-              style={{ ...inputStyle, width: '100%', textAlign: 'center' }}
-            />
-          </div>
-        </div>
-
-        <div style={rowStyle}>
-          <span style={labelStyle}>Camera Scale</span>
-          <input
-            type="number"
-            step="0.1"
-            value={settings.cameraScale}
-            onChange={(e) => onChange({ cameraScale: Number(e.target.value) })}
-            style={inputStyle}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
+// InspectionPanel replaced by PropertyEditor with INSPECTION_SETTINGS_SCHEMA
 
 // ============================================================================
 // Defect Report Panel
@@ -1167,33 +1133,38 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
     tcpRotationZ: tcpSettings.rotationZ,
   });
 
-  // When TCP settings change in the panel, propagate up
-  const handleSettingsChange = useCallback((partial: Partial<InspectionSettings>) => {
-    setInspectionSettings(prev => {
-      const newSettings = { ...prev, ...partial };
+  // 新功能: usePropertyHistory - 撤销/重做
+  const settingsHistory = usePropertyHistory<InspectionSettings>(
+    inspectionSettings,
+    setInspectionSettings,
+    { maxHistory: 30, debounceMs: 500 }
+  );
 
-      // If TCP settings changed, propagate to parent
-      if (
-        partial.tcpPositionX !== undefined ||
-        partial.tcpPositionY !== undefined ||
-        partial.tcpPositionZ !== undefined ||
-        partial.tcpRotationX !== undefined ||
-        partial.tcpRotationY !== undefined ||
-        partial.tcpRotationZ !== undefined
-      ) {
-        onTcpSettingsChange({
-          positionX: newSettings.tcpPositionX,
-          positionY: newSettings.tcpPositionY,
-          positionZ: newSettings.tcpPositionZ,
-          rotationX: newSettings.tcpRotationX,
-          rotationY: newSettings.tcpRotationY,
-          rotationZ: newSettings.tcpRotationZ,
-        });
-      }
-
-      return newSettings;
+  // When settings change via history, propagate TCP settings up
+  useEffect(() => {
+    onTcpSettingsChange({
+      positionX: settingsHistory.value.tcpPositionX,
+      positionY: settingsHistory.value.tcpPositionY,
+      positionZ: settingsHistory.value.tcpPositionZ,
+      rotationX: settingsHistory.value.tcpRotationX,
+      rotationY: settingsHistory.value.tcpRotationY,
+      rotationZ: settingsHistory.value.tcpRotationZ,
     });
-  }, [onTcpSettingsChange]);
+  }, [
+    settingsHistory.value.tcpPositionX,
+    settingsHistory.value.tcpPositionY,
+    settingsHistory.value.tcpPositionZ,
+    settingsHistory.value.tcpRotationX,
+    settingsHistory.value.tcpRotationY,
+    settingsHistory.value.tcpRotationZ,
+    onTcpSettingsChange,
+  ]);
+
+  // 使用 schema 中的 transform 属性后，PropertyEditor 会自动处理单位转换
+  // 无需再手动转换，直接传递原始值
+  const handleSettingsChange = useCallback((newValues: Record<string, unknown>) => {
+    settingsHistory.push(newValues as unknown as InspectionSettings);
+  }, [settingsHistory]);
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [scannedRegionIds, setScannedRegionIds] = useState<string[]>([]);
@@ -1487,8 +1458,66 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
 
       <div style={{ display: 'flex', gap: '16px' }}>
         {/* Left Panel */}
-        <div style={{ width: '280px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <InspectionPanel settings={inspectionSettings} onChange={handleSettingsChange} />
+        <div style={{ width: '320px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* PropertyEditor 替代原有的 InspectionPanel */}
+          <div style={{ background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40`, overflow: 'hidden' }}>
+            {/* Undo/Redo 工具栏 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '8px 12px',
+              borderBottom: `1px solid ${THEME.primary}30`,
+              background: THEME.surface,
+            }}>
+              <span style={{ fontSize: '12px', color: THEME.primary, fontWeight: 'bold' }}>检测参数</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px' }}>
+                <button
+                  onClick={settingsHistory.undo}
+                  disabled={!settingsHistory.canUndo}
+                  style={{
+                    padding: '4px 8px',
+                    border: `1px solid ${THEME.primary}40`,
+                    borderRadius: '4px',
+                    background: settingsHistory.canUndo ? THEME.panel : 'transparent',
+                    color: settingsHistory.canUndo ? THEME.text : THEME.textSecondary,
+                    cursor: settingsHistory.canUndo ? 'pointer' : 'not-allowed',
+                    fontSize: '11px',
+                  }}
+                  title={`撤销 (${settingsHistory.undoCount} 步可用)`}
+                >
+                  ↶ 撤销
+                </button>
+                <button
+                  onClick={settingsHistory.redo}
+                  disabled={!settingsHistory.canRedo}
+                  style={{
+                    padding: '4px 8px',
+                    border: `1px solid ${THEME.primary}40`,
+                    borderRadius: '4px',
+                    background: settingsHistory.canRedo ? THEME.panel : 'transparent',
+                    color: settingsHistory.canRedo ? THEME.text : THEME.textSecondary,
+                    cursor: settingsHistory.canRedo ? 'pointer' : 'not-allowed',
+                    fontSize: '11px',
+                  }}
+                  title={`重做 (${settingsHistory.redoCount} 步可用)`}
+                >
+                  ↷ 重做
+                </button>
+              </div>
+            </div>
+            <PropertyEditor
+              schema={INSPECTION_SETTINGS_SCHEMA}
+              value={settingsHistory.value as unknown as Record<string, unknown>}
+              onChange={handleSettingsChange}
+              theme="dark"
+              compact={true}
+              hideActions={true}
+              autoSave={true}
+            />
+          </div>
+
           <DefectReportPanel defects={defects} selectedDefect={selectedDefect} scanComplete={scanComplete} />
 
           {state.trajectory && (

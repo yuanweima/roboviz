@@ -13,7 +13,12 @@ import { DEFAULT_LANE_HEIGHTS } from './types';
 /** Filter events that belong to this lane */
 function filterEventsForLane(events: TimelineEvent[], lane: TimelineLane): TimelineEvent[] {
   return events.filter((event) => {
-    // Match by robot ID
+    // Priority 1: Match by laneId (for generic/custom events)
+    if (event.laneId !== undefined) {
+      return event.laneId === lane.id;
+    }
+
+    // Priority 2: Match by robot ID (for collision-specific events)
     if (lane.robotId) {
       const source = (event as any).source;
       if (!source || source.robotId !== lane.robotId) return false;
@@ -34,10 +39,16 @@ function filterEventsForLane(events: TimelineEvent[], lane: TimelineLane): Timel
       }
     }
 
-    // Match by zone ID
+    // Priority 3: Match by zone ID
     if (lane.zoneId) {
       const target = (event as any).target;
       return target?.type === 'safety-zone' && target.zoneId === lane.zoneId;
+    }
+
+    // For custom lanes without specific matching, only show if event has no laneId
+    // (otherwise it would have matched in Priority 1)
+    if (lane.type === 'custom') {
+      return false; // Custom lanes require explicit laneId matching
     }
 
     return true;

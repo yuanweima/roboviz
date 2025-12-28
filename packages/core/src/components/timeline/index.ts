@@ -31,3 +31,5 @@ export { TimelineContainer, type TimelineContainerHandle } from './TimelineConta
 // High-level Components
 // =============================================================================
 export { CollisionTimeline } from './CollisionTimeline';
+export { GenericTimeline, DEFAULT_SEVERITY_COLORS } from './GenericTimeline';
+export type { GenericTimelineProps, LegendItemConfig } from './GenericTimeline';

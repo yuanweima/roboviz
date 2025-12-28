@@ -91,15 +91,24 @@ export interface TimelineCollisionEvent {
   message?: string;
 }
 
+/** Extended severity levels for general use */
+export type ExtendedSeverity = EventSeverity | 'high' | 'medium' | 'low' | 'success' | 'error';
+
 /** Generic timeline event (extensible by users) */
 export interface TimelineEvent<T = unknown> {
   id: string;
   timestamp: number;
   duration?: number;
   type: string;
-  severity?: EventSeverity;
+  severity?: EventSeverity | ExtendedSeverity;
+  /** Lane ID to associate this event with a specific lane */
+  laneId?: string;
   data?: T;
   label?: string;
+  /** Custom color for this event (overrides default) */
+  color?: string;
+  /** Custom icon for this event */
+  icon?: React.ReactNode;
 }
 
 // =============================================================================
