@@ -1,316 +1,387 @@
 # RoboViz
 
-A cross-platform 3D robot visualization library with multi-language SDK support.
+跨平台 3D 机器人可视化库，专为工业机器人应用设计。
 
-## Overview
+## 概述
 
-RoboViz provides a simple, consistent API for visualizing robots across different programming languages. Whether you're using Python, C++, Rust, or building a React application, RoboViz offers a unified way to display robots, trajectories, obstacles, and more.
+RoboViz 是一个功能丰富的 React 3D 机器人可视化组件库，集成了运动学求解、工业流程编排、实时视觉流等高级功能。适用于焊接、打磨、检测等工业应用场景的开发。
 
-### Key Features
+### 核心特性
 
-- **Zero-Config for SDK Users**: Python/C++ users can start with just `rv.init()`
-- **Multi-Language SDKs**: Python, TypeScript, Rust, C++ (planned)
-- **React Integration**: Direct component usage for web applications
-- **Protocol-Driven**: JSON-RPC 2.0 for extensibility
-- **Rich Visualization**:
-  - URDF robots with mesh loading and joint control
-  - Trajectory playback with animation
-  - Waypoints and path visualization
-  - Obstacles (box, sphere, cylinder, mesh)
-  - Safety zones with transparency
-  - Coordinate frames hierarchy
-  - Point cloud rendering (uniform, height-based, intensity-based colors)
-  - TCP pose display
-  - Collision detection
-- **Interactive Controls**:
-  - Control panel UI for scene settings
-  - Keyboard shortcuts
-  - Camera controls
-  - Robot interaction (click, drag)
+- **运动学引擎**: 集成 trajx-wasm 求解器，支持正逆运动学、DH 参数自动识别
+- **工业流程系统**: 插件化流程架构，支持焊接、打磨、检测等应用
+- **Ghost 机器人预览**: IK 实时预览，支持工作点悬停显示目标姿态
+- **轨迹规划与播放**: 支持关节空间和笛卡尔空间轨迹
+- **多 TCP 工具管理**: Tool Library API 支持多工具、多 TCP 配置
+- **实时视觉流**: 相机流、点云流、深度图渲染
+- **工业主题系统**: 深色/浅色/工业风格主题切换
+- **Jog 控制面板**: 工业级关节/笛卡尔点动控制 UI
 
-## Quick Start
+## 项目结构
 
-### Python (Recommended)
-
-```python
-import roboviz as rv
-
-# Initialize - starts server, opens browser
-rv.init()
-
-# Add and control a robot
-robot = rv.add_robot("/path/to/robot.urdf")
-robot.set_joints([0, 0.5, 0.8, 0, 0, 0])
-
-# Add obstacles
-rv.add_box(size=[0.2, 0.2, 0.2], position=[0.5, 0.1, 0.3], color="#ff6b6b")
-rv.add_sphere(radius=0.1, position=[0.3, 0.2, 0.1], color="#4ecdc4")
-
-# Add coordinate frames
-rv.add_frame("world", position=[0, 0, 0])
-rv.add_frame("tool", position=[0.5, 0, 0.5], parent="world")
-
-# Add point cloud
-rv.add_point_cloud(
-    points=[[x, y, z] for x in range(-10, 10) for y in range(-10, 10) for z in [0]],
-    color_mode="height"
-)
-
-# Configure scene
-rv.set_scene(background="#1a1a2e", shadows=True, ground_plane=True)
-
-# Enable collision detection
-rv.enable_collision_detection(True)
-
-# Play trajectory
-trajectory = [
-    {"time": 0.0, "joints": [0, 0, 0, 0, 0, 0]},
-    {"time": 1.0, "joints": [0.5, 0.3, 0.8, 0, 0, 0]},
-    {"time": 2.0, "joints": [0, 0, 0, 0, 0, 0]},
-]
-rv.play_trajectory(robot.id, trajectory, speed=1.0, loop=True)
-
-# Keep running
-rv.show()
+```
+roboviz/
+├── packages/
+│   ├── core/          # 核心渲染引擎和组件库
+│   ├── react/         # React 封装组件
+│   ├── viewer/        # 独立查看器
+│   └── sdk/           # Python/其他语言 SDK
+├── examples/
+│   ├── react-demo/    # React 演示应用（含所有功能模块）
+│   └── python/        # Python SDK 示例
+└── docs/              # 文档
 ```
 
-### React Direct Integration
+## 包说明
+
+| 包 | 说明 |
+|---|------|
+| `@aspect/roboviz-core` | 核心渲染引擎（Robot, Scene, 运动学, 流程系统等） |
+| `@aspect/roboviz-react` | React 高级封装 |
+| `@aspect/roboviz-viewer` | 独立可视化查看器 |
+
+## 快速开始
+
+### 安装
+
+```bash
+npm install @aspect/roboviz-core
+# 或
+pnpm add @aspect/roboviz-core
+```
+
+### 基础使用
 
 ```tsx
 import { Canvas } from '@react-three/fiber';
-import { Robot, Trajectory, PointCloud } from '@aspect/roboviz-core';
+import { Scene, Robot } from '@aspect/roboviz-core';
 
 function App() {
   const [joints, setJoints] = useState([0, 0, 0, 0, 0, 0]);
 
   return (
     <Canvas>
-      <Robot
-        urdfPath="/models/robot.urdf"
-        jointAngles={joints}
-        position={[0, 0, 0]}
-        showTcpFrame={true}
-      />
-      <Trajectory
-        waypoints={trajectoryData}
-        color="#4ecdc4"
-        lineWidth={2}
-      />
-      <PointCloud
-        points={pointData}
-        colorMode="height"
-        pointSize={0.02}
-      />
+      <Scene>
+        <Robot
+          urdfPath="/models/fanuc_m10ia.urdf"
+          jointAngles={joints}
+        />
+      </Scene>
     </Canvas>
   );
 }
 ```
 
-### Tauri/Electron Integration
+### 运动学集成
 
 ```tsx
-import { RoboViz, useRoboVizBridge } from '@aspect/roboviz-react';
-import { invoke } from '@tauri-apps/api/core';
+import { useRobotWithKinematics } from '@aspect/roboviz-core';
 
-function Scene3D() {
-  const bridge = useRoboVizBridge({
-    transport: 'tauri',
-    handlers: {
-      'ik.solve': (params) => invoke('solve_ik', params),
-    }
+function RobotWithIK() {
+  const robot = useRobotWithKinematics({
+    urdfPath: '/models/fanuc_m10ia.urdf',
+    dhRobotName: 'fanuc_m10ia', // 自动匹配 DH 参数
+    tool: {
+      position: [0, 0, 0.12],
+      quaternion: [0, 0, 0, 1],
+    },
   });
 
-  return <RoboViz bridge={bridge} />;
+  // 计算逆运动学
+  const handleMoveTo = (targetPose) => {
+    const result = robot.ikTcp(targetPose);
+    if (result.success) {
+      robot.setJointAngles(result.solution);
+    }
+  };
+
+  return <Robot {...robot.robotProps} />;
 }
 ```
 
-## Architecture
+### Ghost 机器人预览
 
+```tsx
+import {
+  RobotProcessProvider,
+  ProcessScene,
+  useRobotProcessContext
+} from '@aspect/roboviz-core';
+
+function WeldingDemo() {
+  return (
+    <RobotProcessProvider
+      urdfPath="/models/fanuc_m10ia.urdf"
+      tool={{ position: [0, 0, 0.12], quaternion: [0, 0, 0, 1] }}
+    >
+      <Canvas>
+        <ProcessScene
+          urdfPath="/models/fanuc_m10ia.urdf"
+          showGhost={true}
+          showTrajectory={true}
+        />
+      </Canvas>
+      <WorkpointControls />
+    </RobotProcessProvider>
+  );
+}
+
+function WorkpointControls() {
+  const { actions } = useRobotProcessContext();
+
+  // 设置 Ghost 目标位姿，Ghost 机器人会自动显示 IK 解
+  const handleHover = (pose) => {
+    actions.setGhostTarget(pose);
+  };
+
+  return <div onMouseMove={...} />;
+}
 ```
-┌─────────────────────────────────────────────────────┐
-│  User Application (Python / C++ / React / etc.)     │
-└───────────────────────┬─────────────────────────────┘
-                        │
-┌───────────────────────┴─────────────────────────────┐
-│  SDK Layer                                          │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌───────────┐ │
-│  │ Python  │ │  C++    │ │  Rust   │ │ TypeScript│ │
-│  │  SDK    │ │  SDK    │ │  SDK    │ │   React   │ │
-│  └────┬────┘ └────┬────┘ └────┬────┘ └─────┬─────┘ │
-└───────┼───────────┼───────────┼─────────────┼───────┘
-        │  Embedded │ Server    │             │ Direct
-        └───────────┴───────────┘             │
-                    │                         │
-┌───────────────────┴─────────────────────────┴───────┐
-│  Viewer (Browser)                                   │
-│  ┌─────────────────────────────────────────────┐   │
-│  │  Protocol Handler → State Store → Renderer  │   │
-│  └─────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────┘
+
+### 工业流程系统
+
+```tsx
+import {
+  ProcessProvider,
+  RobotProcessProvider,
+  ProcessScene,
+  weldingProcess,
+  grindingProcess,
+} from '@aspect/roboviz-core';
+
+function IndustrialApp() {
+  return (
+    <ProcessProvider
+      initialProcessId="welding"
+      processes={[weldingProcess, grindingProcess]}
+    >
+      <RobotProcessProvider urdfPath="/models/robot.urdf">
+        <Canvas>
+          <ProcessScene urdfPath="/models/robot.urdf">
+            {/* 末端执行器工具会自动渲染 */}
+            <EndEffector>
+              <WeldingTorch />
+            </EndEffector>
+          </ProcessScene>
+        </Canvas>
+      </RobotProcessProvider>
+    </ProcessProvider>
+  );
+}
 ```
 
-## Packages
+### 轨迹播放
 
-| Package | Description |
-|---------|-------------|
-| `@aspect/roboviz-core` | Core rendering components (Robot, Scene, Trajectory, PointCloud, etc.) |
-| `@aspect/roboviz-viewer` | Standalone viewer for SDK usage |
-| `roboviz` (PyPI) | Python SDK |
+```tsx
+import { useRobotProcessContext } from '@aspect/roboviz-core';
 
-## Installation
+function TrajectoryPlayer() {
+  const { actions } = useRobotProcessContext();
 
-### Python
+  const handlePlay = () => {
+    // 加载轨迹
+    actions.loadTrajectory({
+      waypoints: [
+        { position: [0.5, 0, 0.3], quaternion: [0, 0, 0, 1], time: 0 },
+        { position: [0.5, 0.2, 0.3], quaternion: [0, 0, 0, 1], time: 1 },
+        { position: [0.5, 0.2, 0.5], quaternion: [0, 0, 0, 1], time: 2 },
+      ],
+    });
+
+    // 开始播放
+    actions.play();
+  };
+
+  return (
+    <button onClick={handlePlay}>播放轨迹</button>
+  );
+}
+```
+
+### 工具库管理
+
+```tsx
+import { useKinematicsSolver } from '@aspect/roboviz-core';
+
+function MultiToolRobot() {
+  const solver = useKinematicsSolver(urdfContent);
+
+  useEffect(() => {
+    if (!solver) return;
+
+    // 添加焊枪工具
+    solver.addTool('welding_torch', {
+      position: [0, 0, 0.15],
+      quaternion: [0, 0, 0, 1],
+    });
+    solver.addTcpToTool('welding_torch', 'tip', {
+      position: [0, 0, 0.02],
+      quaternion: [0, 0, 0, 1],
+    });
+
+    // 添加打磨工具
+    solver.addTool('grinder', {
+      position: [0, 0, 0.1],
+      quaternion: [0, 0, 0, 1],
+    });
+    solver.addTcpWithStandoff('grinder', 'contact', {
+      position: [0, 0, 0.05],
+      quaternion: [0, 0, 0, 1],
+    }, 0.005); // 5mm standoff
+
+    // 激活工具
+    solver.activateTool('welding_torch', 'tip');
+  }, [solver]);
+}
+```
+
+### 视觉流渲染
+
+```tsx
+import {
+  CameraStreamProvider,
+  PointCloudStreamProvider,
+  ImageStreamRenderer,
+  PointCloudStreamRenderer,
+} from '@aspect/roboviz-core';
+
+function VisionDemo() {
+  return (
+    <>
+      {/* 相机流 */}
+      <CameraStreamProvider
+        streamId="camera_1"
+        wsUrl="ws://localhost:8080/camera"
+      >
+        <ImageStreamRenderer />
+      </CameraStreamProvider>
+
+      {/* 点云流 */}
+      <PointCloudStreamProvider
+        streamId="lidar_1"
+        wsUrl="ws://localhost:8080/pointcloud"
+      >
+        <Canvas>
+          <PointCloudStreamRenderer colorMode="height" />
+        </Canvas>
+      </PointCloudStreamProvider>
+    </>
+  );
+}
+```
+
+## 演示模块
+
+`examples/react-demo` 包含完整的功能演示：
+
+| 模块 | 说明 |
+|------|------|
+| `RobotModule` | 基础机器人渲染 |
+| `TrajxWasmModule` | 运动学求解演示 |
+| `GhostRobotModule` | Ghost 预览功能 |
+| `WorkpointModule` | 工作点交互 |
+| `TrajectoryModule` | 轨迹规划播放 |
+| `CollisionModule` | 碰撞检测可视化 |
+| `VisionModule` | 视觉流渲染 |
+| `MultiRobotModule` | 多机器人场景 |
+| `ProcessWorkflowModule` | 工业流程编排 |
+| **工业场景演示** | |
+| `WeldingScene` | 焊接场景演示 |
+| `GrindingScene` | 打磨场景演示 |
+| `InspectionScene` | 检测场景演示 |
+
+运行演示：
 
 ```bash
-pip install roboviz
+pnpm install
+pnpm --filter roboviz-react-demo dev
 ```
 
-### npm (React)
+## 核心 API
+
+### 运动学
+
+```typescript
+// 正运动学
+const fkResult = solver.forwardKinematics(jointAngles);
+const tcpPose = solver.forwardKinematicsTcp(jointAngles);
+
+// 逆运动学
+const ikResult = solver.inverseKinematics(targetPose, seed);
+const allSolutions = solver.inverseKinematicsAll(targetPose);
+
+// 命名 TCP 运动学
+const pose = solver.forwardKinematicsNamedTcp(joints, 'torch', 'tip');
+const ik = solver.inverseKinematicsNamedTcp(target, 'torch', 'tip');
+```
+
+### 流程上下文
+
+```typescript
+const { state, actions } = useRobotProcessContext();
+
+// 状态
+state.jointAngles        // 当前关节角度
+state.tcpPose           // 当前 TCP 位姿
+state.ghostJointAngles  // Ghost 关节角度
+state.ghostStatus       // 'valid' | 'warning' | 'error' | 'neutral'
+state.isPlaying         // 轨迹播放状态
+state.trajectory        // 已加载轨迹
+
+// 操作
+actions.setJointAngles(angles)
+actions.setGhostTarget(pose)
+actions.loadTrajectory(traj)
+actions.play() / actions.pause() / actions.stop()
+```
+
+### 主题系统
+
+```tsx
+import {
+  RoboVizThemeProvider,
+  industrialTheme,
+  createRoboVizTheme
+} from '@aspect/roboviz-core';
+
+// 使用预设主题
+<RoboVizThemeProvider theme={industrialTheme}>
+  <App />
+</RoboVizThemeProvider>
+
+// 自定义主题
+const customTheme = createRoboVizTheme({
+  colors: {
+    primary: '#0066cc',
+    background: { base: '#1a1a2e' },
+  },
+});
+```
+
+## 开发
 
 ```bash
-npm install @aspect/roboviz-core
-```
-
-## Python SDK API Reference
-
-### Initialization
-
-```python
-rv.init(host="127.0.0.1", ws_port=8766, http_port=8765, open_browser=True)
-rv.show()  # Block and keep running
-rv.close()  # Clean shutdown
-```
-
-### Robot
-
-```python
-robot = rv.add_robot(urdf_path, id=None, position=[0,0,0], color=None)
-robot.set_joints([j1, j2, j3, j4, j5, j6])
-robot.get_joints()  # Returns current joint angles
-robot.get_tcp_pose()  # Returns TCP position and orientation
-rv.remove_robot(robot_id)
-```
-
-### Obstacles
-
-```python
-rv.add_box(size=[w, h, d], position=[x, y, z], rotation=[rx, ry, rz], color="#hex", opacity=1.0)
-rv.add_sphere(radius=r, position=[x, y, z], color="#hex", opacity=1.0)
-rv.add_cylinder(radius=r, height=h, position=[x, y, z], color="#hex", opacity=1.0)
-rv.add_mesh(mesh_path, position=[x, y, z], scale=[sx, sy, sz], color="#hex")
-rv.remove_obstacle(obstacle_id)
-```
-
-### Coordinate Frames
-
-```python
-rv.add_frame(name, position=[x, y, z], rotation=[rx, ry, rz], parent=None, scale=1.0)
-rv.remove_frame(name)
-```
-
-### Point Cloud
-
-```python
-rv.add_point_cloud(
-    points=[[x, y, z], ...],
-    colors=[[r, g, b], ...],  # Optional, 0-255 per channel
-    intensities=[...],  # Optional, for intensity color mode
-    point_size=0.02,
-    color_mode="uniform" | "height" | "intensity",
-    color="#hex",  # For uniform mode
-    id=None
-)
-rv.remove_point_cloud(point_cloud_id)
-```
-
-### Trajectory
-
-```python
-trajectory = [
-    {"time": 0.0, "joints": [j1, j2, j3, j4, j5, j6]},
-    {"time": 1.0, "joints": [j1, j2, j3, j4, j5, j6]},
-    ...
-]
-rv.play_trajectory(robot_id, trajectory, speed=1.0, loop=False)
-rv.pause_trajectory(robot_id)
-rv.stop_trajectory(robot_id)
-```
-
-### Scene Configuration
-
-```python
-rv.set_scene(
-    background="#1a1a2e",
-    shadows=True,
-    ground_plane=True,
-    ground_color="#303030",
-    environment="warehouse" | "sunset" | "dawn" | "night" | "studio",
-    ambient_intensity=0.5,
-    directional_intensity=1.0
-)
-```
-
-### Collision Detection
-
-```python
-rv.enable_collision_detection(True)
-# Collision events are sent via WebSocket notifications
-```
-
-### Safety Zones
-
-```python
-rv.add_safety_zone(
-    type="box" | "sphere" | "cylinder",
-    position=[x, y, z],
-    size=[w, h, d] | radius=r,  # Depending on type
-    color="#ff0000",
-    opacity=0.3,
-    id=None
-)
-rv.remove_safety_zone(zone_id)
-```
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `R` | Reset camera view |
-| `G` | Toggle grid |
-| `A` | Toggle axes helper |
-| `Space` | Play/Pause trajectory |
-| `Escape` | Stop trajectory |
-
-## Documentation
-
-- [Architecture](./docs/architecture-v2.md) - System design and integration patterns
-- [Examples](./examples/README.md) - Usage examples
-
-## Development
-
-```bash
-# Install dependencies
+# 安装依赖
 pnpm install
 
-# Start viewer development
-pnpm --filter @aspect/roboviz-viewer dev
+# 启动开发服务器
+pnpm --filter roboviz-react-demo dev
 
-# Start react-basic example
-pnpm --filter roboviz-react-basic dev
-
-# Build all packages
+# 构建所有包
 pnpm build
 
-# Build viewer and copy to Python SDK
-pnpm --filter @aspect/roboviz-viewer build
-cp -r packages/viewer/dist/* packages/sdk/python/roboviz/_viewer/
-
-# Run Python example
-cd packages/sdk/python
-uv venv && uv pip install -e .
-python ../../examples/python/full_features_demo.py
+# 运行测试
+pnpm test
 ```
 
-## License
+## 技术栈
+
+- **React 18/19** - UI 框架
+- **Three.js / React Three Fiber** - 3D 渲染
+- **trajx-wasm** - Rust 编写的运动学求解器 (WebAssembly)
+- **Zustand** - 状态管理
+- **TypeScript** - 类型安全
+
+## 许可证
 
 MIT
