@@ -114,6 +114,11 @@ export * from './multi-robot';
 export * from './performance';
 
 // =============================================================================
+// Rendering System (Advanced Post-Processing & Materials)
+// =============================================================================
+export * from './rendering';
+
+// =============================================================================
 // Diagnostic (Phase 7: Debugging & Diagnostics)
 // =============================================================================
 export * from './diagnostic';
@@ -153,6 +158,15 @@ export * from './kinematics';
 // =============================================================================
 export { Scene, type SceneProps } from './components/Scene';
 export { Robot, type RobotProps, type EulerTuple, type QuaternionTuple, type MeshDataMap, useEndEffectorPose } from './components/Robot';
+export {
+  InstancedRobotArms,
+  useRobotArmBuffers,
+  type InstancedRobotArmsProps,
+  type RobotLoadedInfo,
+  type RobotArmBuffers,
+  type UseRobotArmBuffersOptions,
+  type MeshQuality,
+} from './components/InstancedRobotArms';
 export {
   EndEffector,
   StandaloneEndEffector,
@@ -333,6 +347,11 @@ export * from './components/timeline';
 // Property Editor (Schema-driven Property Editing)
 // =============================================================================
 export * from './components/property-editor';
+
+// =============================================================================
+// Workers (Web Worker + SharedArrayBuffer for RL)
+// =============================================================================
+export * from './workers';
 
 // =============================================================================
 // Main Component

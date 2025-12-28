@@ -22,6 +22,11 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    headers: {
+      // Required for SharedArrayBuffer support
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
   },
   resolve: {
     alias: {

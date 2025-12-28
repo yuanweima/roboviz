@@ -38,3 +38,9 @@ export {
   type PerformancePanelProps,
   type PanelPosition,
 } from './PerformancePanel';
+
+// Performance Integration Hook
+export {
+  usePerformanceIntegration,
+  type UsePerformanceIntegrationOptions,
+} from './usePerformanceIntegration';
