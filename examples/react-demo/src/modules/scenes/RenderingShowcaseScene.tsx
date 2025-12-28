@@ -1,16 +1,40 @@
 /**
  * Rendering Showcase Scene
  *
- * Demonstrates the new advanced rendering capabilities:
- * - Post-Processing: SSAO, Bloom, Outline, Vignette
- * - Custom Shader Materials: X-Ray, Hologram, Distance Field, Flow Line
- * - GPU Instancing: 1000 robot arms rendered efficiently
- * - Quality Presets: Low, Medium, High, Ultra
- * - Real-time quality adjustment
+ * Comprehensive demonstration of all advanced rendering capabilities:
+ *
+ * POST-PROCESSING:
+ * - SSAO (Screen Space Ambient Occlusion)
+ * - Bloom (Glow effects)
+ * - Outline (Selection highlighting)
+ * - Vignette (Edge darkening)
+ *
+ * CUSTOM SHADER MATERIALS:
+ * - X-Ray (See-through with edge highlighting)
+ * - Hologram (Sci-fi holographic effect)
+ * - Distance Field (Proximity visualization)
+ * - Flow Line (Animated flow patterns)
+ * - Heatmap (Data visualization with color maps)
+ *
+ * OPTIMIZATION:
+ * - GPU Instancing (200+ robot arms)
+ * - Level of Detail (LOD) for robots
+ * - Adaptive Quality Control (auto FPS-based adjustment)
+ *
+ * DEBUG VISUALIZATION:
+ * - Wireframe mode
+ * - Bounding boxes
+ * - Normal vectors
+ * - Light helpers
+ *
+ * ENVIRONMENT SYSTEM:
+ * - HDR environment maps
+ * - Skybox presets (industrial, outdoor, studio, night)
+ * - Fog effects (linear, exponential)
  */
 
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { RoboViz } from '@aspect/roboviz-react';
+import { RoboViz, Robot } from '@aspect/roboviz-react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
@@ -19,10 +43,15 @@ import {
   getMaterialLibrary,
   PerformancePanel,
   usePerformanceIntegration,
+  DebugOverlay,
+  EnvironmentSystem,
+  SKYBOX_PRESETS,
   type RenderConfig,
   type QualityPreset,
   type RobotLoadedInfo,
   type MeshQuality,
+  type EnvironmentSystemConfig,
+  type SkyboxPreset,
 } from '@aspect/roboviz-core';
 
 // ============================================================================
@@ -48,10 +77,10 @@ const THEME = {
 // ============================================================================
 
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';
-const ROBOT_ARM_COUNT = 200; // Number of instanced robot arms
+const ROBOT_ARM_COUNT = 200;
 
-// Control modes - simplified to just Worker FK and SharedBuffer
 type ControlMode = 'worker-fk' | 'shared-buffer';
+type DemoTab = 'rendering' | 'environment' | 'debug' | 'lod';
 
 // ============================================================================
 // Custom Material Demo Components
@@ -59,11 +88,11 @@ type ControlMode = 'worker-fk' | 'shared-buffer';
 
 function HologramCube({ position }: { position: [number, number, number] }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const [material, setMaterial] = useState<THREE.ShaderMaterial | null>(null);
 
   useEffect(() => {
     const lib = getMaterialLibrary();
-    materialRef.current = lib.createHologramMaterial({
+    const mat = lib.createHologramMaterial({
       color: '#00ffff',
       secondaryColor: '#ffffff',
       opacity: 0.7,
@@ -74,30 +103,41 @@ function HologramCube({ position }: { position: [number, number, number] }) {
       showGrid: true,
       gridSize: 15,
     });
+    if (mat) setMaterial(mat);
+
+    return () => {
+      mat?.dispose();
+    };
   }, []);
 
   useFrame(() => {
-    if (materialRef.current && meshRef.current) {
-      getMaterialLibrary().updateTime(materialRef.current);
+    if (material && meshRef.current) {
+      getMaterialLibrary().updateTime(material);
       meshRef.current.rotation.y += 0.005;
     }
   });
 
+  useEffect(() => {
+    if (meshRef.current && material) {
+      meshRef.current.material = material;
+    }
+  }, [material]);
+
   return (
     <mesh ref={meshRef} position={position}>
       <boxGeometry args={[0.3, 0.3, 0.3]} />
-      {materialRef.current && <primitive object={materialRef.current} attach="material" />}
+      <meshBasicMaterial color="#003333" />
     </mesh>
   );
 }
 
 function XRaySphere({ position }: { position: [number, number, number] }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const [material, setMaterial] = useState<THREE.ShaderMaterial | null>(null);
 
   useEffect(() => {
     const lib = getMaterialLibrary();
-    materialRef.current = lib.createXRayMaterial({
+    const mat = lib.createXRayMaterial({
       color: '#0088ff',
       edgeColor: '#ffffff',
       opacity: 0.6,
@@ -105,29 +145,40 @@ function XRaySphere({ position }: { position: [number, number, number] }) {
       fresnelPower: 2.5,
       animated: true,
     });
+    if (mat) setMaterial(mat);
+
+    return () => {
+      mat?.dispose();
+    };
   }, []);
 
   useFrame(() => {
-    if (materialRef.current) {
-      getMaterialLibrary().updateTime(materialRef.current);
+    if (material) {
+      getMaterialLibrary().updateTime(material);
     }
   });
+
+  useEffect(() => {
+    if (meshRef.current && material) {
+      meshRef.current.material = material;
+    }
+  }, [material]);
 
   return (
     <mesh ref={meshRef} position={position}>
       <sphereGeometry args={[0.2, 32, 32]} />
-      {materialRef.current && <primitive object={materialRef.current} attach="material" />}
+      <meshBasicMaterial color="#003355" />
     </mesh>
   );
 }
 
 function DistanceFieldPlane({ position }: { position: [number, number, number] }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const [material, setMaterial] = useState<THREE.ShaderMaterial | null>(null);
 
   useEffect(() => {
     const lib = getMaterialLibrary();
-    materialRef.current = lib.createDistanceFieldMaterial({
+    const mat = lib.createDistanceFieldMaterial({
       minDistance: 0.2,
       maxDistance: 1.5,
       safeColor: '#00ff88',
@@ -136,18 +187,79 @@ function DistanceFieldPlane({ position }: { position: [number, number, number] }
       opacity: 0.8,
       pulseSpeed: 4,
     });
+    if (mat) setMaterial(mat);
+
+    return () => {
+      mat?.dispose();
+    };
   }, []);
 
   useFrame(() => {
-    if (materialRef.current) {
-      getMaterialLibrary().updateTime(materialRef.current);
+    if (material) {
+      getMaterialLibrary().updateTime(material);
     }
   });
+
+  useEffect(() => {
+    if (meshRef.current && material) {
+      meshRef.current.material = material;
+    }
+  }, [material]);
 
   return (
     <mesh ref={meshRef} position={position} rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[1, 1, 32, 32]} />
-      {materialRef.current && <primitive object={materialRef.current} attach="material" />}
+      <meshBasicMaterial color="#114422" />
+    </mesh>
+  );
+}
+
+// Heatmap visualization demo
+function HeatmapSurface({ position }: { position: [number, number, number] }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const [material, setMaterial] = useState<THREE.ShaderMaterial | null>(null);
+
+  useEffect(() => {
+    const lib = getMaterialLibrary();
+    const mat = lib.createHeatmapMaterial({
+      colorMap: 'viridis',
+      minValue: 0,
+      maxValue: 1,
+      opacity: 0.9,
+    });
+    if (mat) setMaterial(mat);
+
+    // Cleanup on unmount
+    return () => {
+      mat?.dispose();
+    };
+  }, []);
+
+  // Apply heatmap values once material and mesh are ready
+  useEffect(() => {
+    if (meshRef.current && material) {
+      const lib = getMaterialLibrary();
+      const geometry = meshRef.current.geometry;
+      const positionAttr = geometry.getAttribute('position');
+      const values: number[] = [];
+
+      for (let i = 0; i < positionAttr.count; i++) {
+        const x = positionAttr.getX(i);
+        const y = positionAttr.getY(i);
+        // Create radial gradient pattern
+        const value = Math.sin(x * 5) * Math.cos(y * 5) * 0.5 + 0.5;
+        values.push(value);
+      }
+
+      lib.applyHeatmapValues(geometry, values);
+      meshRef.current.material = material;
+    }
+  }, [material]);
+
+  return (
+    <mesh ref={meshRef} position={position} rotation={[-Math.PI / 2, 0, 0]}>
+      <planeGeometry args={[1.5, 1.5, 32, 32]} />
+      <meshBasicMaterial color="#333" /> {/* Placeholder until heatmap material is ready */}
     </mesh>
   );
 }
@@ -207,10 +319,69 @@ function SelectableBox({ position, color, onSelect, isSelected }: SelectableBoxP
 }
 
 // ============================================================================
+// LOD Demo Robot
+// ============================================================================
+
+interface LODDemoRobotProps {
+  position: [number, number, number];
+  onLodChange?: (level: number, distance: number) => void;
+}
+
+function LODDemoRobot({ position, onLodChange }: LODDemoRobotProps) {
+  const groupRef = useRef<THREE.Group>(null);
+
+  return (
+    <group ref={groupRef} position={position}>
+      <Robot
+        urdfPath={URDF_PATH}
+        lodEnabled={true}
+        lodDistances={[3, 8, 15]}
+        onLodChange={onLodChange}
+      />
+    </group>
+  );
+}
+
+// ============================================================================
+// Control Panel Tabs
+// ============================================================================
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}
+
+function TabButton({ active, onClick, children }: TabButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: '8px 12px',
+        borderRadius: 6,
+        border: 'none',
+        background: active ? THEME.primary : THEME.surface,
+        color: THEME.text,
+        cursor: 'pointer',
+        fontSize: 12,
+        fontWeight: active ? 'bold' : 'normal',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ============================================================================
 // Control Panel
 // ============================================================================
 
 interface ControlPanelProps {
+  // Tab
+  activeTab: DemoTab;
+  onTabChange: (tab: DemoTab) => void;
+  // Rendering
   qualityPreset: QualityPreset;
   onQualityChange: (preset: QualityPreset) => void;
   ssaoEnabled: boolean;
@@ -223,21 +394,47 @@ interface ControlPanelProps {
   onVignetteChange: (enabled: boolean) => void;
   bloomIntensity: number;
   onBloomIntensityChange: (value: number) => void;
+  // Instancing
   robotCount: number;
   robotsLoaded: boolean;
   jointCount: number;
   linkCount: number;
-  // RL Mode
   controlMode: ControlMode;
   onControlModeChange: (mode: ControlMode) => void;
   updateTimeMs: number;
   fkTimeMs?: number;
-  // Mesh Quality
   meshQuality: MeshQuality;
   onMeshQualityChange: (quality: MeshQuality) => void;
+  // Environment
+  skyboxPreset: SkyboxPreset;
+  onSkyboxPresetChange: (preset: SkyboxPreset) => void;
+  fogEnabled: boolean;
+  onFogEnabledChange: (enabled: boolean) => void;
+  // Debug
+  debugEnabled: boolean;
+  onDebugEnabledChange: (enabled: boolean) => void;
+  showWireframe: boolean;
+  onShowWireframeChange: (enabled: boolean) => void;
+  showBoundingBoxes: boolean;
+  onShowBoundingBoxesChange: (enabled: boolean) => void;
+  showNormals: boolean;
+  onShowNormalsChange: (enabled: boolean) => void;
+  showLightHelpers: boolean;
+  onShowLightHelpersChange: (enabled: boolean) => void;
+  // LOD
+  lodEnabled: boolean;
+  onLodEnabledChange: (enabled: boolean) => void;
+  currentLodLevel: number;
+  lodDistance: number;
+  // Adaptive Quality
+  adaptiveQualityEnabled: boolean;
+  onAdaptiveQualityEnabledChange: (enabled: boolean) => void;
+  averageFPS: number;
 }
 
 function ControlPanel({
+  activeTab,
+  onTabChange,
   qualityPreset,
   onQualityChange,
   ssaoEnabled,
@@ -260,6 +457,27 @@ function ControlPanel({
   fkTimeMs,
   meshQuality,
   onMeshQualityChange,
+  skyboxPreset,
+  onSkyboxPresetChange,
+  fogEnabled,
+  onFogEnabledChange,
+  debugEnabled,
+  onDebugEnabledChange,
+  showWireframe,
+  onShowWireframeChange,
+  showBoundingBoxes,
+  onShowBoundingBoxesChange,
+  showNormals,
+  onShowNormalsChange,
+  showLightHelpers,
+  onShowLightHelpersChange,
+  lodEnabled,
+  onLodEnabledChange,
+  currentLodLevel,
+  lodDistance,
+  adaptiveQualityEnabled,
+  onAdaptiveQualityEnabledChange,
+  averageFPS,
 }: ControlPanelProps) {
   return (
     <div
@@ -268,289 +486,395 @@ function ControlPanel({
         top: 20,
         right: 20,
         background: THEME.panel,
-        padding: 20,
+        padding: 16,
         borderRadius: 12,
         color: THEME.text,
-        minWidth: 300,
+        minWidth: 320,
+        maxWidth: 360,
         fontFamily: 'system-ui, sans-serif',
         boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
         maxHeight: 'calc(100vh - 100px)',
         overflowY: 'auto',
       }}
     >
-      <h3 style={{ margin: '0 0 16px 0', color: THEME.primary }}>
-        Rendering Settings
+      <h3 style={{ margin: '0 0 12px 0', color: THEME.primary, fontSize: 16 }}>
+        Rendering Showcase
       </h3>
 
-      {/* GPU Instancing Stats - Highlight! */}
-      <div style={{
-        marginBottom: 16,
-        padding: 16,
-        background: `linear-gradient(135deg, ${THEME.success}22, ${THEME.primary}22)`,
-        borderRadius: 8,
-        border: `1px solid ${THEME.success}44`,
-      }}>
-        <div style={{ color: THEME.success, fontWeight: 'bold', fontSize: 16, marginBottom: 8 }}>
-          GPU Instancing + RL Demo
-        </div>
-        <div style={{ fontSize: 32, fontWeight: 'bold', color: THEME.text, marginBottom: 4 }}>
-          {robotCount.toLocaleString()} Robot Arms
-        </div>
-        <div style={{ fontSize: 12, color: THEME.textSecondary }}>
-          {robotsLoaded ? (
-            <>
-              <span style={{ color: THEME.success }}>Loaded</span>
-              {' | '}
-              {jointCount} joints × {linkCount} links per robot
-              <br />
-              Total: {(robotCount * linkCount).toLocaleString()} meshes
-              <br />
-              Draw calls: ~{linkCount} (instead of {(robotCount * linkCount).toLocaleString()})
-              <br />
-              Update time: <span style={{ color: updateTimeMs < 5 ? THEME.success : updateTimeMs < 10 ? THEME.warning : THEME.danger }}>
-                {updateTimeMs.toFixed(2)}ms
-              </span>
-              {fkTimeMs !== undefined && (
+      {/* Tab Navigation */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+        <TabButton active={activeTab === 'rendering'} onClick={() => onTabChange('rendering')}>
+          🎨 Render
+        </TabButton>
+        <TabButton active={activeTab === 'environment'} onClick={() => onTabChange('environment')}>
+          🌍 Env
+        </TabButton>
+        <TabButton active={activeTab === 'debug'} onClick={() => onTabChange('debug')}>
+          🔧 Debug
+        </TabButton>
+        <TabButton active={activeTab === 'lod'} onClick={() => onTabChange('lod')}>
+          📊 LOD
+        </TabButton>
+      </div>
+
+      {/* Rendering Tab */}
+      {activeTab === 'rendering' && (
+        <>
+          {/* GPU Instancing Stats */}
+          <div style={{
+            marginBottom: 16,
+            padding: 12,
+            background: `linear-gradient(135deg, ${THEME.success}22, ${THEME.primary}22)`,
+            borderRadius: 8,
+            border: `1px solid ${THEME.success}44`,
+          }}>
+            <div style={{ color: THEME.success, fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>
+              GPU Instancing Demo
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 'bold', color: THEME.text, marginBottom: 4 }}>
+              {robotCount.toLocaleString()} Robot Arms
+            </div>
+            <div style={{ fontSize: 11, color: THEME.textSecondary }}>
+              {robotsLoaded ? (
                 <>
+                  <span style={{ color: THEME.success }}>Loaded</span>
+                  {' | '}
+                  Draw calls: ~{linkCount} (vs {(robotCount * linkCount).toLocaleString()})
                   <br />
-                  FK time (Worker): <span style={{ color: fkTimeMs < 2 ? THEME.success : fkTimeMs < 5 ? THEME.warning : THEME.danger }}>
-                    {fkTimeMs.toFixed(2)}ms
+                  Update: <span style={{ color: updateTimeMs < 5 ? THEME.success : THEME.warning }}>
+                    {updateTimeMs.toFixed(2)}ms
                   </span>
+                  {fkTimeMs !== undefined && (
+                    <> | FK: <span style={{ color: fkTimeMs < 2 ? THEME.success : THEME.warning }}>
+                      {fkTimeMs.toFixed(2)}ms
+                    </span></>
+                  )}
                 </>
+              ) : (
+                <span style={{ color: THEME.warning }}>Loading...</span>
               )}
-            </>
-          ) : (
-            <span style={{ color: THEME.warning }}>Loading URDF...</span>
+            </div>
+          </div>
+
+          {/* Control Mode */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 6, color: THEME.textSecondary, fontSize: 11 }}>
+              Control Mode
+            </label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button
+                onClick={() => onControlModeChange('worker-fk')}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: controlMode === 'worker-fk' ? THEME.success : THEME.surface,
+                  color: THEME.text,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                }}
+              >
+                Worker FK
+              </button>
+              <button
+                onClick={() => onControlModeChange('shared-buffer')}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: controlMode === 'shared-buffer' ? THEME.accent : THEME.surface,
+                  color: THEME.text,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                }}
+              >
+                SharedBuffer
+              </button>
+            </div>
+          </div>
+
+          {/* Mesh Quality */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 6, color: THEME.textSecondary, fontSize: 11 }}>
+              Mesh Quality
+            </label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {(['visual', 'collision', 'convex'] as MeshQuality[]).map((q) => (
+                <button
+                  key={q}
+                  onClick={() => onMeshQualityChange(q)}
+                  style={{
+                    flex: 1,
+                    padding: '6px',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: meshQuality === q
+                      ? (q === 'visual' ? THEME.danger : q === 'collision' ? THEME.warning : THEME.success)
+                      : THEME.surface,
+                    color: THEME.text,
+                    cursor: 'pointer',
+                    fontSize: 10,
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Quality Preset */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 6, color: THEME.textSecondary, fontSize: 11 }}>
+              Quality Preset
+            </label>
+            <select
+              value={qualityPreset}
+              onChange={(e) => onQualityChange(e.target.value as QualityPreset)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                borderRadius: 6,
+                border: 'none',
+                background: THEME.surface,
+                color: THEME.text,
+                fontSize: 12,
+              }}
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="ultra">Ultra</option>
+            </select>
+          </div>
+
+          {/* Post-Processing Toggles */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 6, color: THEME.textSecondary, fontSize: 11 }}>
+              Post-Processing
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {[
+                { label: 'SSAO', checked: ssaoEnabled, onChange: onSsaoChange },
+                { label: 'Bloom', checked: bloomEnabled, onChange: onBloomChange },
+                { label: 'Outline', checked: outlineEnabled, onChange: onOutlineChange },
+                { label: 'Vignette', checked: vignetteEnabled, onChange: onVignetteChange },
+              ].map(({ label, checked, onChange }) => (
+                <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+                  <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {bloomEnabled && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', marginBottom: 6, color: THEME.textSecondary, fontSize: 11 }}>
+                Bloom Intensity: {bloomIntensity.toFixed(2)}
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="2"
+                step="0.1"
+                value={bloomIntensity}
+                onChange={(e) => onBloomIntensityChange(parseFloat(e.target.value))}
+                style={{ width: '100%' }}
+              />
+            </div>
           )}
-        </div>
-      </div>
+        </>
+      )}
 
-      {/* Control Mode - Only Worker FK and SharedBuffer */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: 8, color: THEME.textSecondary }}>
-          Control Mode
-        </label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => onControlModeChange('worker-fk')}
-            style={{
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: 6,
-              border: 'none',
-              background: controlMode === 'worker-fk' ? THEME.success : THEME.surface,
-              color: THEME.text,
-              cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: controlMode === 'worker-fk' ? 'bold' : 'normal',
-            }}
-          >
-            Worker FK
-          </button>
-          <button
-            onClick={() => onControlModeChange('shared-buffer')}
-            style={{
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: 6,
-              border: 'none',
-              background: controlMode === 'shared-buffer' ? THEME.accent : THEME.surface,
-              color: THEME.text,
-              cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: controlMode === 'shared-buffer' ? 'bold' : 'normal',
-            }}
-          >
-            SharedBuffer
-          </button>
-        </div>
-        <div style={{ marginTop: 8, fontSize: 11, color: THEME.textSecondary }}>
-          {controlMode === 'worker-fk' ? (
-            <>
-              <span style={{ color: THEME.success }}>trajx-wasm FK Worker</span>: Batch FK in Web Worker (WASM).
-              <br />
-              Joint angles generated in main thread, FK computed in Worker.
-            </>
-          ) : (
-            <>
-              <span style={{ color: THEME.accent }}>SharedArrayBuffer</span>: Zero-copy Worker communication.
-              <br />
-              Joint angles + FK + matrix combine all in Worker. Fastest mode!
-            </>
+      {/* Environment Tab */}
+      {activeTab === 'environment' && (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', marginBottom: 6, color: THEME.textSecondary, fontSize: 11 }}>
+              Skybox Preset
+            </label>
+            <select
+              value={skyboxPreset}
+              onChange={(e) => onSkyboxPresetChange(e.target.value as SkyboxPreset)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                borderRadius: 6,
+                border: 'none',
+                background: THEME.surface,
+                color: THEME.text,
+                fontSize: 12,
+              }}
+            >
+              <option value="none">None (Dark)</option>
+              <option value="industrial">Factory 1 - Warehouse</option>
+              <option value="industrial2">Factory 2 - Modern</option>
+              <option value="industrial3">Factory 3 - Urban</option>
+              <option value="outdoor">Outdoor Park</option>
+              <option value="studio">Studio</option>
+              <option value="night">Night</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={fogEnabled}
+                onChange={(e) => onFogEnabledChange(e.target.checked)}
+              />
+              Enable Fog
+            </label>
+          </div>
+
+          <div style={{ padding: 12, background: THEME.surface, borderRadius: 8, fontSize: 11, color: THEME.textSecondary }}>
+            <strong style={{ color: THEME.secondary }}>Environment System Features:</strong>
+            <ul style={{ margin: '8px 0 0 0', paddingLeft: 16 }}>
+              <li>HDR Environment Maps</li>
+              <li>Skybox Presets (industrial, outdoor, studio, night)</li>
+              <li>Linear/Exponential Fog</li>
+              <li>Gradient Backgrounds</li>
+              <li>Sky Component with Sun Position</li>
+            </ul>
+          </div>
+        </>
+      )}
+
+      {/* Debug Tab */}
+      {activeTab === 'debug' && (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={debugEnabled}
+                onChange={(e) => onDebugEnabledChange(e.target.checked)}
+              />
+              <strong>Enable Debug Overlay</strong>
+            </label>
+          </div>
+
+          {debugEnabled && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              {[
+                { label: 'Wireframe Mode', checked: showWireframe, onChange: onShowWireframeChange },
+                { label: 'Bounding Boxes', checked: showBoundingBoxes, onChange: onShowBoundingBoxesChange },
+                { label: 'Normal Vectors', checked: showNormals, onChange: onShowNormalsChange },
+                { label: 'Light Helpers', checked: showLightHelpers, onChange: onShowLightHelpersChange },
+              ].map(({ label, checked, onChange }) => (
+                <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, paddingLeft: 20 }}>
+                  <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+                  {label}
+                </label>
+              ))}
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* Mesh Quality - Key for performance! */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: 8, color: THEME.textSecondary }}>
-          Mesh Quality
-        </label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            onClick={() => onMeshQualityChange('visual')}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: 'none',
-              background: meshQuality === 'visual' ? THEME.danger : THEME.surface,
-              color: THEME.text,
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: meshQuality === 'visual' ? 'bold' : 'normal',
-            }}
-          >
-            Visual
-            <br />
-            <span style={{ fontSize: 10, opacity: 0.7 }}>74K tri</span>
-          </button>
-          <button
-            onClick={() => onMeshQualityChange('collision')}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: 'none',
-              background: meshQuality === 'collision' ? THEME.warning : THEME.surface,
-              color: THEME.text,
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: meshQuality === 'collision' ? 'bold' : 'normal',
-            }}
-          >
-            Collision
-            <br />
-            <span style={{ fontSize: 10, opacity: 0.7 }}>4K tri</span>
-          </button>
-          <button
-            onClick={() => onMeshQualityChange('convex')}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: 'none',
-              background: meshQuality === 'convex' ? THEME.success : THEME.surface,
-              color: THEME.text,
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: meshQuality === 'convex' ? 'bold' : 'normal',
-            }}
-          >
-            Convex
-            <br />
-            <span style={{ fontSize: 10, opacity: 0.7 }}>3K tri</span>
-          </button>
-        </div>
-        <div style={{ marginTop: 8, fontSize: 11, color: THEME.textSecondary }}>
-          {meshQuality === 'visual' ? (
-            <span style={{ color: THEME.danger }}>High-fidelity</span>
-          ) : meshQuality === 'collision' ? (
-            <span style={{ color: THEME.warning }}>Simplified (~17x faster)</span>
-          ) : (
-            <span style={{ color: THEME.success }}>Convex hull (~25x faster)</span>
+          <div style={{ padding: 12, background: THEME.surface, borderRadius: 8, fontSize: 11, color: THEME.textSecondary }}>
+            <strong style={{ color: THEME.warning }}>Debug Visualization:</strong>
+            <ul style={{ margin: '8px 0 0 0', paddingLeft: 16 }}>
+              <li>Wireframe: See mesh topology</li>
+              <li>Bounding Boxes: Object bounds</li>
+              <li>Normals: Surface orientation</li>
+              <li>Light Helpers: Light visualization</li>
+            </ul>
+          </div>
+        </>
+      )}
+
+      {/* LOD Tab */}
+      {activeTab === 'lod' && (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={lodEnabled}
+                onChange={(e) => onLodEnabledChange(e.target.checked)}
+              />
+              <strong>Enable LOD System</strong>
+            </label>
+          </div>
+
+          {lodEnabled && (
+            <div style={{
+              padding: 12,
+              background: THEME.surface,
+              borderRadius: 8,
+              marginBottom: 12,
+            }}>
+              <div style={{ fontSize: 11, color: THEME.textSecondary, marginBottom: 8 }}>
+                Current LOD Level
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{
+                  fontSize: 32,
+                  fontWeight: 'bold',
+                  color: currentLodLevel === 0 ? THEME.success : currentLodLevel === 1 ? THEME.warning : THEME.danger,
+                }}>
+                  {currentLodLevel}
+                </div>
+                <div style={{ fontSize: 11, color: THEME.textSecondary }}>
+                  {currentLodLevel === 0 ? 'High Detail' : currentLodLevel === 1 ? 'Medium Detail' : 'Low Detail'}
+                  <br />
+                  Distance: {lodDistance.toFixed(1)}m
+                </div>
+              </div>
+            </div>
           )}
-        </div>
-      </div>
 
-      {/* Quality Preset */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: 8, color: THEME.textSecondary }}>
-          Quality Preset
-        </label>
-        <select
-          value={qualityPreset}
-          onChange={(e) => onQualityChange(e.target.value as QualityPreset)}
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            borderRadius: 6,
-            border: 'none',
-            background: THEME.surface,
-            color: THEME.text,
-            fontSize: 14,
-          }}
-        >
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="ultra">Ultra</option>
-          <option value="custom">Custom</option>
-        </select>
-      </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={adaptiveQualityEnabled}
+                onChange={(e) => onAdaptiveQualityEnabledChange(e.target.checked)}
+              />
+              <strong>Adaptive Quality Control</strong>
+            </label>
+          </div>
 
-      {/* Post-Processing Toggles */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: 8, color: THEME.textSecondary }}>
-          Post-Processing Effects
-        </label>
+          {adaptiveQualityEnabled && (
+            <div style={{
+              padding: 12,
+              background: THEME.surface,
+              borderRadius: 8,
+              marginBottom: 12,
+            }}>
+              <div style={{ fontSize: 11, color: THEME.textSecondary, marginBottom: 4 }}>
+                Average FPS
+              </div>
+              <div style={{
+                fontSize: 24,
+                fontWeight: 'bold',
+                color: averageFPS >= 55 ? THEME.success : averageFPS >= 45 ? THEME.warning : THEME.danger,
+              }}>
+                {averageFPS.toFixed(1)}
+              </div>
+              <div style={{ fontSize: 10, color: THEME.textSecondary, marginTop: 4 }}>
+                Auto-adjusts quality to maintain 60 FPS
+              </div>
+            </div>
+          )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={ssaoEnabled}
-              onChange={(e) => onSsaoChange(e.target.checked)}
-            />
-            SSAO (Ambient Occlusion)
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={bloomEnabled}
-              onChange={(e) => onBloomChange(e.target.checked)}
-            />
-            Bloom (Glow)
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={outlineEnabled}
-              onChange={(e) => onOutlineChange(e.target.checked)}
-            />
-            Outline (Selection)
-          </label>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={vignetteEnabled}
-              onChange={(e) => onVignetteChange(e.target.checked)}
-            />
-            Vignette
-          </label>
-        </div>
-      </div>
-
-      {/* Bloom Intensity Slider */}
-      {bloomEnabled && (
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', marginBottom: 8, color: THEME.textSecondary }}>
-            Bloom Intensity: {bloomIntensity.toFixed(2)}
-          </label>
-          <input
-            type="range"
-            min="0"
-            max="2"
-            step="0.1"
-            value={bloomIntensity}
-            onChange={(e) => onBloomIntensityChange(parseFloat(e.target.value))}
-            style={{ width: '100%' }}
-          />
-        </div>
+          <div style={{ padding: 12, background: THEME.surface, borderRadius: 8, fontSize: 11, color: THEME.textSecondary }}>
+            <strong style={{ color: THEME.primary }}>Optimization Features:</strong>
+            <ul style={{ margin: '8px 0 0 0', paddingLeft: 16 }}>
+              <li>LOD: Auto geometry simplification</li>
+              <li>Adaptive Quality: FPS-based adjustment</li>
+              <li>Distance thresholds: 3m / 8m / 15m</li>
+            </ul>
+          </div>
+        </>
       )}
 
       {/* Instructions */}
-      <div style={{ padding: 12, background: THEME.surface, borderRadius: 8 }}>
-        <p style={{ margin: 0, fontSize: 12, color: THEME.textSecondary }}>
-          <strong style={{ color: THEME.accent }}>Click boxes</strong> to select them and see the outline effect.
-          <br /><br />
-          <strong style={{ color: THEME.secondary }}>Emissive rings</strong> demonstrate bloom glow.
-          <br /><br />
-          <strong style={{ color: THEME.primary }}>Custom shaders:</strong> Hologram cube, X-Ray sphere, Distance field plane.
-        </p>
+      <div style={{ marginTop: 12, padding: 10, background: THEME.surface, borderRadius: 8, fontSize: 10, color: THEME.textSecondary }}>
+        <strong style={{ color: THEME.accent }}>Demo Objects:</strong> Hologram cube, X-Ray sphere, Distance Field plane, Heatmap surface
+        <br /><br />
+        <strong style={{ color: THEME.primary }}>Click boxes</strong> to see outline effect
       </div>
     </div>
   );
@@ -565,8 +889,17 @@ interface SceneContentProps {
   selectedIds: Set<string>;
   onRobotsLoaded: (info: RobotLoadedInfo) => void;
   controlMode: ControlMode;
-  onFrame: (stats: { updateTimeMs: number }) => void;
+  onFrame: (stats: { updateTimeMs: number; fkTimeMs?: number }) => void;
   meshQuality: MeshQuality;
+  debugConfig: {
+    enabled: boolean;
+    showWireframe: boolean;
+    showBoundingBoxes: boolean;
+    showNormals: boolean;
+    showLightHelpers: boolean;
+  };
+  lodEnabled: boolean;
+  onLodChange: (level: number, distance: number) => void;
 }
 
 function SceneContent({
@@ -576,17 +909,32 @@ function SceneContent({
   controlMode,
   onFrame,
   meshQuality,
+  debugConfig,
+  lodEnabled,
+  onLodChange,
 }: SceneContentProps) {
   const isWorkerMode = controlMode === 'worker-fk';
   const isSharedBufferMode = controlMode === 'shared-buffer';
 
-  // Integrate with PerformanceManager for real-time metrics
   usePerformanceIntegration();
 
   return (
     <>
-      {/* Instanced Robot Arms - The main showcase! */}
-      {/* meshQuality controls visual/collision/convex mesh loading */}
+      {/* Debug Overlay */}
+      {debugConfig.enabled && (
+        <DebugOverlay
+          enabled={true}
+          config={{
+            wireframe: debugConfig.showWireframe,
+            boundingBoxes: debugConfig.showBoundingBoxes,
+            normals: debugConfig.showNormals,
+            lightHelpers: debugConfig.showLightHelpers,
+            shadowCameras: false,
+          }}
+        />
+      )}
+
+      {/* Instanced Robot Arms */}
       <InstancedRobotArms
         urdfPath={URDF_PATH}
         count={ROBOT_ARM_COUNT}
@@ -601,41 +949,68 @@ function SceneContent({
         onFrame={onFrame}
       />
 
-      {/* Selectable Boxes (click to toggle outline) - positioned above the robot grid */}
-      <SelectableBox
-        position={[0, 2, 0]}
-        color="#4488ff"
-        onSelect={onSelectObject}
-        isSelected={selectedIds.has('box-0')}
-      />
-      <SelectableBox
-        position={[1, 2, 0]}
-        color="#ff8844"
-        onSelect={onSelectObject}
-        isSelected={selectedIds.has('box-1')}
-      />
-      <SelectableBox
-        position={[-1, 2, 0]}
-        color="#44ff88"
-        onSelect={onSelectObject}
-        isSelected={selectedIds.has('box-2')}
-      />
+      {/* LOD Demo Robot - separate from instanced */}
+      {lodEnabled && (
+        <LODDemoRobot
+          position={[0, 0, 5]}
+          onLodChange={onLodChange}
+        />
+      )}
 
-      {/* Emissive Rings for Bloom Demo */}
+      {/* Selectable Boxes */}
+      <SelectableBox position={[0, 2, 0]} color="#4488ff" onSelect={onSelectObject} isSelected={selectedIds.has('box-0')} />
+      <SelectableBox position={[1, 2, 0]} color="#ff8844" onSelect={onSelectObject} isSelected={selectedIds.has('box-1')} />
+      <SelectableBox position={[-1, 2, 0]} color="#44ff88" onSelect={onSelectObject} isSelected={selectedIds.has('box-2')} />
+
+      {/* Emissive Rings for Bloom */}
       <EmissiveRing position={[0.5, 2.5, 0.5]} color="#ff0088" />
       <EmissiveRing position={[-0.5, 2.5, 0.5]} color="#00ff88" />
       <EmissiveRing position={[0, 2.5, -0.5]} color="#8800ff" />
 
-      {/* Custom Shader Material Demos */}
+      {/* Custom Shader Demos */}
       <HologramCube position={[2, 2, 0]} />
       <XRaySphere position={[-2, 2, 0]} />
       <DistanceFieldPlane position={[0, 0.01, 0]} />
+      <HeatmapSurface position={[3, 0.02, 0]} />
 
-      {/* Ground plane for context */}
+      {/* Ground plane - reflective to show environment */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
         <planeGeometry args={[100, 100]} />
-        <meshStandardMaterial color="#1a1a2a" metalness={0.2} roughness={0.8} />
+        <meshStandardMaterial
+          color="#2a2a3a"
+          metalness={0.4}
+          roughness={0.6}
+          envMapIntensity={1.0}
+        />
       </mesh>
+
+      {/* Ambient light for base illumination */}
+      <ambientLight intensity={0.3} />
+
+      {/* Key light - main directional light */}
+      <directionalLight
+        position={[10, 15, 10]}
+        intensity={1.5}
+        color="#ffffff"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-far={50}
+        shadow-camera-left={-20}
+        shadow-camera-right={20}
+        shadow-camera-top={20}
+        shadow-camera-bottom={-20}
+      />
+
+      {/* Fill light */}
+      <directionalLight
+        position={[-5, 5, -5]}
+        intensity={0.5}
+        color="#aaccff"
+      />
+
+      {/* Point lights for local illumination */}
+      <pointLight position={[5, 5, 5]} intensity={50} color="#ffffff" />
+      <spotLight position={[-5, 8, 0]} intensity={100} angle={0.5} penumbra={0.5} castShadow />
     </>
   );
 }
@@ -645,6 +1020,9 @@ function SceneContent({
 // ============================================================================
 
 export default function RenderingShowcaseScene() {
+  // Tab state
+  const [activeTab, setActiveTab] = useState<DemoTab>('rendering');
+
   // Render config state
   const [qualityPreset, setQualityPreset] = useState<QualityPreset>('high');
   const [ssaoEnabled, setSsaoEnabled] = useState(true);
@@ -658,26 +1036,43 @@ export default function RenderingShowcaseScene() {
   const [jointCount, setJointCount] = useState(6);
   const [linkCount, setLinkCount] = useState(0);
 
-  // Control mode state - default to Worker FK
+  // Control mode state
   const [controlMode, setControlMode] = useState<ControlMode>('worker-fk');
   const [updateTimeMs, setUpdateTimeMs] = useState(0);
   const [fkTimeMs, setFkTimeMs] = useState<number | undefined>(undefined);
-
-  // Mesh quality state - default to 'collision' for better performance
   const [meshQuality, setMeshQuality] = useState<MeshQuality>('collision');
 
-  // Selection state - manage outline objects at parent level
+  // Selection state
   const [selectedObjects, setSelectedObjects] = useState<THREE.Object3D[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Handle robots loaded
+  // Environment state
+  const [skyboxPreset, setSkyboxPreset] = useState<SkyboxPreset>('none');
+  const [fogEnabled, setFogEnabled] = useState(false);
+
+  // Debug state
+  const [debugEnabled, setDebugEnabled] = useState(false);
+  const [showWireframe, setShowWireframe] = useState(false);
+  const [showBoundingBoxes, setShowBoundingBoxes] = useState(false);
+  const [showNormals, setShowNormals] = useState(false);
+  const [showLightHelpers, setShowLightHelpers] = useState(false);
+
+  // LOD state
+  const [lodEnabled, setLodEnabled] = useState(false);
+  const [currentLodLevel, setCurrentLodLevel] = useState(0);
+  const [lodDistance, setLodDistance] = useState(0);
+
+  // Adaptive Quality state
+  const [adaptiveQualityEnabled, setAdaptiveQualityEnabled] = useState(false);
+  const [averageFPS, setAverageFPS] = useState(60);
+
+  // Handlers
   const handleRobotsLoaded = useCallback((info: RobotLoadedInfo) => {
     setRobotsLoaded(true);
     setJointCount(info.jointCount);
     setLinkCount(info.linkCount);
   }, []);
 
-  // Handle frame stats
   const handleFrame = useCallback((stats: { updateTimeMs: number; fkTimeMs?: number }) => {
     setUpdateTimeMs(stats.updateTimeMs);
     if (stats.fkTimeMs !== undefined) {
@@ -685,7 +1080,6 @@ export default function RenderingShowcaseScene() {
     }
   }, []);
 
-  // Handle object selection
   const handleSelectObject = useCallback((mesh: THREE.Mesh) => {
     const meshId = mesh.uuid;
     setSelectedObjects((prev) => {
@@ -697,7 +1091,6 @@ export default function RenderingShowcaseScene() {
     });
     setSelectedIds((prev) => {
       const newSet = new Set(prev);
-      // Use position to determine which box was clicked
       const pos = mesh.position;
       let boxId = '';
       if (Math.abs(pos.x) < 0.1 && Math.abs(pos.y - 2) < 0.1) boxId = 'box-0';
@@ -705,14 +1098,16 @@ export default function RenderingShowcaseScene() {
       else if (Math.abs(pos.x + 1) < 0.1 && Math.abs(pos.y - 2) < 0.1) boxId = 'box-2';
 
       if (boxId) {
-        if (newSet.has(boxId)) {
-          newSet.delete(boxId);
-        } else {
-          newSet.add(boxId);
-        }
+        if (newSet.has(boxId)) newSet.delete(boxId);
+        else newSet.add(boxId);
       }
       return newSet;
     });
+  }, []);
+
+  const handleLodChange = useCallback((level: number, distance: number) => {
+    setCurrentLodLevel(level);
+    setLodDistance(distance);
   }, []);
 
   // Build render config
@@ -757,25 +1152,60 @@ export default function RenderingShowcaseScene() {
     },
   }), [qualityPreset, ssaoEnabled, bloomEnabled, outlineEnabled, vignetteEnabled, bloomIntensity]);
 
+  // Build environment config
+  const environmentConfig = useMemo<Partial<EnvironmentSystemConfig>>(() => {
+    const preset = SKYBOX_PRESETS[skyboxPreset];
+    const baseFog = preset.fog ?? {
+      type: 'linear' as const,
+      color: '#aabbcc',
+      near: 10,
+      far: 100,
+      density: 0.01,
+    };
+    return {
+      ...preset,
+      fog: {
+        ...baseFog,
+        enabled: fogEnabled,
+      },
+    };
+  }, [skyboxPreset, fogEnabled]);
+
+  // Debug config
+  const debugConfig = useMemo(() => ({
+    enabled: debugEnabled,
+    showWireframe,
+    showBoundingBoxes,
+    showNormals,
+    showLightHelpers,
+  }), [debugEnabled, showWireframe, showBoundingBoxes, showNormals, showLightHelpers]);
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <RoboViz
         config={{ scene: { background: THEME.background } }}
         style={{ width: '100%', height: '100%' }}
       >
-        <RenderPipeline config={renderConfig} outlineObjects={selectedObjects}>
-          <SceneContent
-            onSelectObject={handleSelectObject}
-            selectedIds={selectedIds}
-            onRobotsLoaded={handleRobotsLoaded}
-            controlMode={controlMode}
-            onFrame={handleFrame}
-            meshQuality={meshQuality}
-          />
-        </RenderPipeline>
+        <EnvironmentSystem config={environmentConfig}>
+          <RenderPipeline config={renderConfig} outlineObjects={selectedObjects}>
+            <SceneContent
+              onSelectObject={handleSelectObject}
+              selectedIds={selectedIds}
+              onRobotsLoaded={handleRobotsLoaded}
+              controlMode={controlMode}
+              onFrame={handleFrame}
+              meshQuality={meshQuality}
+              debugConfig={debugConfig}
+              lodEnabled={lodEnabled}
+              onLodChange={handleLodChange}
+            />
+          </RenderPipeline>
+        </EnvironmentSystem>
       </RoboViz>
 
       <ControlPanel
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
         qualityPreset={qualityPreset}
         onQualityChange={setQualityPreset}
         ssaoEnabled={ssaoEnabled}
@@ -798,6 +1228,27 @@ export default function RenderingShowcaseScene() {
         fkTimeMs={controlMode === 'worker-fk' ? fkTimeMs : undefined}
         meshQuality={meshQuality}
         onMeshQualityChange={setMeshQuality}
+        skyboxPreset={skyboxPreset}
+        onSkyboxPresetChange={setSkyboxPreset}
+        fogEnabled={fogEnabled}
+        onFogEnabledChange={setFogEnabled}
+        debugEnabled={debugEnabled}
+        onDebugEnabledChange={setDebugEnabled}
+        showWireframe={showWireframe}
+        onShowWireframeChange={setShowWireframe}
+        showBoundingBoxes={showBoundingBoxes}
+        onShowBoundingBoxesChange={setShowBoundingBoxes}
+        showNormals={showNormals}
+        onShowNormalsChange={setShowNormals}
+        showLightHelpers={showLightHelpers}
+        onShowLightHelpersChange={setShowLightHelpers}
+        lodEnabled={lodEnabled}
+        onLodEnabledChange={setLodEnabled}
+        currentLodLevel={currentLodLevel}
+        lodDistance={lodDistance}
+        adaptiveQualityEnabled={adaptiveQualityEnabled}
+        onAdaptiveQualityEnabledChange={setAdaptiveQualityEnabled}
+        averageFPS={averageFPS}
       />
 
       {/* Performance Panel */}
@@ -821,8 +1272,8 @@ export default function RenderingShowcaseScene() {
         <h2 style={{ margin: 0, color: THEME.primary }}>
           Advanced Rendering Showcase
         </h2>
-        <p style={{ margin: '8px 0 0 0', color: THEME.textSecondary }}>
-          {ROBOT_ARM_COUNT.toLocaleString()} Robot Arms &bull; GPU Instancing &bull; Post-Processing
+        <p style={{ margin: '8px 0 0 0', color: THEME.textSecondary, fontSize: 13 }}>
+          Post-Processing • Custom Shaders • GPU Instancing • LOD • Environment • Debug
         </p>
       </div>
     </div>

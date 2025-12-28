@@ -17,6 +17,40 @@ RoboViz 是一个功能丰富的 React 3D 机器人可视化组件库，集成�
 - **工业主题系统**: 深色/浅色/工业风格主题切换
 - **Jog 控制面板**: 工业级关节/笛卡尔点动控制 UI
 
+### 高级渲染系统 (v0.3+)
+
+基于 `future.md` 架构规划实现的专业级渲染能力：
+
+#### 后期处理管线
+- **SSAO** - 屏幕空间环境光遮蔽，增强深度感知
+- **Bloom** - 辉光效果，焊接火花/发光材质增强
+- **Outline** - 轮廓描边，选中对象高亮
+- **Vignette** - 暗角效果，聚焦视觉中心
+- **SMAA/FXAA** - 抗锯齿
+
+#### 自定义 Shader 材质
+- **Heatmap** - 热力图着色器，支持 Viridis/Plasma/Magma 等色彩映射
+- **X-Ray** - 透视效果，内部结构查看
+- **Hologram** - 全息材质，科技感 UI
+- **Distance Field** - 距离场着色，碰撞风险渐变可视化
+- **Flow Line** - 流动线条，运动方向可视化
+
+#### GPU 性能优化
+- **GPU Instancing** - 200+ 机器人同屏渲染，共享几何体
+- **LOD 系统** - 基于相机距离的细节层次切换
+- **自适应质量** - 根据 FPS 自动调整渲染质量
+
+#### 环境系统
+- **HDR 环境贴图** - 多种工厂/室外/夜间预设
+- **雾效** - 线性/指数雾，增强空间深度
+- **天空盒预设** - Factory 1/2/3, Outdoor, Studio, Night
+
+#### 调试可视化
+- **Wireframe** - 网格线框叠加
+- **Bounding Box** - 包围盒显示
+- **Normal Vectors** - 法线向量可视化
+- **Light Helpers** - 灯光辅助器
+
 ## 项目结构
 
 ```
@@ -235,6 +269,79 @@ function MultiToolRobot() {
 }
 ```
 
+### 高级渲染管线
+
+```tsx
+import {
+  RenderPipeline,
+  EnvironmentSystem,
+  DebugOverlay,
+  getMaterialLibrary,
+  SKYBOX_PRESETS,
+} from '@aspect/roboviz-core';
+
+function AdvancedRenderingDemo() {
+  const [selectedObjects, setSelectedObjects] = useState([]);
+
+  return (
+    <RoboVizCore>
+      {/* 环境系统 - HDR 环境贴图 + 雾效 */}
+      <EnvironmentSystem config={SKYBOX_PRESETS.industrial}>
+        {/* 渲染管线 - 后期处理效果 */}
+        <RenderPipeline
+          config={{
+            qualityPreset: 'high',
+            postProcessing: {
+              enabled: true,
+              ssao: { enabled: true, intensity: 0.5 },
+              bloom: { enabled: true, intensity: 0.5, threshold: 0.8 },
+              outline: { enabled: true, color: '#00ff88' },
+              vignette: { enabled: true, darkness: 0.4 },
+            },
+          }}
+          outlineObjects={selectedObjects}
+        >
+          {/* 调试可视化 */}
+          <DebugOverlay
+            enabled={true}
+            config={{ wireframe: false, boundingBoxes: true }}
+          />
+
+          {/* GPU Instancing - 200 台机器人 */}
+          <InstancedRobotArms
+            urdfPath="/robot.urdf"
+            count={200}
+            gridSpacing={1.2}
+            animate={true}
+          />
+        </RenderPipeline>
+      </EnvironmentSystem>
+    </RoboVizCore>
+  );
+}
+
+// 自定义 Shader 材质
+function HeatmapDemo() {
+  const meshRef = useRef();
+
+  useEffect(() => {
+    const lib = getMaterialLibrary();
+    const material = lib.createHeatmapMaterial({
+      colorMap: 'viridis',
+      minValue: 0,
+      maxValue: 100,
+    });
+    meshRef.current.material = material;
+
+    // 应用热力值
+    const values = new Float32Array(vertexCount);
+    lib.applyHeatmapValues(meshRef.current.geometry, values);
+  }, []);
+
+  return <mesh ref={meshRef} />;
+}
+```
+
 ### 视觉流渲染
 
 ```tsx
@@ -289,6 +396,9 @@ function VisionDemo() {
 | `WeldingScene` | 焊接场景演示 |
 | `GrindingScene` | 打磨场景演示 |
 | `InspectionScene` | 检测场景演示 |
+| `CableManagementScene` | 线缆管理演示 |
+| `CollisionAnalysisScene` | 碰撞分析时间线 |
+| `RenderingShowcaseScene` | **高级渲染展示** - 后期处理、Shader、GPU Instancing、LOD、环境系统 |
 
 运行演示：
 

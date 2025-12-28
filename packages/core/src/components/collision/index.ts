@@ -43,3 +43,14 @@ export {
   type UseCollisionVisualizationOptions,
   type UseCollisionVisualizationReturn,
 } from './CollisionVisualizer';
+
+// Distance Field Visualization (advanced shader-based collision visuals)
+export {
+  DistanceFieldZone,
+  ProximityField,
+  CollisionRiskIndicator,
+  type DistanceFieldConfig,
+  type DistanceFieldZoneProps,
+  type ProximityFieldProps,
+  type CollisionRiskIndicatorProps,
+} from './DistanceFieldVisual';

@@ -16,6 +16,7 @@ import { toVector3 } from '../types';
 import { isURDFLink, findLastURDFLink } from '../types/urdf';
 import { EndEffectorProvider } from './EndEffector';
 import { CoordinateTransform, type Pose3D } from '../coordinates';
+import { useRobotLOD } from '../rendering/optimization/useRobotLOD';
 
 /** Euler angles tuple [x, y, z] in radians */
 export type EulerTuple = [number, number, number];
@@ -113,6 +114,21 @@ export interface RobotProps {
    * Called every frame if provided. Useful for IK/FK operations.
    */
   onEndEffectorUpdateZup?: (pose: Pose3D) => void;
+  /**
+   * Enable LOD (Level of Detail) for performance optimization.
+   * When enabled, geometry is simplified based on camera distance.
+   */
+  lodEnabled?: boolean;
+  /**
+   * LOD distance thresholds [high, medium, low] in world units.
+   * Default: [5, 15, 30]
+   */
+  lodDistances?: [number, number, number];
+  /**
+   * Callback when LOD level changes.
+   * Level 0 = highest detail, 2 = lowest detail.
+   */
+  onLodChange?: (level: number, distance: number) => void;
   /**
    * Children to render. If you include EndEffector components as children,
    * they will automatically receive the end-effector pose from this robot.
@@ -362,6 +378,10 @@ export function Robot({
   scale: scaleProp,
   basePoseZup, // Z-up base pose (robotics standard)
   upAxis = 'Z', // Default to Z-up (URDF/ROS standard)
+  // LOD props
+  lodEnabled = false,
+  lodDistances,
+  onLodChange,
   // Callbacks
   onSelect,
   onLoaded,
@@ -413,6 +433,22 @@ export function Robot({
     urdfContent,
     meshData
   );
+
+  // LOD (Level of Detail) support for performance optimization
+  const lodConfig = React.useMemo(
+    () => ({
+      enabled: lodEnabled,
+      distances: lodDistances || [5, 15, 30] as [number, number, number],
+    }),
+    [lodEnabled, lodDistances]
+  );
+
+  useRobotLOD({
+    config: lodConfig,
+    robotObject: robot,
+    robotId: state?.id || id || 'robot',
+    onLevelChange: onLodChange,
+  });
 
   // Cleanup THREE.js resources when robot changes or component unmounts
   useEffect(() => {
