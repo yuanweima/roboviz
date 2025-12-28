@@ -325,6 +325,16 @@ export * from './capabilities';
 export * from './processes';
 
 // =============================================================================
+// Timeline Components (Collision Visualization & Playback)
+// =============================================================================
+export * from './components/timeline';
+
+// =============================================================================
+// Property Editor (Schema-driven Property Editing)
+// =============================================================================
+export * from './components/property-editor';
+
+// =============================================================================
 // Main Component
 // =============================================================================
 export { RoboVizCore, type RoboVizCoreProps } from './RoboVizCore';

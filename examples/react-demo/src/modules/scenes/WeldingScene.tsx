@@ -12,7 +12,7 @@
  * - Final values can be copied back to WELDING_TORCH_METADATA
  */
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { RoboViz } from '@aspect/roboviz-react';
+import { RoboViz, PropertyEditor, type PropertySchema } from '@aspect/roboviz-react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
@@ -35,6 +35,8 @@ import {
   WeldingTorch,
   WELDING_TORCH_METADATA,
   computeTcpFromMetadata,
+  // History hook for undo/redo
+  usePropertyHistory,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import {
@@ -185,33 +187,297 @@ function WeldingWorkpiece({
 }
 
 // ============================================================================
-// Welding Parameters Panel
+// PropertyEditor Schemas - 展示 Schema 驱动的强大之处
 // ============================================================================
 
-function WeldingPanel({ settings, onChange }: { settings: WeldingSettings; onChange: (s: Partial<WeldingSettings>) => void }) {
-  const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' };
-  const labelStyle: React.CSSProperties = { fontSize: '12px', color: THEME.textSecondary };
-  const inputStyle: React.CSSProperties = { width: '80px', padding: '4px 8px', background: THEME.background, border: `1px solid ${THEME.primary}40`, borderRadius: '4px', color: THEME.text, fontSize: '12px', textAlign: 'right' };
+/**
+ * 焊接参数 Schema
+ *
+ * 优势展示:
+ * 1. 声明式定义 - 无需手写 input/select，自动生成 UI
+ * 2. 内置验证 - min/max/required 自动处理
+ * 3. 条件显示 - visible 函数根据焊接方法显示不同参数
+ * 4. 单位显示 - unit 属性自动添加单位标签
+ * 5. 分组折叠 - 复杂参数分组管理
+ */
+const WELDING_SETTINGS_SCHEMA: PropertySchema = {
+  groups: [
+    {
+      id: 'method',
+      label: '焊接方式 / Method',
+      collapsible: false,
+      fields: [
+        {
+          key: 'method',
+          type: 'enum',
+          label: '焊接方法',
+          description: '选择焊接工艺类型',
+          options: [
+            { value: 'MIG', label: 'MIG - 熔化极惰性气体保护焊' },
+            { value: 'TIG', label: 'TIG - 钨极惰性气体保护焊' },
+            { value: 'MAG', label: 'MAG - 熔化极活性气体保护焊' },
+            { value: 'Laser', label: 'Laser - 激光焊接' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'electrical',
+      label: '电气参数 / Electrical',
+      collapsible: true,
+      fields: [
+        {
+          key: 'voltage',
+          type: 'number',
+          label: '电压',
+          unit: 'V',
+          min: 10,
+          max: 50,
+          step: 0.5,
+          precision: 1,
+          description: '焊接电弧电压',
+        },
+        {
+          key: 'current',
+          type: 'number',
+          label: '电流',
+          unit: 'A',
+          min: 50,
+          max: 500,
+          step: 5,
+          precision: 0,
+          description: '焊接电流强度',
+          // 条件验证：激光焊不需要电流参数
+          visible: (values) => values.method !== 'Laser',
+        },
+      ],
+    },
+    {
+      id: 'motion',
+      label: '运动参数 / Motion',
+      collapsible: true,
+      fields: [
+        {
+          key: 'travelSpeed',
+          type: 'number',
+          label: '行进速度',
+          unit: 'mm/s',
+          min: 1,
+          max: 100,
+          step: 1,
+          precision: 0,
+          description: '焊枪移动速度',
+        },
+        {
+          key: 'wireFeedSpeed',
+          type: 'number',
+          label: '送丝速度',
+          unit: 'm/min',
+          min: 0.5,
+          max: 25,
+          step: 0.5,
+          precision: 1,
+          description: '焊丝送进速度',
+          // 条件显示：只有 MIG/MAG 需要送丝
+          visible: (values) => values.method === 'MIG' || values.method === 'MAG',
+        },
+      ],
+    },
+    {
+      id: 'gas',
+      label: '气体参数 / Gas',
+      collapsible: true,
+      defaultCollapsed: true,
+      // 条件显示：激光焊不需要保护气体
+      visible: (values) => values.method !== 'Laser',
+      fields: [
+        {
+          key: 'gasFlowRate',
+          type: 'number',
+          label: '气体流量',
+          unit: 'L/min',
+          min: 5,
+          max: 30,
+          step: 1,
+          precision: 0,
+          description: '保护气体流量',
+        },
+        {
+          key: 'gasType',
+          type: 'enum',
+          label: '气体类型',
+          options: [
+            { value: 'Ar', label: 'Ar - 纯氩气' },
+            { value: 'Ar+CO2', label: 'Ar+CO₂ - 混合气体' },
+            { value: 'CO2', label: 'CO₂ - 二氧化碳' },
+            { value: 'He', label: 'He - 氦气' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'quality',
+      label: '质量控制 / Quality',
+      collapsible: true,
+      defaultCollapsed: true,
+      fields: [
+        {
+          key: 'qualityLevel',
+          type: 'enum',
+          label: '质量等级',
+          options: [
+            { value: 'standard', label: '标准级' },
+            { value: 'high', label: '高质量级' },
+            { value: 'critical', label: '关键焊点' },
+          ],
+        },
+        {
+          key: 'inspectionRequired',
+          type: 'boolean',
+          label: '需要检测',
+          description: '焊接完成后是否需要质量检测',
+        },
+      ],
+    },
+  ],
+};
 
-  return (
-    <div style={{ padding: '16px', background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40` }}>
-      <h4 style={{ margin: '0 0 16px 0', color: THEME.primary }}>Welding Parameters</h4>
-      <div style={rowStyle}>
-        <span style={labelStyle}>Method</span>
-        <select value={settings.method} onChange={(e) => onChange({ method: e.target.value as WeldingMethod })} style={{ ...inputStyle, width: '100px' }}>
-          <option value="MIG">MIG</option>
-          <option value="TIG">TIG</option>
-          <option value="MAG">MAG</option>
-          <option value="Laser">Laser</option>
-        </select>
-      </div>
-      <div style={rowStyle}><span style={labelStyle}>Voltage (V)</span><input type="number" value={settings.voltage} onChange={(e) => onChange({ voltage: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Current (A)</span><input type="number" value={settings.current} onChange={(e) => onChange({ current: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Travel Speed (mm/s)</span><input type="number" value={settings.travelSpeed} onChange={(e) => onChange({ travelSpeed: Number(e.target.value) })} style={inputStyle} /></div>
-      <div style={rowStyle}><span style={labelStyle}>Wire Feed (m/min)</span><input type="number" value={settings.wireFeedSpeed} onChange={(e) => onChange({ wireFeedSpeed: Number(e.target.value) })} style={inputStyle} /></div>
-    </div>
-  );
+/**
+ * 焊缝点 Schema
+ *
+ * 优势展示:
+ * 1. position3d 类型 - 专为 3D 坐标设计
+ * 2. 与 3D 场景联动 - highlightFields 可高亮正在编辑的字段
+ * 3. onPreviewChange - 拖拽时实时更新 3D 预览
+ */
+const WELD_SEAM_SCHEMA: PropertySchema = {
+  groups: [
+    {
+      id: 'info',
+      label: '焊缝信息 / Seam Info',
+      collapsible: false,
+      fields: [
+        {
+          key: 'id',
+          type: 'text',
+          label: '焊缝 ID',
+          readOnly: true,
+        },
+        {
+          key: 'name',
+          type: 'text',
+          label: '焊缝名称',
+          placeholder: '输入焊缝名称...',
+        },
+      ],
+    },
+    {
+      id: 'geometry',
+      label: '几何参数 / Geometry',
+      collapsible: true,
+      fields: [
+        {
+          key: 'start',
+          type: 'position3d',
+          label: '起点位置',
+          unit: 'm',
+          precision: 4,
+          min: -2,
+          max: 2,
+          step: 0.001,
+          description: '焊缝起始点坐标 (Z-up)',
+        },
+        {
+          key: 'end',
+          type: 'position3d',
+          label: '终点位置',
+          unit: 'm',
+          precision: 4,
+          min: -2,
+          max: 2,
+          step: 0.001,
+          description: '焊缝结束点坐标 (Z-up)',
+        },
+        // 新功能展示: computedValue - 自动计算焊缝长度
+        {
+          key: 'length',
+          type: 'number',
+          label: '焊缝长度',
+          unit: 'm',
+          precision: 4,
+          description: '自动计算: 基于起点和终点的距离 (computedValue)',
+          // computedValue 让字段变成只读的派生字段
+          computedValue: (values) => {
+            const start = values.start as [number, number, number] | undefined;
+            const end = values.end as [number, number, number] | undefined;
+            if (!start || !end) return 0;
+            return Math.sqrt(
+              Math.pow(end[0] - start[0], 2) +
+              Math.pow(end[1] - start[1], 2) +
+              Math.pow(end[2] - start[2], 2)
+            );
+          },
+          computedDeps: ['start', 'end'],
+        },
+      ],
+    },
+    {
+      id: 'approach',
+      label: '进近参数 / Approach',
+      collapsible: true,
+      defaultCollapsed: true,
+      fields: [
+        // 新功能展示: showSlider - 带滑块的数字输入
+        {
+          key: 'approachHeight',
+          type: 'number',
+          label: '进近高度',
+          unit: 'mm',
+          min: 5,
+          max: 100,
+          step: 1,
+          precision: 0,
+          description: '焊枪从上方进近的高度 (showSlider)',
+          showSlider: true, // 显示滑块
+        },
+        {
+          key: 'retractHeight',
+          type: 'number',
+          label: '退出高度',
+          unit: 'mm',
+          min: 5,
+          max: 100,
+          step: 1,
+          precision: 0,
+          description: '焊接完成后抬起的高度 (showSlider)',
+          showSlider: true, // 显示滑块
+        },
+      ],
+    },
+  ],
+};
+
+// 扩展的焊接设置类型（包含新增字段）
+interface ExtendedWeldingSettings extends WeldingSettings {
+  gasType?: string;
+  qualityLevel?: string;
+  inspectionRequired?: boolean;
 }
+
+// 扩展的焊缝类型
+interface ExtendedWeldSeam extends WeldSeam {
+  name?: string;
+  approachHeight?: number;
+  retractHeight?: number;
+}
+
+// 默认扩展设置
+const DEFAULT_EXTENDED_SETTINGS: ExtendedWeldingSettings = {
+  ...DEFAULT_WELDING_SETTINGS,
+  gasType: 'Ar+CO2',
+  qualityLevel: 'standard',
+  inspectionRequired: false,
+};
 
 // ============================================================================
 // 3D Scene Content
@@ -265,23 +531,52 @@ interface WeldingDemoInnerProps {
 function WeldingDemoInner({ tcpDebug, onTcpDebugChange }: WeldingDemoInnerProps) {
   const { addLog } = useAppStore();
 
-  // State
-  const [weldingSettings, setWeldingSettings] = useState<WeldingSettings>(DEFAULT_WELDING_SETTINGS);
+  // State - 使用扩展类型
+  const [weldingSettings, setWeldingSettings] = useState<ExtendedWeldingSettings>(DEFAULT_EXTENDED_SETTINGS);
   const [selectedSeamId, setSelectedSeamId] = useState<string | null>(null);
   const [isWelding, setIsWelding] = useState(false);
   const [sparkPosition, setSparkPosition] = useState<[number, number, number]>([0.5, 0, 0.3]);
+  const [activeTab, setActiveTab] = useState<'settings' | 'seam'>('settings');
+
+  // 新功能展示: usePropertyHistory - 撤销/重做历史
+  const settingsHistory = usePropertyHistory<ExtendedWeldingSettings>(
+    weldingSettings,
+    setWeldingSettings,
+    { maxHistory: 30, debounceMs: 500 }
+  );
 
   // Playback from context
   const playback = useProcessPlayback();
   const ghost = useProcessGhost();
   const state = useRobotProcessState();
 
-  // Seams (Z-up coordinates)
-  const seams = useMemo<WeldSeam[]>(() => [
-    { id: 'seam1', start: [0.4, -0.09, 0.005], end: [0.6, -0.09, 0.005] },
-    { id: 'seam2', start: [0.4, 0.09, 0.005], end: [0.6, 0.09, 0.005] },
-    { id: 'seam3', start: [0.4, 0, 0.005], end: [0.6, 0, 0.005] },
-  ], []);
+  // Seams (Z-up coordinates) - 使用扩展类型，支持编辑
+  const [seams, setSeams] = useState<ExtendedWeldSeam[]>([
+    { id: 'seam1', name: '底部焊缝 1', start: [0.4, -0.09, 0.005], end: [0.6, -0.09, 0.005], approachHeight: 20, retractHeight: 30 },
+    { id: 'seam2', name: '底部焊缝 2', start: [0.4, 0.09, 0.005], end: [0.6, 0.09, 0.005], approachHeight: 20, retractHeight: 30 },
+    { id: 'seam3', name: '中心焊缝', start: [0.4, 0, 0.005], end: [0.6, 0, 0.005], approachHeight: 25, retractHeight: 35 },
+  ]);
+
+  // 获取当前选中的焊缝
+  const selectedSeam = useMemo(() => {
+    return seams.find(s => s.id === selectedSeamId) || null;
+  }, [seams, selectedSeamId]);
+
+  // 更新焊缝
+  const handleSeamChange = useCallback((updatedSeam: ExtendedWeldSeam) => {
+    setSeams(prev => prev.map(s => s.id === updatedSeam.id ? updatedSeam : s));
+    addLog('info', `焊缝 ${updatedSeam.name || updatedSeam.id} 已更新`);
+  }, [addLog]);
+
+  // 焊缝预览变化时更新 Ghost
+  const handleSeamPreviewChange = useCallback((preview: Partial<ExtendedWeldSeam> | null) => {
+    if (preview?.start) {
+      ghost.setTarget({
+        position: preview.start as [number, number, number],
+        quaternion: [1, 0, 0, 0],
+      });
+    }
+  }, [ghost]);
 
   // Generate trajectory from seam
   const generateFromSeam = useCallback(() => {
@@ -406,9 +701,167 @@ function WeldingDemoInner({ tcpDebug, onTcpDebugChange }: WeldingDemoInnerProps)
       </div>
 
       <div style={{ display: 'flex', gap: '16px' }}>
-        {/* Left Panel */}
-        <div style={{ width: '280px', flexShrink: 0 }}>
-          <WeldingPanel settings={weldingSettings} onChange={(partial) => setWeldingSettings(prev => ({ ...prev, ...partial }))} />
+        {/* Left Panel - 使用 PropertyEditor */}
+        <div style={{ width: '320px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Tab 切换 */}
+          <div style={{ display: 'flex', gap: '4px', padding: '4px', background: THEME.surface, borderRadius: '8px' }}>
+            <button
+              onClick={() => setActiveTab('settings')}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                background: activeTab === 'settings' ? THEME.primary : 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: activeTab === 'settings' ? '#fff' : THEME.textSecondary,
+                fontWeight: 600,
+                fontSize: '12px',
+                cursor: 'pointer',
+              }}
+            >
+              焊接参数
+            </button>
+            <button
+              onClick={() => setActiveTab('seam')}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                background: activeTab === 'seam' ? THEME.primary : 'transparent',
+                border: 'none',
+                borderRadius: '6px',
+                color: activeTab === 'seam' ? '#fff' : THEME.textSecondary,
+                fontWeight: 600,
+                fontSize: '12px',
+                cursor: 'pointer',
+              }}
+            >
+              焊缝编辑 {selectedSeam ? `(${selectedSeam.name || selectedSeam.id})` : ''}
+            </button>
+          </div>
+
+          {/* 焊接参数编辑器 - PropertyEditor + Undo/Redo */}
+          {activeTab === 'settings' && (
+            <div style={{ background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40`, overflow: 'hidden' }}>
+              {/* Undo/Redo 工具栏 - 新功能展示 */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '8px 12px',
+                borderBottom: `1px solid ${THEME.primary}30`,
+                background: THEME.surface,
+              }}>
+                <button
+                  onClick={settingsHistory.undo}
+                  disabled={!settingsHistory.canUndo}
+                  style={{
+                    padding: '4px 8px',
+                    border: `1px solid ${THEME.primary}40`,
+                    borderRadius: '4px',
+                    background: settingsHistory.canUndo ? THEME.panel : 'transparent',
+                    color: settingsHistory.canUndo ? THEME.text : THEME.textSecondary,
+                    cursor: settingsHistory.canUndo ? 'pointer' : 'not-allowed',
+                    fontSize: '11px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                  title={`撤销 (${settingsHistory.undoCount} 步可用)`}
+                >
+                  <span>↶</span> 撤销
+                </button>
+                <button
+                  onClick={settingsHistory.redo}
+                  disabled={!settingsHistory.canRedo}
+                  style={{
+                    padding: '4px 8px',
+                    border: `1px solid ${THEME.primary}40`,
+                    borderRadius: '4px',
+                    background: settingsHistory.canRedo ? THEME.panel : 'transparent',
+                    color: settingsHistory.canRedo ? THEME.text : THEME.textSecondary,
+                    cursor: settingsHistory.canRedo ? 'pointer' : 'not-allowed',
+                    fontSize: '11px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                  title={`重做 (${settingsHistory.redoCount} 步可用)`}
+                >
+                  <span>↷</span> 重做
+                </button>
+                <span style={{ marginLeft: 'auto', fontSize: '10px', color: THEME.textSecondary }}>
+                  历史: {settingsHistory.undoCount} / {settingsHistory.undoCount + settingsHistory.redoCount}
+                </span>
+              </div>
+              <PropertyEditor
+                schema={WELDING_SETTINGS_SCHEMA}
+                value={settingsHistory.value as unknown as Record<string, unknown>}
+                onChange={(v) => settingsHistory.push(v as unknown as ExtendedWeldingSettings)}
+                theme="dark"
+                compact={true}
+                hideActions={true}
+                autoSave={true}
+              />
+            </div>
+          )}
+
+          {/* 焊缝编辑器 - PropertyEditor */}
+          {activeTab === 'seam' && (
+            <div style={{ background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40`, overflow: 'hidden' }}>
+              {selectedSeam ? (
+                <PropertyEditor
+                  schema={WELD_SEAM_SCHEMA}
+                  value={selectedSeam as unknown as Record<string, unknown>}
+                  onChange={(v) => handleSeamChange(v as unknown as ExtendedWeldSeam)}
+                  onPreviewChange={handleSeamPreviewChange as any}
+                  theme="dark"
+                  compact={true}
+                  hideActions={true}
+                  autoSave={true}
+                  // 高亮正在编辑的位置字段
+                  highlightFields={['start', 'end']}
+                />
+              ) : (
+                <div style={{ padding: '24px', textAlign: 'center', color: THEME.textSecondary }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>👆</div>
+                  <div>请在 3D 场景中点击选择一条焊缝</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 焊缝列表 */}
+          <div style={{ background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40`, padding: '12px' }}>
+            <div style={{ fontSize: '11px', color: THEME.textSecondary, marginBottom: '8px' }}>焊缝列表</div>
+            {seams.map((seam) => (
+              <div
+                key={seam.id}
+                onClick={() => handleSeamSelect(seam.id)}
+                style={{
+                  padding: '8px 12px',
+                  marginBottom: '4px',
+                  background: selectedSeamId === seam.id ? `${THEME.primary}30` : THEME.surface,
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  border: selectedSeamId === seam.id ? `1px solid ${THEME.primary}` : '1px solid transparent',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <span style={{ color: selectedSeamId === seam.id ? THEME.primary : THEME.text, fontWeight: 500, fontSize: '12px' }}>
+                  {seam.name || seam.id}
+                </span>
+                <span style={{ color: THEME.textSecondary, fontSize: '10px' }}>
+                  {Math.sqrt(
+                    Math.pow(seam.end[0] - seam.start[0], 2) +
+                    Math.pow(seam.end[1] - seam.start[1], 2) +
+                    Math.pow(seam.end[2] - seam.start[2], 2)
+                  ).toFixed(3)}m
+                </span>
+              </div>
+            ))}
+          </div>
 
           {/* TCP Debug Panel */}
           <TcpDebugPanel
@@ -419,11 +872,16 @@ function WeldingDemoInner({ tcpDebug, onTcpDebugChange }: WeldingDemoInnerProps)
             accentColor={THEME.primary}
           />
 
+          {/* 进度条 */}
           {state.trajectory && (
-            <div style={{ marginTop: '12px', padding: '16px', background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40` }}>
-              <h4 style={{ margin: '0 0 12px 0', color: THEME.secondary }}>Progress</h4>
+            <div style={{ padding: '16px', background: THEME.panel, borderRadius: '8px', border: `1px solid ${THEME.primary}40` }}>
+              <h4 style={{ margin: '0 0 12px 0', color: THEME.secondary, fontSize: '12px' }}>焊接进度</h4>
               <div style={{ height: '8px', background: THEME.background, borderRadius: '4px', overflow: 'hidden' }}>
                 <div style={{ width: `${state.playbackPosition * 100}%`, height: '100%', background: `linear-gradient(90deg, ${THEME.primary}, ${THEME.accent})`, transition: 'width 0.1s linear' }} />
+              </div>
+              <div style={{ marginTop: '8px', fontSize: '11px', color: THEME.textSecondary, display: 'flex', justifyContent: 'space-between' }}>
+                <span>已完成: {(state.playbackPosition * 100).toFixed(1)}%</span>
+                <span>设置: {weldingSettings.method} / {weldingSettings.current}A</span>
               </div>
             </div>
           )}

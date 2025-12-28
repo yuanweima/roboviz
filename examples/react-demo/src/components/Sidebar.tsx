@@ -7,7 +7,7 @@ interface SidebarProps {
 }
 
 // Category definitions
-type DemoCategory = 'scenes' | 'core' | 'robot' | 'trajectory' | 'vision' | 'advanced' | 'integration';
+type DemoCategory = 'scenes' | 'core' | 'robot' | 'trajectory' | 'vision' | 'advanced' | 'ui' | 'integration';
 
 const CATEGORY_INFO: Record<DemoCategory, { label: string; color: string; icon: string }> = {
   scenes: { label: 'Process Scenes', color: '#ff6600', icon: '🏭' },
@@ -16,6 +16,7 @@ const CATEGORY_INFO: Record<DemoCategory, { label: string; color: string; icon: 
   trajectory: { label: 'Trajectory', color: '#95e1d3', icon: '📐' },
   vision: { label: 'Vision', color: '#a855f7', icon: '👁' },
   advanced: { label: 'Advanced', color: '#f38181', icon: '🔬' },
+  ui: { label: 'UI Components', color: '#06b6d4', icon: '🎨' },
   integration: { label: 'Integration', color: '#00aaff', icon: '🔗' },
 };
 
@@ -33,6 +34,7 @@ const MODULES: ModuleInfo[] = [
   { id: 'welding', label: 'Welding', icon: '🔥', description: 'Industrial welding simulation', category: 'scenes', isFeatured: true },
   { id: 'grinding', label: 'Grinding', icon: '⚙️', description: 'Force-controlled grinding', category: 'scenes', isFeatured: true },
   { id: 'inspection', label: 'Inspection', icon: '🔍', description: 'AI defect detection', category: 'scenes', isFeatured: true },
+  { id: 'collision-analysis', label: 'Collision Analysis', icon: '📊', description: 'Timeline + Robot integration', category: 'scenes', isFeatured: true },
 
   // Core Features
   { id: 'robot', label: 'Robot Basics', icon: '🤖', description: 'URDF loading, joint control', category: 'core' },
@@ -56,6 +58,10 @@ const MODULES: ModuleInfo[] = [
   { id: 'collision', label: 'Collision', icon: '🛡️', description: 'Safety zones', category: 'advanced' },
   { id: 'events', label: 'Events', icon: '📡', description: 'Event system', category: 'advanced' },
   { id: 'performance', label: 'Performance', icon: '📊', description: 'Metrics, LOD', category: 'advanced' },
+
+  // UI Components
+  { id: 'timeline', label: 'Timeline', icon: '📊', description: 'Collision timeline', category: 'ui' },
+  { id: 'property-editor', label: 'Property Editor', icon: '⚙️', description: 'Schema-driven forms', category: 'ui' },
 
   // Integration
   { id: 'multi-instance', label: 'Multi-Instance', icon: '📦', description: 'Instance isolation', category: 'integration' },
