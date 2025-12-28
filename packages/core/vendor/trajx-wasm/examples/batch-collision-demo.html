@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch Collision Checking Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        h2 { color: #00d9ff; margin-top: 0; font-size: 18px; }
+        h3 { color: #aaa; font-size: 14px; margin: 15px 0 10px 0; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+        }
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.loading { background: #e6a23c22; color: #e6a23c; border: 1px solid #e6a23c44; }
+        .status.ready { background: #67c23a22; color: #67c23a; border: 1px solid #67c23a44; }
+        .status.error { background: #f56c6c22; color: #f56c6c; border: 1px solid #f56c6c44; }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        button.secondary {
+            background: #0f3460;
+            border: 1px solid #00d9ff;
+        }
+        button.success {
+            background: linear-gradient(135deg, #67c23a 0%, #4a9e2a 100%);
+        }
+        button.danger {
+            background: linear-gradient(135deg, #f56c6c 0%, #c45050 100%);
+        }
+
+        .output {
+            background: #0d1b2a;
+            color: #67c23a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 250px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #1e3a5f;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .input-group label {
+            display: flex;
+            flex-direction: column;
+            color: #aaa;
+            font-size: 12px;
+        }
+        .input-group input, .input-group select {
+            padding: 8px;
+            border: 1px solid #1e3a5f;
+            border-radius: 4px;
+            background: #0d1b2a;
+            color: #eee;
+            font-family: monospace;
+            width: 80px;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            padding: 8px;
+            background: #0d1b2a;
+            border-radius: 6px;
+        }
+        .slider-group label {
+            width: 120px;
+            font-weight: 500;
+            color: #aaa;
+            font-size: 13px;
+        }
+        .slider-group input[type="range"] {
+            flex: 1;
+            margin: 0 10px;
+            accent-color: #00d9ff;
+        }
+        .slider-group span {
+            width: 60px;
+            text-align: right;
+            font-family: monospace;
+            color: #00d9ff;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: #0d1b2a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #1e3a5f;
+        }
+        .stat-box .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #00d9ff;
+        }
+        .stat-box .label {
+            font-size: 10px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .stat-box.success .value { color: #67c23a; }
+        .stat-box.warning .value { color: #e6a23c; }
+        .stat-box.error .value { color: #f56c6c; }
+
+        canvas {
+            width: 100%;
+            height: 300px;
+            background: #0d1b2a;
+            border-radius: 8px;
+            border: 1px solid #1e3a5f;
+            margin-top: 10px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #0d1b2a;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+            border: 1px solid #1e3a5f;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #67c23a, #00d9ff);
+            transition: width 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .validity-bar {
+            display: flex;
+            height: 30px;
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 15px 0;
+            border: 1px solid #1e3a5f;
+        }
+        .validity-bar .valid {
+            background: #67c23a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .validity-bar .invalid {
+            background: #f56c6c;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .obstacle-list {
+            max-height: 150px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+        .obstacle-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #0d1b2a;
+            border-radius: 6px;
+            margin: 5px 0;
+            border: 1px solid #1e3a5f;
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 15px;
+            margin: 10px 0;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #aaa;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Batch Collision Checking Demo</h1>
+    <p class="subtitle">Demonstrates BatchCollisionChecker, checkPathCollision, and checkPathEdgesCollision for efficient multi-configuration checking</p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="grid">
+        <!-- Obstacle Configuration -->
+        <div class="card">
+            <h2>1. Obstacle Configuration</h2>
+            <p style="color: #888; font-size: 13px;">Define forbidden zones in 2D configuration space</p>
+
+            <h3>Add Obstacle</h3>
+            <div class="input-group">
+                <label>X Min <input type="number" id="new-obs-xmin" value="-0.5" step="0.1"></label>
+                <label>X Max <input type="number" id="new-obs-xmax" value="0.5" step="0.1"></label>
+                <label>Y Min <input type="number" id="new-obs-ymin" value="-0.5" step="0.1"></label>
+                <label>Y Max <input type="number" id="new-obs-ymax" value="0.5" step="0.1"></label>
+            </div>
+            <button onclick="addObstacle()">Add Obstacle</button>
+            <button class="secondary" onclick="addPresetObstacles()">Load Preset</button>
+
+            <div class="obstacle-list" id="obstacle-list">
+                <!-- Obstacles will be listed here -->
+            </div>
+
+            <button class="danger" onclick="clearObstacles()">Clear All</button>
+        </div>
+
+        <!-- Batch Configuration -->
+        <div class="card">
+            <h2>2. Batch Checking Configuration</h2>
+            <p style="color: #888; font-size: 13px;">Generate and check multiple configurations</p>
+
+            <div class="input-group">
+                <label>
+                    Num Configs
+                    <input type="number" id="num-configs" value="1000" min="10" max="10000">
+                </label>
+                <label>
+                    DOF
+                    <input type="number" id="dof" value="2" min="2" max="12">
+                </label>
+                <label>
+                    Distribution
+                    <select id="distribution">
+                        <option value="uniform">Uniform Random</option>
+                        <option value="gaussian">Gaussian (Center)</option>
+                        <option value="grid">Grid</option>
+                    </select>
+                </label>
+            </div>
+
+            <button onclick="generateConfigs()">Generate Configs</button>
+            <button class="success" onclick="runBatchCheck()">Run Batch Check</button>
+
+            <div class="validity-bar" id="validity-bar">
+                <div class="valid" style="width: 100%;">-</div>
+                <div class="invalid" style="width: 0%;"></div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="value" id="batch-total">-</div>
+                    <div class="label">Total</div>
+                </div>
+                <div class="stat-box success">
+                    <div class="value" id="batch-valid">-</div>
+                    <div class="label">Valid</div>
+                </div>
+                <div class="stat-box error">
+                    <div class="value" id="batch-invalid">-</div>
+                    <div class="label">Invalid</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="batch-time">-</div>
+                    <div class="label">Time (ms)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="batch-avg">-</div>
+                    <div class="label">Avg/Config (us)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Path Collision Checking -->
+        <div class="card full-width">
+            <h2>3. Path Collision Checking</h2>
+            <p style="color: #888; font-size: 13px;">Check paths for collisions with waypoint and edge checking</p>
+
+            <div class="input-group">
+                <label>
+                    Path Type
+                    <select id="path-type">
+                        <option value="line">Straight Line</option>
+                        <option value="arc">Arc</option>
+                        <option value="zigzag">Zigzag</option>
+                        <option value="random">Random Walk</option>
+                    </select>
+                </label>
+                <label>
+                    Waypoints
+                    <input type="number" id="path-waypoints" value="20" min="2" max="100">
+                </label>
+                <label>
+                    Edge Step Size
+                    <input type="number" id="edge-step-size" value="0.05" step="0.01" min="0.01">
+                </label>
+            </div>
+
+            <div class="input-group">
+                <label>Start X <input type="number" id="path-start-x" value="-2.5" step="0.1"></label>
+                <label>Start Y <input type="number" id="path-start-y" value="-1.5" step="0.1"></label>
+                <label>End X <input type="number" id="path-end-x" value="2.5" step="0.1"></label>
+                <label>End Y <input type="number" id="path-end-y" value="1.5" step="0.1"></label>
+            </div>
+
+            <div class="checkbox-group">
+                <label>
+                    <input type="checkbox" id="stop-at-first">
+                    Stop at First Collision
+                </label>
+            </div>
+
+            <div style="margin: 15px 0;">
+                <button onclick="generatePath()">Generate Path</button>
+                <button class="success" onclick="checkPathWaypoints()">Check Waypoints</button>
+                <button class="success" onclick="checkPathEdges()">Check Edges</button>
+                <button class="secondary" onclick="compareMethods()">Compare Methods</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="value" id="path-status">-</div>
+                    <div class="label">Path Status</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="path-waypoints-val">-</div>
+                    <div class="label">Waypoints</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="path-first-coll">-</div>
+                    <div class="label">First Collision</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="path-checked">-</div>
+                    <div class="label">Points Checked</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="path-time">-</div>
+                    <div class="label">Time (ms)</div>
+                </div>
+            </div>
+
+            <canvas id="path-canvas"></canvas>
+
+            <div style="margin-top: 10px; font-size: 12px;">
+                <span style="color: #67c23a;">Green: Valid waypoints</span> |
+                <span style="color: #f56c6c;">Red: Colliding waypoints</span> |
+                <span style="color: #e6a23c;">Orange: Obstacles</span> |
+                <span style="color: #00d9ff;">Blue: Path</span>
+            </div>
+        </div>
+
+        <!-- Batch Visualization -->
+        <div class="card full-width">
+            <h2>4. Batch Visualization (2D Projection)</h2>
+            <p style="color: #888; font-size: 13px;">Visualize generated configurations and their collision status</p>
+
+            <canvas id="batch-canvas"></canvas>
+
+            <div class="output" id="batch-output">Generate configurations and run batch check to see results.</div>
+        </div>
+
+        <!-- Performance Benchmark -->
+        <div class="card full-width">
+            <h2>5. Performance Benchmark</h2>
+            <p style="color: #888; font-size: 13px;">Compare batch checking performance with different sizes</p>
+
+            <div class="input-group">
+                <label>
+                    Max Configs
+                    <input type="number" id="bench-max" value="5000" min="1000" max="50000">
+                </label>
+                <label>
+                    Steps
+                    <input type="number" id="bench-steps" value="5" min="2" max="10">
+                </label>
+            </div>
+
+            <button onclick="runBenchmark()">Run Benchmark</button>
+
+            <div class="progress-bar" id="bench-progress" style="display: none;">
+                <div class="progress-bar-fill" id="bench-progress-fill" style="width: 0%;">0%</div>
+            </div>
+
+            <div class="output" id="bench-output">Run the benchmark to see performance results.</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, {
+            CollisionEnvironment,
+            BatchCollisionChecker,
+            checkPathCollision,
+            checkPathEdgesCollision
+        } from '../trajx_wasm.js';
+
+        let env = null;
+        let batchChecker = null;
+        let obstacles = [];
+        let generatedConfigs = [];
+        let configResults = [];
+        let currentPath = [];
+        let pathResults = [];
+
+        // Joint limits for 2D
+        const LIMITS = {
+            lower: [-3.14, -2.5],
+            upper: [3.14, 2.5]
+        };
+
+        // Initialize WASM
+        async function initialize() {
+            try {
+                await init();
+
+                // Check if collision feature is available
+                if (typeof CollisionEnvironment === 'undefined') {
+                    throw new Error('Collision feature not enabled. Build with: wasm-pack build --features collision');
+                }
+
+                env = new CollisionEnvironment();
+                batchChecker = new BatchCollisionChecker(env);
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = 'WASM loaded with batch collision support.';
+
+                updateObstacleList();
+                visualizeBatch();
+                visualizePath();
+
+                console.log('trajx-wasm batch collision module initialized');
+            } catch (err) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Error: ${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // Collision checker function
+        function collisionChecker(config) {
+            const x = config[0];
+            const y = config[1];
+
+            for (const obs of obstacles) {
+                if (x >= obs.xMin && x <= obs.xMax && y >= obs.yMin && y <= obs.yMax) {
+                    return false; // In collision
+                }
+            }
+            return true; // Valid
+        }
+
+        // Add obstacle
+        window.addObstacle = function() {
+            const xMin = parseFloat(document.getElementById('new-obs-xmin').value);
+            const xMax = parseFloat(document.getElementById('new-obs-xmax').value);
+            const yMin = parseFloat(document.getElementById('new-obs-ymin').value);
+            const yMax = parseFloat(document.getElementById('new-obs-ymax').value);
+
+            obstacles.push({ xMin, xMax, yMin, yMax });
+            updateObstacleList();
+            visualizeBatch();
+            visualizePath();
+        };
+
+        // Add preset obstacles
+        window.addPresetObstacles = function() {
+            obstacles = [
+                { xMin: -0.8, xMax: 0.8, yMin: -0.3, yMax: 0.3 },  // Center horizontal
+                { xMin: -2.5, xMax: -1.5, yMin: -1.5, yMax: -0.5 }, // Bottom left
+                { xMin: 1.5, xMax: 2.5, yMin: 0.5, yMax: 1.5 },    // Top right
+            ];
+            updateObstacleList();
+            visualizeBatch();
+            visualizePath();
+        };
+
+        // Remove obstacle
+        window.removeObstacle = function(index) {
+            obstacles.splice(index, 1);
+            updateObstacleList();
+            visualizeBatch();
+            visualizePath();
+        };
+
+        // Clear obstacles
+        window.clearObstacles = function() {
+            obstacles = [];
+            updateObstacleList();
+            visualizeBatch();
+            visualizePath();
+        };
+
+        // Update obstacle list display
+        function updateObstacleList() {
+            const list = document.getElementById('obstacle-list');
+            if (obstacles.length === 0) {
+                list.innerHTML = '<p style="color: #888; text-align: center; margin: 10px 0;">No obstacles</p>';
+                return;
+            }
+
+            list.innerHTML = obstacles.map((obs, i) => `
+                <div class="obstacle-item">
+                    <span style="color: #e6a23c;">Obstacle ${i + 1}: [${obs.xMin.toFixed(1)}, ${obs.xMax.toFixed(1)}] x [${obs.yMin.toFixed(1)}, ${obs.yMax.toFixed(1)}]</span>
+                    <button class="danger" style="padding: 5px 10px; font-size: 12px;" onclick="removeObstacle(${i})">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        // Generate configurations
+        window.generateConfigs = function() {
+            const numConfigs = parseInt(document.getElementById('num-configs').value);
+            const dof = parseInt(document.getElementById('dof').value);
+            const distribution = document.getElementById('distribution').value;
+
+            generatedConfigs = [];
+
+            switch (distribution) {
+                case 'uniform':
+                    for (let i = 0; i < numConfigs; i++) {
+                        const config = [];
+                        for (let j = 0; j < dof; j++) {
+                            const lower = LIMITS.lower[j % 2];
+                            const upper = LIMITS.upper[j % 2];
+                            config.push(lower + Math.random() * (upper - lower));
+                        }
+                        generatedConfigs.push(config);
+                    }
+                    break;
+
+                case 'gaussian':
+                    for (let i = 0; i < numConfigs; i++) {
+                        const config = [];
+                        for (let j = 0; j < dof; j++) {
+                            // Box-Muller transform for Gaussian
+                            const u1 = Math.random();
+                            const u2 = Math.random();
+                            const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+                            const lower = LIMITS.lower[j % 2];
+                            const upper = LIMITS.upper[j % 2];
+                            const center = (lower + upper) / 2;
+                            const spread = (upper - lower) / 4;
+                            const val = Math.max(lower, Math.min(upper, center + z * spread));
+                            config.push(val);
+                        }
+                        generatedConfigs.push(config);
+                    }
+                    break;
+
+                case 'grid':
+                    const gridSize = Math.ceil(Math.sqrt(numConfigs));
+                    for (let i = 0; i < gridSize; i++) {
+                        for (let j = 0; j < gridSize; j++) {
+                            if (generatedConfigs.length >= numConfigs) break;
+                            const x = LIMITS.lower[0] + (i + 0.5) / gridSize * (LIMITS.upper[0] - LIMITS.lower[0]);
+                            const y = LIMITS.lower[1] + (j + 0.5) / gridSize * (LIMITS.upper[1] - LIMITS.lower[1]);
+                            const config = [x, y];
+                            for (let k = 2; k < dof; k++) {
+                                config.push(0);
+                            }
+                            generatedConfigs.push(config);
+                        }
+                    }
+                    break;
+            }
+
+            configResults = [];
+            document.getElementById('batch-total').textContent = generatedConfigs.length;
+            document.getElementById('batch-valid').textContent = '-';
+            document.getElementById('batch-invalid').textContent = '-';
+            document.getElementById('batch-time').textContent = '-';
+            document.getElementById('batch-avg').textContent = '-';
+
+            visualizeBatch();
+        };
+
+        // Run batch check
+        window.runBatchCheck = function() {
+            if (generatedConfigs.length === 0) {
+                alert('Generate configurations first');
+                return;
+            }
+
+            const dof = parseInt(document.getElementById('dof').value);
+            const flatConfigs = generatedConfigs.flat();
+
+            const startTime = performance.now();
+            const result = batchChecker.checkBatch(flatConfigs, dof, collisionChecker);
+            const endTime = performance.now();
+
+            configResults = Array.from(result.results).map(v => v === 1);
+
+            // Update stats
+            document.getElementById('batch-total').textContent = result.numChecked;
+            document.getElementById('batch-valid').textContent = result.numValid;
+            document.getElementById('batch-invalid').textContent = result.numChecked - result.numValid;
+            document.getElementById('batch-time').textContent = result.totalTimeMs.toFixed(2);
+            document.getElementById('batch-avg').textContent = (result.avgTimePerConfig * 1000).toFixed(2);
+
+            // Update validity bar
+            const validRatio = result.validityRatio * 100;
+            const validBar = document.querySelector('#validity-bar .valid');
+            const invalidBar = document.querySelector('#validity-bar .invalid');
+            validBar.style.width = `${validRatio}%`;
+            invalidBar.style.width = `${100 - validRatio}%`;
+            validBar.textContent = `${result.numValid} valid (${validRatio.toFixed(1)}%)`;
+            invalidBar.textContent = result.numChecked - result.numValid > 0 ? `${result.numChecked - result.numValid} invalid` : '';
+
+            visualizeBatch();
+
+            document.getElementById('batch-output').textContent =
+                `Batch Check Results:\n` +
+                `${'='.repeat(40)}\n` +
+                `Total Configs: ${result.numChecked}\n` +
+                `Valid: ${result.numValid} (${(result.validityRatio * 100).toFixed(2)}%)\n` +
+                `Invalid: ${result.numChecked - result.numValid}\n` +
+                `Total Time: ${result.totalTimeMs.toFixed(2)} ms\n` +
+                `Avg Time/Config: ${(result.avgTimePerConfig * 1000).toFixed(2)} us\n`;
+        };
+
+        // Generate path
+        window.generatePath = function() {
+            const pathType = document.getElementById('path-type').value;
+            const numWaypoints = parseInt(document.getElementById('path-waypoints').value);
+            const startX = parseFloat(document.getElementById('path-start-x').value);
+            const startY = parseFloat(document.getElementById('path-start-y').value);
+            const endX = parseFloat(document.getElementById('path-end-x').value);
+            const endY = parseFloat(document.getElementById('path-end-y').value);
+
+            currentPath = [];
+
+            switch (pathType) {
+                case 'line':
+                    for (let i = 0; i < numWaypoints; i++) {
+                        const t = i / (numWaypoints - 1);
+                        currentPath.push([
+                            startX + t * (endX - startX),
+                            startY + t * (endY - startY)
+                        ]);
+                    }
+                    break;
+
+                case 'arc':
+                    const cx = (startX + endX) / 2;
+                    const cy = (startY + endY) / 2;
+                    const dx = endX - startX;
+                    const dy = endY - startY;
+                    const radius = Math.sqrt(dx * dx + dy * dy) / 2;
+                    const startAngle = Math.atan2(startY - cy, startX - cx);
+                    for (let i = 0; i < numWaypoints; i++) {
+                        const t = i / (numWaypoints - 1);
+                        const angle = startAngle + t * Math.PI;
+                        currentPath.push([
+                            cx + radius * Math.cos(angle),
+                            cy + radius * Math.sin(angle) * 0.8 // Flatten
+                        ]);
+                    }
+                    break;
+
+                case 'zigzag':
+                    for (let i = 0; i < numWaypoints; i++) {
+                        const t = i / (numWaypoints - 1);
+                        const zigzag = Math.sin(t * Math.PI * 6) * 0.5;
+                        currentPath.push([
+                            startX + t * (endX - startX) + zigzag,
+                            startY + t * (endY - startY)
+                        ]);
+                    }
+                    break;
+
+                case 'random':
+                    currentPath.push([startX, startY]);
+                    let x = startX, y = startY;
+                    for (let i = 1; i < numWaypoints - 1; i++) {
+                        const t = i / (numWaypoints - 1);
+                        const targetX = startX + t * (endX - startX);
+                        const targetY = startY + t * (endY - startY);
+                        x += (targetX - x) * 0.5 + (Math.random() - 0.5) * 0.3;
+                        y += (targetY - y) * 0.5 + (Math.random() - 0.5) * 0.2;
+                        currentPath.push([x, y]);
+                    }
+                    currentPath.push([endX, endY]);
+                    break;
+            }
+
+            pathResults = [];
+            resetPathStats();
+            visualizePath();
+        };
+
+        // Reset path stats
+        function resetPathStats() {
+            document.getElementById('path-status').textContent = '-';
+            document.getElementById('path-waypoints-val').textContent = currentPath.length;
+            document.getElementById('path-first-coll').textContent = '-';
+            document.getElementById('path-checked').textContent = '-';
+            document.getElementById('path-time').textContent = '-';
+        }
+
+        // Check path waypoints
+        window.checkPathWaypoints = function() {
+            if (currentPath.length === 0) {
+                alert('Generate a path first');
+                return;
+            }
+
+            const dof = 2;
+            const flatPath = currentPath.flat();
+            const stopAtFirst = document.getElementById('stop-at-first').checked;
+
+            const startTime = performance.now();
+            const result = checkPathCollision(flatPath, dof, collisionChecker, stopAtFirst);
+            const endTime = performance.now();
+
+            pathResults = Array.from(result.waypointResults).map(v => v === 1);
+
+            // Update stats
+            const statusEl = document.getElementById('path-status');
+            if (result.valid) {
+                statusEl.textContent = 'VALID';
+                statusEl.parentElement.classList.add('success');
+                statusEl.parentElement.classList.remove('error');
+            } else {
+                statusEl.textContent = 'COLLISION';
+                statusEl.parentElement.classList.add('error');
+                statusEl.parentElement.classList.remove('success');
+            }
+
+            document.getElementById('path-waypoints-val').textContent = currentPath.length;
+            document.getElementById('path-first-coll').textContent = result.firstCollisionIndex >= 0 ? result.firstCollisionIndex : 'None';
+            document.getElementById('path-checked').textContent = result.waypointsChecked;
+            document.getElementById('path-time').textContent = (endTime - startTime).toFixed(2);
+
+            visualizePath();
+        };
+
+        // Check path edges
+        window.checkPathEdges = function() {
+            if (currentPath.length === 0) {
+                alert('Generate a path first');
+                return;
+            }
+
+            const dof = 2;
+            const flatPath = currentPath.flat();
+            const stepSize = parseFloat(document.getElementById('edge-step-size').value);
+
+            const startTime = performance.now();
+            const result = checkPathEdgesCollision(flatPath, dof, collisionChecker, stepSize);
+            const endTime = performance.now();
+
+            // Edge results (one less than waypoints)
+            pathResults = Array.from(result.waypointResults).map(v => v === 1);
+
+            // Update stats
+            const statusEl = document.getElementById('path-status');
+            if (result.valid) {
+                statusEl.textContent = 'VALID';
+                statusEl.parentElement.classList.add('success');
+                statusEl.parentElement.classList.remove('error');
+            } else {
+                statusEl.textContent = 'COLLISION';
+                statusEl.parentElement.classList.add('error');
+                statusEl.parentElement.classList.remove('success');
+            }
+
+            document.getElementById('path-waypoints-val').textContent = currentPath.length;
+            document.getElementById('path-first-coll').textContent = result.firstCollisionIndex >= 0 ? `Edge ${result.firstCollisionIndex}` : 'None';
+            document.getElementById('path-checked').textContent = result.waypointsChecked;
+            document.getElementById('path-time').textContent = (endTime - startTime).toFixed(2);
+
+            visualizePath();
+        };
+
+        // Compare methods
+        window.compareMethods = function() {
+            if (currentPath.length === 0) {
+                alert('Generate a path first');
+                return;
+            }
+
+            const dof = 2;
+            const flatPath = currentPath.flat();
+            const stepSize = parseFloat(document.getElementById('edge-step-size').value);
+
+            // Waypoint check
+            const wpStart = performance.now();
+            const wpResult = checkPathCollision(flatPath, dof, collisionChecker, false);
+            const wpTime = performance.now() - wpStart;
+
+            // Edge check
+            const edgeStart = performance.now();
+            const edgeResult = checkPathEdgesCollision(flatPath, dof, collisionChecker, stepSize);
+            const edgeTime = performance.now() - edgeStart;
+
+            const output = document.getElementById('batch-output');
+            output.textContent = `Method Comparison:\n`;
+            output.textContent += `${'='.repeat(40)}\n\n`;
+            output.textContent += `Waypoint Check:\n`;
+            output.textContent += `  Valid: ${wpResult.valid}\n`;
+            output.textContent += `  Points Checked: ${wpResult.waypointsChecked}\n`;
+            output.textContent += `  First Collision: ${wpResult.firstCollisionIndex >= 0 ? wpResult.firstCollisionIndex : 'None'}\n`;
+            output.textContent += `  Time: ${wpTime.toFixed(2)} ms\n\n`;
+            output.textContent += `Edge Check (step=${stepSize}):\n`;
+            output.textContent += `  Valid: ${edgeResult.valid}\n`;
+            output.textContent += `  Edges Checked: ${edgeResult.waypointsChecked}\n`;
+            output.textContent += `  First Collision: ${edgeResult.firstCollisionIndex >= 0 ? 'Edge ' + edgeResult.firstCollisionIndex : 'None'}\n`;
+            output.textContent += `  Time: ${edgeTime.toFixed(2)} ms\n\n`;
+            output.textContent += `Conclusion:\n`;
+            if (wpResult.valid && !edgeResult.valid) {
+                output.textContent += `  Edge checking found collision BETWEEN waypoints!\n`;
+                output.textContent += `  Waypoint-only check would have MISSED this collision.\n`;
+            } else if (!wpResult.valid && edgeResult.valid) {
+                output.textContent += `  Waypoint check found collision, but edges are clear.\n`;
+            } else if (wpResult.valid && edgeResult.valid) {
+                output.textContent += `  Both methods agree: path is collision-free.\n`;
+            } else {
+                output.textContent += `  Both methods agree: path has collisions.\n`;
+            }
+        };
+
+        // Run benchmark
+        window.runBenchmark = async function() {
+            const maxConfigs = parseInt(document.getElementById('bench-max').value);
+            const steps = parseInt(document.getElementById('bench-steps').value);
+            const output = document.getElementById('bench-output');
+            const progressBar = document.getElementById('bench-progress');
+            const progressFill = document.getElementById('bench-progress-fill');
+
+            progressBar.style.display = 'block';
+            progressFill.style.width = '0%';
+            progressFill.textContent = '0%';
+
+            output.textContent = 'Running benchmark...\n\n';
+
+            const results = [];
+            const configSizes = [];
+            for (let i = 1; i <= steps; i++) {
+                configSizes.push(Math.round(maxConfigs * i / steps));
+            }
+
+            for (let i = 0; i < configSizes.length; i++) {
+                const numConfigs = configSizes[i];
+
+                // Generate configs
+                const configs = [];
+                for (let j = 0; j < numConfigs; j++) {
+                    configs.push([
+                        LIMITS.lower[0] + Math.random() * (LIMITS.upper[0] - LIMITS.lower[0]),
+                        LIMITS.lower[1] + Math.random() * (LIMITS.upper[1] - LIMITS.lower[1])
+                    ]);
+                }
+                const flatConfigs = configs.flat();
+
+                // Run check
+                const startTime = performance.now();
+                const result = batchChecker.checkBatch(flatConfigs, 2, collisionChecker);
+                const endTime = performance.now();
+
+                results.push({
+                    numConfigs,
+                    time: endTime - startTime,
+                    avgTime: (endTime - startTime) / numConfigs * 1000, // in microseconds
+                    validRatio: result.validityRatio
+                });
+
+                const progress = ((i + 1) / configSizes.length * 100).toFixed(0);
+                progressFill.style.width = `${progress}%`;
+                progressFill.textContent = `${progress}%`;
+
+                // Allow UI to update
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
+            progressBar.style.display = 'none';
+
+            // Display results
+            output.textContent = `Benchmark Results:\n`;
+            output.textContent += `${'='.repeat(50)}\n\n`;
+            output.textContent += `${'Configs'.padEnd(10)} | ${'Time (ms)'.padEnd(12)} | ${'Avg (us)'.padEnd(10)} | Valid %\n`;
+            output.textContent += `${'-'.repeat(50)}\n`;
+
+            for (const r of results) {
+                output.textContent += `${r.numConfigs.toString().padEnd(10)} | ${r.time.toFixed(2).padEnd(12)} | ${r.avgTime.toFixed(2).padEnd(10)} | ${(r.validRatio * 100).toFixed(1)}%\n`;
+            }
+
+            output.textContent += `\nConclusion:\n`;
+            const firstAvg = results[0].avgTime;
+            const lastAvg = results[results.length - 1].avgTime;
+            output.textContent += `  Average time per config: ${lastAvg.toFixed(2)} us\n`;
+            output.textContent += `  Throughput: ${(1000 / lastAvg * 1000).toFixed(0)} configs/sec\n`;
+            if (Math.abs(lastAvg - firstAvg) / firstAvg < 0.2) {
+                output.textContent += `  Scaling: Linear (good!)\n`;
+            } else {
+                output.textContent += `  Scaling: Some overhead observed\n`;
+            }
+        };
+
+        // Visualize batch
+        function visualizeBatch() {
+            const canvas = document.getElementById('batch-canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = canvas.offsetWidth * 2;
+            canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+
+            const width = canvas.offsetWidth;
+            const height = canvas.offsetHeight;
+
+            // Clear
+            ctx.fillStyle = '#0d1b2a';
+            ctx.fillRect(0, 0, width, height);
+
+            function mapX(v) {
+                return 30 + (v - LIMITS.lower[0]) / (LIMITS.upper[0] - LIMITS.lower[0]) * (width - 60);
+            }
+            function mapY(v) {
+                return height - 30 - (v - LIMITS.lower[1]) / (LIMITS.upper[1] - LIMITS.lower[1]) * (height - 60);
+            }
+
+            // Draw grid
+            ctx.strokeStyle = '#1e3a5f';
+            ctx.lineWidth = 0.5;
+            for (let x = -3; x <= 3; x++) {
+                ctx.beginPath();
+                ctx.moveTo(mapX(x), 0);
+                ctx.lineTo(mapX(x), height);
+                ctx.stroke();
+            }
+            for (let y = -2; y <= 2; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, mapY(y));
+                ctx.lineTo(width, mapY(y));
+                ctx.stroke();
+            }
+
+            // Draw obstacles
+            ctx.fillStyle = 'rgba(230, 162, 60, 0.4)';
+            ctx.strokeStyle = '#e6a23c';
+            ctx.lineWidth = 2;
+            for (const obs of obstacles) {
+                ctx.beginPath();
+                ctx.rect(mapX(obs.xMin), mapY(obs.yMax), mapX(obs.xMax) - mapX(obs.xMin), mapY(obs.yMin) - mapY(obs.yMax));
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            // Draw configurations
+            const maxDraw = Math.min(generatedConfigs.length, 5000);
+            for (let i = 0; i < maxDraw; i++) {
+                const config = generatedConfigs[i];
+                const valid = configResults.length > i ? configResults[i] : null;
+
+                if (valid === true) {
+                    ctx.fillStyle = 'rgba(103, 194, 58, 0.6)';
+                } else if (valid === false) {
+                    ctx.fillStyle = 'rgba(245, 108, 108, 0.8)';
+                } else {
+                    ctx.fillStyle = 'rgba(100, 100, 100, 0.4)';
+                }
+
+                ctx.beginPath();
+                ctx.arc(mapX(config[0]), mapY(config[1]), valid === false ? 3 : 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw axis labels
+            ctx.fillStyle = '#888';
+            ctx.font = '12px monospace';
+            ctx.fillText('X', width / 2 - 5, height - 5);
+            ctx.save();
+            ctx.translate(12, height / 2 + 5);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Y', 0, 0);
+            ctx.restore();
+        }
+
+        // Visualize path
+        function visualizePath() {
+            const canvas = document.getElementById('path-canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = canvas.offsetWidth * 2;
+            canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+
+            const width = canvas.offsetWidth;
+            const height = canvas.offsetHeight;
+
+            // Clear
+            ctx.fillStyle = '#0d1b2a';
+            ctx.fillRect(0, 0, width, height);
+
+            function mapX(v) {
+                return 30 + (v - LIMITS.lower[0]) / (LIMITS.upper[0] - LIMITS.lower[0]) * (width - 60);
+            }
+            function mapY(v) {
+                return height - 30 - (v - LIMITS.lower[1]) / (LIMITS.upper[1] - LIMITS.lower[1]) * (height - 60);
+            }
+
+            // Draw grid
+            ctx.strokeStyle = '#1e3a5f';
+            ctx.lineWidth = 0.5;
+            for (let x = -3; x <= 3; x++) {
+                ctx.beginPath();
+                ctx.moveTo(mapX(x), 0);
+                ctx.lineTo(mapX(x), height);
+                ctx.stroke();
+            }
+            for (let y = -2; y <= 2; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, mapY(y));
+                ctx.lineTo(width, mapY(y));
+                ctx.stroke();
+            }
+
+            // Draw obstacles
+            ctx.fillStyle = 'rgba(230, 162, 60, 0.4)';
+            ctx.strokeStyle = '#e6a23c';
+            ctx.lineWidth = 2;
+            for (const obs of obstacles) {
+                ctx.beginPath();
+                ctx.rect(mapX(obs.xMin), mapY(obs.yMax), mapX(obs.xMax) - mapX(obs.xMin), mapY(obs.yMin) - mapY(obs.yMax));
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            // Draw path
+            if (currentPath.length > 0) {
+                ctx.strokeStyle = '#00d9ff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(mapX(currentPath[0][0]), mapY(currentPath[0][1]));
+                for (let i = 1; i < currentPath.length; i++) {
+                    ctx.lineTo(mapX(currentPath[i][0]), mapY(currentPath[i][1]));
+                }
+                ctx.stroke();
+
+                // Draw waypoints
+                for (let i = 0; i < currentPath.length; i++) {
+                    const wp = currentPath[i];
+                    const valid = pathResults.length > i ? pathResults[i] : null;
+
+                    if (valid === true) {
+                        ctx.fillStyle = '#67c23a';
+                    } else if (valid === false) {
+                        ctx.fillStyle = '#f56c6c';
+                    } else {
+                        ctx.fillStyle = '#00d9ff';
+                    }
+
+                    ctx.beginPath();
+                    ctx.arc(mapX(wp[0]), mapY(wp[1]), valid === false ? 6 : 4, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Label start and end
+                    if (i === 0) {
+                        ctx.fillStyle = '#fff';
+                        ctx.font = 'bold 10px monospace';
+                        ctx.fillText('S', mapX(wp[0]) - 4, mapY(wp[1]) + 3);
+                    } else if (i === currentPath.length - 1) {
+                        ctx.fillStyle = '#fff';
+                        ctx.font = 'bold 10px monospace';
+                        ctx.fillText('G', mapX(wp[0]) - 4, mapY(wp[1]) + 3);
+                    }
+                }
+            }
+        }
+
+        // Start initialization
+        initialize();
+    </script>
+</body>
+</html>

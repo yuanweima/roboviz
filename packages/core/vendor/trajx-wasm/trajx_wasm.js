@@ -188,28 +188,6 @@ function debugString(val) {
     // TODO we could test for more things here, like `Set`s and `Map`s.
     return className;
 }
-/**
- * Create a robot from a URDF string
- * @param {string} urdf_content
- * @returns {Robot}
- */
-export function createRobot(urdf_content) {
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(urdf_content, wasm.__wbindgen_export_2, wasm.__wbindgen_export_3);
-        const len0 = WASM_VECTOR_LEN;
-        wasm.createRobot(retptr, ptr0, len0);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        if (r2) {
-            throw takeObject(r1);
-        }
-        return Robot.__wrap(r0);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-    }
-}
 
 function getArrayJsValueFromWasm0(ptr, len) {
     ptr = ptr >>> 0;
@@ -233,6 +211,29 @@ export function listDhDatabase() {
         var v1 = getArrayJsValueFromWasm0(r0, r1).slice();
         wasm.__wbindgen_export_1(r0, r1 * 4, 4);
         return v1;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * Create a robot from a URDF string
+ * @param {string} urdf_content
+ * @returns {Robot}
+ */
+export function createRobot(urdf_content) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(urdf_content, wasm.__wbindgen_export_2, wasm.__wbindgen_export_3);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.createRobot(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return Robot.__wrap(r0);
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -307,39 +308,6 @@ export function forwardKinematicsChainDh(dh_params, joint_angles) {
 }
 
 /**
- * Compute forward kinematics from DH parameters
- *
- * # Arguments
- * * `dh_params` - Array of DH parameters [a, alpha, d, theta] for each joint
- * * `joint_angles` - Current joint angles in radians
- *
- * # Returns
- * End-effector pose (position + orientation)
- * @param {DhParam[]} dh_params
- * @param {Float64Array} joint_angles
- * @returns {Pose}
- */
-export function forwardKinematicsDh(dh_params, joint_angles) {
-    try {
-        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passArrayJsValueToWasm0(dh_params, wasm.__wbindgen_export_2);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF64ToWasm0(joint_angles, wasm.__wbindgen_export_2);
-        const len1 = WASM_VECTOR_LEN;
-        wasm.forwardKinematicsDh(retptr, ptr0, len0, ptr1, len1);
-        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
-        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
-        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        if (r2) {
-            throw takeObject(r1);
-        }
-        return Pose.__wrap(r0);
-    } finally {
-        wasm.__wbindgen_add_to_stack_pointer(16);
-    }
-}
-
-/**
  * Compute inverse kinematics using numerical method (Damped Least Squares)
  *
  * # Arguments
@@ -373,6 +341,39 @@ export function inverseKinematicsDh(dh_params, target_pose, seed, joint_limits, 
     }
     const ret = wasm.inverseKinematicsDh(ptr0, len0, target_pose.__wbg_ptr, ptr1, len1, ptr2, isLikeNone(max_iterations) ? 0x100000001 : (max_iterations) >>> 0, !isLikeNone(tolerance), isLikeNone(tolerance) ? 0 : tolerance);
     return IkResult.__wrap(ret);
+}
+
+/**
+ * Compute forward kinematics from DH parameters
+ *
+ * # Arguments
+ * * `dh_params` - Array of DH parameters [a, alpha, d, theta] for each joint
+ * * `joint_angles` - Current joint angles in radians
+ *
+ * # Returns
+ * End-effector pose (position + orientation)
+ * @param {DhParam[]} dh_params
+ * @param {Float64Array} joint_angles
+ * @returns {Pose}
+ */
+export function forwardKinematicsDh(dh_params, joint_angles) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayJsValueToWasm0(dh_params, wasm.__wbindgen_export_2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(joint_angles, wasm.__wbindgen_export_2);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.forwardKinematicsDh(retptr, ptr0, len0, ptr1, len1);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return Pose.__wrap(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
 }
 
 /**
@@ -420,13 +421,6 @@ export function listSupportedRobots() {
 }
 
 /**
- * Initialize panic hook for better error messages in browser console
- */
-export function init() {
-    wasm.init();
-}
-
-/**
  * Check if the library is initialized
  * @returns {boolean}
  */
@@ -456,6 +450,52 @@ export function version() {
     }
 }
 
+/**
+ * Initialize panic hook for better error messages in browser console
+ */
+export function init() {
+    wasm.init();
+}
+
+/**
+ * Get a precision cable configuration (2π limit with auto-unwind)
+ * For applications requiring minimal cable stress
+ * @returns {CableConfig}
+ */
+export function cablePresetPrecision() {
+    const ret = wasm.cablePresetPrecision();
+    return CableConfig.__wrap(ret);
+}
+
+/**
+ * Get a heavy-duty cable configuration (2π limit, 1 full rotation / 360°)
+ * For thick, stiff cables that cannot twist much
+ * @returns {CableConfig}
+ */
+export function cablePresetHeavyDuty() {
+    const ret = wasm.cablePresetHeavyDuty();
+    return CableConfig.__wrap(ret);
+}
+
+/**
+ * Get a standard cable configuration (4π limit, 2 full rotations / 720°)
+ * @returns {CableConfig}
+ */
+export function cablePresetStandard() {
+    const ret = wasm.cablePresetStandard();
+    return CableConfig.__wrap(ret);
+}
+
+/**
+ * Get a light cable configuration (8π limit, 4 full rotations / 1440°)
+ * For thin, flexible cables
+ * @returns {CableConfig}
+ */
+export function cablePresetLight() {
+    const ret = wasm.cablePresetLight();
+    return CableConfig.__wrap(ret);
+}
+
 let stack_pointer = 128;
 
 function addBorrowedObject(obj) {
@@ -463,6 +503,32 @@ function addBorrowedObject(obj) {
     heap[--stack_pointer] = obj;
     return stack_pointer;
 }
+/**
+ * Compute path length from flat array
+ * @param {Float64Array} path_flat
+ * @param {number} dof
+ * @returns {number}
+ */
+export function computePathLength(path_flat, dof) {
+    const ptr0 = passArrayF64ToWasm0(path_flat, wasm.__wbindgen_export_2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.computePathLength(ptr0, len0, dof);
+    return ret;
+}
+
+/**
+ * Compute path smoothness from flat array (sum of squared accelerations)
+ * @param {Float64Array} path_flat
+ * @param {number} dof
+ * @returns {number}
+ */
+export function computePathSmoothness(path_flat, dof) {
+    const ptr0 = passArrayF64ToWasm0(path_flat, wasm.__wbindgen_export_2);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.computePathSmoothness(ptr0, len0, dof);
+    return ret;
+}
+
 /**
  * Interpolate between waypoints with specified resolution
  * Input/output as flat array: [dof, n_waypoints, j1_1, j2_1, ..., j1_2, j2_2, ...]
@@ -487,31 +553,23 @@ export function interpolatePathFlat(path_flat, resolution) {
 }
 
 /**
- * Compute path smoothness from flat array (sum of squared accelerations)
- * @param {Float64Array} path_flat
- * @param {number} dof
- * @returns {number}
+ * Cable constraint mode
+ * @enum {0 | 1 | 2}
  */
-export function computePathSmoothness(path_flat, dof) {
-    const ptr0 = passArrayF64ToWasm0(path_flat, wasm.__wbindgen_export_2);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.computePathSmoothness(ptr0, len0, dof);
-    return ret;
-}
-
-/**
- * Compute path length from flat array
- * @param {Float64Array} path_flat
- * @param {number} dof
- * @returns {number}
- */
-export function computePathLength(path_flat, dof) {
-    const ptr0 = passArrayF64ToWasm0(path_flat, wasm.__wbindgen_export_2);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.computePathLength(ptr0, len0, dof);
-    return ret;
-}
-
+export const CableMode = Object.freeze({
+    /**
+     * No cable tracking (default)
+     */
+    Disabled: 0, "0": "Disabled",
+    /**
+     * Track cable twist without constraining planning
+     */
+    TrackOnly: 1, "1": "TrackOnly",
+    /**
+     * Constrain planning to respect cable limits
+     */
+    Constrained: 2, "2": "Constrained",
+});
 /**
  * Collision handling mode
  * @enum {0 | 1 | 2 | 3}
@@ -814,6 +872,154 @@ export class BiRRTPlanner {
         const len1 = WASM_VECTOR_LEN;
         const ret = wasm.birrtplanner_plan(this.__wbg_ptr, ptr0, len0, ptr1, len1);
         return PlanningResult.__wrap(ret);
+    }
+}
+
+const CableConfigFinalization = (typeof FinalizationRegistry === 'undefined')
+    ? { register: () => {}, unregister: () => {} }
+    : new FinalizationRegistry(ptr => wasm.__wbg_cableconfig_free(ptr >>> 0, 1));
+/**
+ * Cable configuration for cable-aware motion planning
+ *
+ * Configure cable twist limits and warning thresholds.
+ * Used with `WasmMotion.cableAwareWith(config)`.
+ */
+export class CableConfig {
+
+    static __wrap(ptr) {
+        ptr = ptr >>> 0;
+        const obj = Object.create(CableConfig.prototype);
+        obj.__wbg_ptr = ptr;
+        CableConfigFinalization.register(obj, obj.__wbg_ptr, obj);
+        return obj;
+    }
+
+    __destroy_into_raw() {
+        const ptr = this.__wbg_ptr;
+        this.__wbg_ptr = 0;
+        CableConfigFinalization.unregister(this);
+        return ptr;
+    }
+
+    free() {
+        const ptr = this.__destroy_into_raw();
+        wasm.__wbg_cableconfig_free(ptr, 0);
+    }
+    /**
+     * @returns {number}
+     */
+    get initialTwist() {
+        const ret = wasm.cableconfig_initialTwist(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Check if a twist value is within limits
+     * @param {number} twist
+     * @returns {boolean}
+     */
+    isTwistValid(twist) {
+        const ret = wasm.cableconfig_isTwistValid(this.__wbg_ptr, twist);
+        return ret !== 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get maxTwistRate() {
+        const ret = wasm.cableconfig_maxTwistRate(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    get maxTotalTwist() {
+        const ret = wasm.cableconfig_maxTotalTwist(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Check if twist is in warning zone
+     * @param {number} twist
+     * @returns {boolean}
+     */
+    isTwistWarning(twist) {
+        const ret = wasm.cableconfig_isTwistWarning(this.__wbg_ptr, twist);
+        return ret !== 0;
+    }
+    /**
+     * Enable/disable auto-unwind strategy
+     * @param {boolean} enabled
+     * @returns {CableConfig}
+     */
+    withAutoUnwind(enabled) {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.cableconfig_withAutoUnwind(ptr, enabled);
+        return CableConfig.__wrap(ret);
+    }
+    /**
+     * @returns {number}
+     */
+    get warningThreshold() {
+        const ret = wasm.cableconfig_warningThreshold(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * Set initial twist (radians)
+     * @param {number} twist
+     * @returns {CableConfig}
+     */
+    withInitialTwist(twist) {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.birrtconfig_withConnectionThreshold(ptr, twist);
+        return CableConfig.__wrap(ret);
+    }
+    /**
+     * @returns {boolean}
+     */
+    get autoUnwindEnabled() {
+        const ret = wasm.cableconfig_autoUnwindEnabled(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Set maximum twist rate (radians per meter)
+     * @param {number} rate
+     * @returns {CableConfig}
+     */
+    withMaxTwistRate(rate) {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.birrtconfig_withMaxExtension(ptr, rate);
+        return CableConfig.__wrap(ret);
+    }
+    /**
+     * Set maximum total twist (radians)
+     * @param {number} max_twist
+     * @returns {CableConfig}
+     */
+    withMaxTotalTwist(max_twist) {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.cableconfig_withMaxTotalTwist(ptr, max_twist);
+        return CableConfig.__wrap(ret);
+    }
+    /**
+     * Set warning threshold (fraction of max_total_twist, 0.0-1.0)
+     * @param {number} threshold
+     * @returns {CableConfig}
+     */
+    withWarningThreshold(threshold) {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.cableconfig_withWarningThreshold(ptr, threshold);
+        return CableConfig.__wrap(ret);
+    }
+    /**
+     * Create default cable configuration
+     * - max_total_twist: 4*PI (2 full rotations / 720°)
+     * - max_twist_rate: PI rad/m
+     * - enable_auto_unwind: true
+     * - warning_threshold: 0.75
+     */
+    constructor() {
+        const ret = wasm.cablePresetStandard();
+        this.__wbg_ptr = ret >>> 0;
+        CableConfigFinalization.register(this, this.__wbg_ptr, this);
+        return this;
     }
 }
 
@@ -1418,7 +1624,7 @@ export class MotionConstraints {
      * @returns {number}
      */
     get speed_scale() {
-        const ret = wasm.motionconstraints_speed_scale(this.__wbg_ptr);
+        const ret = wasm.cableconfig_initialTwist(this.__wbg_ptr);
         return ret;
     }
     constructor() {
@@ -2040,7 +2246,7 @@ export class PlanningResult {
      * @returns {number}
      */
     get pathLength() {
-        const ret = wasm.planningresult_pathLength(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTwistRate(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -2101,7 +2307,7 @@ export class PlanningResult {
      * @returns {number}
      */
     get planningTimeMs() {
-        const ret = wasm.planningresult_planningTimeMs(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTotalTwist(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -3787,7 +3993,7 @@ export class TaskSpacePlanningResult {
      * @returns {number}
      */
     get planningTimeMs() {
-        const ret = wasm.planningresult_planningTimeMs(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTotalTwist(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -3894,14 +4100,14 @@ export class TaskSpaceRRTConfig {
      * @returns {number}
      */
     get goalBias() {
-        const ret = wasm.planningresult_pathLength(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTwistRate(this.__wbg_ptr);
         return ret;
     }
     /**
      * @returns {number}
      */
     get stepSize() {
-        const ret = wasm.planningresult_planningTimeMs(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTotalTwist(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -3944,7 +4150,7 @@ export class TaskSpaceRRTConfig {
      * @returns {number}
      */
     get positionTolerance() {
-        const ret = wasm.motionconstraints_speed_scale(this.__wbg_ptr);
+        const ret = wasm.cableconfig_initialTwist(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -3957,7 +4163,7 @@ export class TaskSpaceRRTConfig {
      * @returns {number}
      */
     get orientationTolerance() {
-        const ret = wasm.taskspacerrtconfig_orientationTolerance(this.__wbg_ptr);
+        const ret = wasm.cableconfig_warningThreshold(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -4179,7 +4385,7 @@ export class TrajectoryConfig {
      * @returns {number}
      */
     get timeStep() {
-        const ret = wasm.planningresult_planningTimeMs(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTotalTwist(this.__wbg_ptr);
         return ret;
     }
 }
@@ -4632,7 +4838,7 @@ export class WasmDiscreteMotionValidator {
      * @returns {number}
      */
     get maxStepSize() {
-        const ret = wasm.planningresult_planningTimeMs(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTotalTwist(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -4878,12 +5084,77 @@ export class WasmMotion {
         wasm.__wbg_wasmmotion_free(ptr, 0);
     }
     /**
+     * Enable cable-aware planning with standard preset (4π limit)
+     *
+     * This enables cable twist tracking and constrains the path planner
+     * to respect cable twist limits during motion planning.
+     *
+     * # Example
+     * ```typescript
+     * const result = WasmMotion.to(goal)
+     *     .cableAware()
+     *     .run(robot);
+     * console.log(result.cableTwist);
+     * ```
+     * @returns {WasmMotion}
+     */
+    cableAware() {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.wasmmotion_cableAware(ptr);
+        return WasmMotion.__wrap(ret);
+    }
+    /**
+     * Track cable twist without constraining the planner
+     *
+     * This only tracks twist during motion without modifying the planned path.
+     * Useful for monitoring cable state when twist constraints are soft.
+     * @returns {WasmMotion}
+     */
+    cableTrack() {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.wasmmotion_cableTrack(ptr);
+        return WasmMotion.__wrap(ret);
+    }
+    /**
      * Set very high smoothness
      * @returns {WasmMotion}
      */
     verySmooth() {
         const ptr = this.__destroy_into_raw();
         const ret = wasm.wasmmotion_verySmooth(ptr);
+        return WasmMotion.__wrap(ret);
+    }
+    /**
+     * Enable cable-aware planning with custom configuration
+     *
+     * # Example
+     * ```typescript
+     * const config = new CableConfig().withMaxTotalTwist(2 * Math.PI);
+     * const result = WasmMotion.to(goal)
+     *     .cableAwareWith(config)
+     *     .run(robot);
+     * ```
+     * @param {CableConfig} config
+     * @returns {WasmMotion}
+     */
+    cableAwareWith(config) {
+        const ptr = this.__destroy_into_raw();
+        _assertClass(config, CableConfig);
+        var ptr0 = config.__destroy_into_raw();
+        const ret = wasm.wasmmotion_cableAwareWith(ptr, ptr0);
+        return WasmMotion.__wrap(ret);
+    }
+    /**
+     * Set initial cable twist for this motion (for multi-segment tracking)
+     *
+     * Use this when planning multiple motions in sequence to maintain
+     * accumulated twist state between motions.
+     * @param {number} twist
+     * @returns {WasmMotion}
+     */
+    withCableTwist(twist) {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.wasmmotion_withCableTwist(ptr, twist);
         return WasmMotion.__wrap(ret);
     }
     /**
@@ -5109,6 +5380,21 @@ export class WasmMotionResult {
         return ret >>> 0;
     }
     /**
+     * Get cable twist at end of motion (if cable-aware)
+     * @returns {number | undefined}
+     */
+    get cableTwist() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.ikresult_error(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r2 = getDataViewMemory0().getFloat64(retptr + 8 * 1, true);
+            return r0 === 0 ? undefined : r2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * Get time at a specific index
      * @param {number} index
      * @returns {number | undefined}
@@ -5128,8 +5414,24 @@ export class WasmMotionResult {
      * @returns {number}
      */
     get pathLength() {
-        const ret = wasm.motionconstraints_speed_scale(this.__wbg_ptr);
+        const ret = wasm.wasmmotionresult_pathLength(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * Check if motion entered cable warning zone
+     * @returns {boolean}
+     */
+    get cableWarning() {
+        const ret = wasm.wasmmotionresult_cableWarning(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Check if motion exceeded cable limit
+     * @returns {boolean}
+     */
+    get cableExceeded() {
+        const ret = wasm.wasmmotionresult_cableExceeded(this.__wbg_ptr);
+        return ret !== 0;
     }
     /**
      * @returns {boolean}
@@ -5151,6 +5453,21 @@ export class WasmMotionResult {
             var v1 = getArrayF64FromWasm0(r0, r1).slice();
             wasm.__wbindgen_export_1(r0, r1 * 8, 8);
             return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+     * Get maximum cable twist during motion
+     * @returns {number | undefined}
+     */
+    get cableMaxTwist() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmmotionresult_cableMaxTwist(retptr, this.__wbg_ptr);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r2 = getDataViewMemory0().getFloat64(retptr + 8 * 1, true);
+            return r0 === 0 ? undefined : r2;
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
@@ -5180,14 +5497,22 @@ export class WasmMotionResult {
      * @returns {number}
      */
     get planningTimeMs() {
-        const ret = wasm.planningresult_planningTimeMs(this.__wbg_ptr);
+        const ret = wasm.wasmmotionresult_planningTimeMs(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * Check if cable tracking was enabled for this motion
+     * @returns {boolean}
+     */
+    get hasCableTracking() {
+        const ret = wasm.wasmmotionresult_hasCableTracking(this.__wbg_ptr);
+        return ret !== 0;
     }
     /**
      * @returns {number}
      */
     get trajectoryDuration() {
-        const ret = wasm.planningresult_pathLength(this.__wbg_ptr);
+        const ret = wasm.wasmmotionresult_trajectoryDuration(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -5707,7 +6032,7 @@ export class WasmPipelineResult {
      * @returns {number}
      */
     get processingTimeMs() {
-        const ret = wasm.wasmpipelineresult_processingTimeMs(this.__wbg_ptr);
+        const ret = wasm.wasmmotionresult_planningTimeMs(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -6118,6 +6443,40 @@ export class WasmSequence {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_wasmsequence_free(ptr, 0);
+    }
+    /**
+     * Enable cable-aware tracking for the entire sequence
+     *
+     * This tracks cable twist across all motions in the sequence,
+     * accumulating twist from motion to motion.
+     * @returns {WasmSequence}
+     */
+    cableAware() {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.wasmsequence_cableAware(ptr);
+        return WasmSequence.__wrap(ret);
+    }
+    /**
+     * Enable cable-aware tracking with custom configuration
+     * @param {CableConfig} config
+     * @returns {WasmSequence}
+     */
+    cableAwareWith(config) {
+        const ptr = this.__destroy_into_raw();
+        _assertClass(config, CableConfig);
+        var ptr0 = config.__destroy_into_raw();
+        const ret = wasm.wasmsequence_cableAwareWith(ptr, ptr0);
+        return WasmSequence.__wrap(ret);
+    }
+    /**
+     * Set initial cable twist for the sequence
+     * @param {number} twist
+     * @returns {WasmSequence}
+     */
+    withCableTwist(twist) {
+        const ptr = this.__destroy_into_raw();
+        const ret = wasm.wasmsequence_withCableTwist(ptr, twist);
+        return WasmSequence.__wrap(ret);
     }
     /**
      * Execute all motions in sequence
@@ -7319,7 +7678,7 @@ export class WasmTrajectoryPoint {
      * @returns {number}
      */
     get time() {
-        const ret = wasm.planningresult_planningTimeMs(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTotalTwist(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -7379,14 +7738,14 @@ export class WorkspaceAnalysis {
      * @returns {number}
      */
     get manipulability() {
-        const ret = wasm.planningresult_planningTimeMs(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTotalTwist(this.__wbg_ptr);
         return ret;
     }
     /**
      * @returns {number}
      */
     get conditionNumber() {
-        const ret = wasm.planningresult_pathLength(this.__wbg_ptr);
+        const ret = wasm.cableconfig_maxTwistRate(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -7400,7 +7759,7 @@ export class WorkspaceAnalysis {
      * @returns {number}
      */
     get minSingularValue() {
-        const ret = wasm.motionconstraints_speed_scale(this.__wbg_ptr);
+        const ret = wasm.cableconfig_initialTwist(this.__wbg_ptr);
         return ret;
     }
     /**

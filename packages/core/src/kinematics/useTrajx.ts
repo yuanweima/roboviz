@@ -1450,3 +1450,156 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
     hasTool,
   };
 }
+
+// ============================================================================
+// useTrajxCableConfig - Cable configuration hook (NEW in melbourne)
+// Uses 'Trajx' prefix to avoid conflict with cable-management module's useCableConfig
+// ============================================================================
+
+export type CablePresetType = 'standard' | 'heavy-duty' | 'precision' | 'light' | 'custom';
+
+export interface UseTrajxCableConfigOptions {
+  /** Cable preset to use */
+  preset?: CablePresetType;
+  /** Custom max total twist in radians (only for 'custom' preset) */
+  maxTotalTwist?: number;
+  /** Custom warning threshold (0.0-1.0) */
+  warningThreshold?: number;
+  /** Enable auto-unwind strategy */
+  autoUnwind?: boolean;
+}
+
+export interface UseTrajxCableConfigReturn {
+  /** Whether the config is ready */
+  ready: boolean;
+  /** Cable config instance for use with WasmMotion.cableAwareWith() */
+  config: ReturnType<typeof getKinematicsManager>['getCablePresetStandard'] extends () => infer R ? R : never;
+  /** Max total twist from config */
+  maxTotalTwist: number;
+  /** Warning threshold from config */
+  warningThreshold: number;
+  /** Check if a twist value is valid */
+  isTwistValid: (twist: number) => boolean;
+  /** Check if a twist value is in warning zone */
+  isTwistWarning: (twist: number) => boolean;
+}
+
+/**
+ * Hook for creating cable configuration for use with cable-aware motion planning
+ *
+ * Cable tracking in melbourne is now integrated into WasmMotion directly:
+ * - Use `.cableAware()` for standard preset
+ * - Use `.cableAwareWith(config)` for custom config
+ * - Use `.withCableTwist(twist)` to set initial twist for multi-segment tracking
+ *
+ * @example
+ * ```tsx
+ * function CableAwarePlanning() {
+ *   const { ready, config } = useTrajxCableConfig({ preset: 'heavy-duty' });
+ *   const { solver } = useHybridSolver({ robotId: 'main', urdfContent });
+ *
+ *   const planMotion = useCallback(() => {
+ *     if (!ready || !solver) return;
+ *
+ *     // Cable-aware motion planning
+ *     const result = WasmMotion.to(goalJoints)
+ *       .from(startJoints)
+ *       .cableAwareWith(config)
+ *       .run(solver.robot);
+ *
+ *     console.log('Final twist:', result.cableTwist);
+ *     console.log('Warning triggered:', result.cableWarning);
+ *     console.log('Limit exceeded:', result.cableExceeded);
+ *   }, [ready, config, solver]);
+ *
+ *   return <button onClick={planMotion}>Plan Motion</button>;
+ * }
+ * ```
+ */
+export function useTrajxCableConfig(options: UseTrajxCableConfigOptions = {}): UseTrajxCableConfigReturn {
+  const {
+    preset = 'standard',
+    maxTotalTwist: customMaxTwist,
+    warningThreshold: customWarningThreshold,
+    autoUnwind,
+  } = options;
+
+  const { ready: wasmReady } = useTrajx();
+  type CableConfigType = ReturnType<typeof getKinematicsManager>['getCablePresetStandard'] extends () => infer R ? R : never;
+  const [config, setConfig] = useState<CableConfigType | null>(null);
+  const [ready, setReady] = useState(false);
+  const [maxTotalTwist, setMaxTotalTwist] = useState(4 * Math.PI);
+  const [warningThreshold, setWarningThreshold] = useState(0.75);
+
+  // Initialize config
+  useEffect(() => {
+    if (!wasmReady) return;
+
+    try {
+      const manager = getKinematicsManager();
+
+      // Get or create cable config based on preset
+      let newConfig: CableConfigType;
+      switch (preset) {
+        case 'heavy-duty':
+          newConfig = manager.getCablePresetHeavyDuty();
+          break;
+        case 'precision':
+          newConfig = manager.getCablePresetPrecision();
+          break;
+        case 'light':
+          newConfig = manager.getCablePresetLight();
+          break;
+        case 'custom':
+          newConfig = manager.createCableConfig();
+          if (customMaxTwist !== undefined) {
+            newConfig = newConfig.withMaxTotalTwist(customMaxTwist);
+          }
+          break;
+        case 'standard':
+        default:
+          newConfig = manager.getCablePresetStandard();
+          break;
+      }
+
+      // Apply custom settings
+      if (customWarningThreshold !== undefined) {
+        newConfig = newConfig.withWarningThreshold(customWarningThreshold);
+      }
+      if (autoUnwind !== undefined) {
+        newConfig = newConfig.withAutoUnwind(autoUnwind);
+      }
+
+      setConfig(newConfig);
+      setMaxTotalTwist(newConfig.maxTotalTwist);
+      setWarningThreshold(newConfig.warningThreshold);
+      setReady(true);
+    } catch (e) {
+      console.error('[useTrajxCableConfig] Failed to initialize:', e);
+      setReady(false);
+    }
+
+    return () => {
+      // Config cleanup is handled by WASM GC
+    };
+  }, [wasmReady, preset, customMaxTwist, customWarningThreshold, autoUnwind]);
+
+  const isTwistValid = useCallback((twist: number): boolean => {
+    if (!config) return true;
+    return config.isTwistValid(twist);
+  }, [config]);
+
+  const isTwistWarning = useCallback((twist: number): boolean => {
+    if (!config) return false;
+    return config.isTwistWarning(twist);
+  }, [config]);
+
+  return {
+    ready,
+    config: config!,
+    maxTotalTwist,
+    warningThreshold,
+    isTwistValid,
+    isTwistWarning,
+  };
+}

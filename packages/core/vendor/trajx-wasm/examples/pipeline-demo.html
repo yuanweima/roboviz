@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planning Pipeline Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        h2 { color: #00d9ff; margin-top: 0; font-size: 18px; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+        }
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.loading { background: #e6a23c22; color: #e6a23c; border: 1px solid #e6a23c44; }
+        .status.ready { background: #67c23a22; color: #67c23a; border: 1px solid #67c23a44; }
+        .status.error { background: #f56c6c22; color: #f56c6c; border: 1px solid #f56c6c44; }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        button.secondary {
+            background: #0f3460;
+            border: 1px solid #00d9ff;
+        }
+        button.success {
+            background: linear-gradient(135deg, #67c23a 0%, #4a9e2a 100%);
+        }
+
+        .output {
+            background: #0d1b2a;
+            color: #67c23a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #1e3a5f;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .input-group label {
+            display: flex;
+            flex-direction: column;
+            color: #aaa;
+            font-size: 12px;
+        }
+        .input-group input, .input-group select {
+            padding: 8px;
+            border: 1px solid #1e3a5f;
+            border-radius: 4px;
+            background: #0d1b2a;
+            color: #eee;
+            font-family: monospace;
+            width: 80px;
+        }
+        .input-group input.wide {
+            width: 150px;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            padding: 8px;
+            background: #0d1b2a;
+            border-radius: 6px;
+        }
+        .slider-group label {
+            width: 120px;
+            font-weight: 500;
+            color: #aaa;
+            font-size: 13px;
+        }
+        .slider-group input[type="range"] {
+            flex: 1;
+            margin: 0 10px;
+            accent-color: #00d9ff;
+        }
+        .slider-group span {
+            width: 60px;
+            text-align: right;
+            font-family: monospace;
+            color: #00d9ff;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: #0d1b2a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #1e3a5f;
+        }
+        .stat-box .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #00d9ff;
+        }
+        .stat-box .label {
+            font-size: 11px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .stat-box.improved .value {
+            color: #67c23a;
+        }
+        .stat-box.original .value {
+            color: #e6a23c;
+        }
+
+        canvas {
+            width: 100%;
+            height: 250px;
+            background: #0d1b2a;
+            border-radius: 8px;
+            border: 1px solid #1e3a5f;
+            margin-top: 10px;
+        }
+
+        .comparison-row {
+            display: flex;
+            gap: 20px;
+            margin: 15px 0;
+        }
+        .comparison-item {
+            flex: 1;
+            background: #0d1b2a;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #1e3a5f;
+        }
+        .comparison-item h4 {
+            color: #aaa;
+            margin: 0 0 10px 0;
+            font-size: 13px;
+        }
+        .comparison-item.before h4 { color: #e6a23c; }
+        .comparison-item.after h4 { color: #67c23a; }
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #1e3a5f33;
+        }
+        .metric-row:last-child { border-bottom: none; }
+        .metric-label { color: #888; }
+        .metric-value { color: #00d9ff; font-family: monospace; }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #0d1b2a;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #00d9ff);
+            transition: width 0.3s;
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 15px;
+            margin: 10px 0;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #aaa;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Planning Pipeline Demo</h1>
+    <p class="subtitle">Demonstrates WasmPlanningPipeline with shortcutting, smoothing, and path optimization</p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="grid">
+        <!-- Pipeline Configuration -->
+        <div class="card">
+            <h2>1. Pipeline Configuration</h2>
+            <p style="color: #888; font-size: 13px;">Configure path optimization parameters</p>
+
+            <div class="checkbox-group">
+                <label>
+                    <input type="checkbox" id="enable-post-processing" checked>
+                    Enable Post-Processing
+                </label>
+                <label>
+                    <input type="checkbox" id="enable-collision-check">
+                    With Collision Check
+                </label>
+            </div>
+
+            <div class="slider-group">
+                <label>Shortcut Iters</label>
+                <input type="range" id="shortcut-iters" min="10" max="500" value="100" oninput="updateSlider('shortcut-iters')">
+                <span id="shortcut-iters-val">100</span>
+            </div>
+
+            <div class="slider-group">
+                <label>Smooth Iters</label>
+                <input type="range" id="smooth-iters" min="10" max="200" value="50" oninput="updateSlider('smooth-iters')">
+                <span id="smooth-iters-val">50</span>
+            </div>
+
+            <div class="slider-group">
+                <label>Smoothing Factor</label>
+                <input type="range" id="smoothing-factor" min="0" max="1" step="0.05" value="0.3" oninput="updateSlider('smoothing-factor')">
+                <span id="smoothing-factor-val">0.30</span>
+            </div>
+
+            <div class="slider-group">
+                <label>Step Size</label>
+                <input type="range" id="step-size" min="0.01" max="0.2" step="0.01" value="0.05" oninput="updateSlider('step-size')">
+                <span id="step-size-val">0.05</span>
+            </div>
+
+            <button onclick="createPipeline()">Create Pipeline</button>
+            <button class="secondary" onclick="useDefaultConfig()">Reset to Defaults</button>
+        </div>
+
+        <!-- Path Generation -->
+        <div class="card">
+            <h2>2. Generate Test Path</h2>
+            <p style="color: #888; font-size: 13px;">Create a path with unnecessary waypoints for optimization</p>
+
+            <div class="input-group">
+                <label>
+                    Waypoints
+                    <input type="number" id="num-waypoints" value="50" min="5" max="200">
+                </label>
+                <label>
+                    DOF
+                    <input type="number" id="dof" value="6" min="2" max="12">
+                </label>
+                <label>
+                    Path Type
+                    <select id="path-type">
+                        <option value="noisy-line">Noisy Line</option>
+                        <option value="zigzag">Zigzag</option>
+                        <option value="detour">Detour</option>
+                        <option value="spiral">Spiral</option>
+                    </select>
+                </label>
+            </div>
+
+            <div class="slider-group">
+                <label>Noise Level</label>
+                <input type="range" id="noise-level" min="0" max="0.5" step="0.01" value="0.1" oninput="updateSlider('noise-level')">
+                <span id="noise-level-val">0.10</span>
+            </div>
+
+            <button onclick="generatePath()">Generate Path</button>
+            <button class="secondary" onclick="loadExamplePath()">Load Example</button>
+
+            <div class="output" id="path-output">Generate a path to see statistics.</div>
+        </div>
+
+        <!-- Pipeline Operations -->
+        <div class="card full-width">
+            <h2>3. Pipeline Operations</h2>
+            <p style="color: #888; font-size: 13px;">Apply optimization stages individually or all at once</p>
+
+            <div style="margin: 15px 0;">
+                <button class="success" onclick="runFullPipeline()">Run Full Pipeline</button>
+                <button onclick="runShortcutOnly()">Shortcut Only</button>
+                <button onclick="runSmoothOnly()">Smooth Only</button>
+                <button class="secondary" onclick="calculateMetrics()">Calculate Metrics</button>
+            </div>
+
+            <div class="progress-bar" id="progress-bar" style="display: none;">
+                <div class="progress-bar-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+
+            <div class="comparison-row">
+                <div class="comparison-item before">
+                    <h4>Before Optimization</h4>
+                    <div class="metric-row">
+                        <span class="metric-label">Waypoints</span>
+                        <span class="metric-value" id="before-waypoints">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Path Length</span>
+                        <span class="metric-value" id="before-length">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Smoothness</span>
+                        <span class="metric-value" id="before-smoothness">-</span>
+                    </div>
+                </div>
+                <div class="comparison-item after">
+                    <h4>After Optimization</h4>
+                    <div class="metric-row">
+                        <span class="metric-label">Waypoints</span>
+                        <span class="metric-value" id="after-waypoints">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Path Length</span>
+                        <span class="metric-value" id="after-length">-</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Smoothness</span>
+                        <span class="metric-value" id="after-smoothness">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box improved">
+                    <div class="value" id="waypoint-reduction">-</div>
+                    <div class="label">Waypoint Reduction</div>
+                </div>
+                <div class="stat-box improved">
+                    <div class="value" id="length-improvement">-</div>
+                    <div class="label">Path Length Improvement</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="processing-time">-</div>
+                    <div class="label">Processing Time (ms)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="collision-checks">-</div>
+                    <div class="label">Collision Checks</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualization -->
+        <div class="card full-width">
+            <h2>4. Path Visualization (2D Projection)</h2>
+            <p style="color: #888; font-size: 13px;">Joint 0 vs Joint 1 projection showing path before and after optimization</p>
+
+            <canvas id="path-canvas"></canvas>
+
+            <div style="margin-top: 10px;">
+                <span style="color: #e6a23c;">Orange: Original path</span> |
+                <span style="color: #67c23a;">Green: Optimized path</span> |
+                <span style="color: #00d9ff;">Blue: Waypoints</span>
+            </div>
+        </div>
+
+        <!-- Batch Pipeline Test -->
+        <div class="card full-width">
+            <h2>5. Pipeline Performance Benchmark</h2>
+            <p style="color: #888; font-size: 13px;">Test pipeline performance with multiple paths</p>
+
+            <div class="input-group">
+                <label>
+                    Number of Paths
+                    <input type="number" id="bench-paths" value="10" min="1" max="100">
+                </label>
+                <label>
+                    Waypoints per Path
+                    <input type="number" id="bench-waypoints" value="30" min="5" max="100">
+                </label>
+            </div>
+
+            <button onclick="runBenchmark()">Run Benchmark</button>
+
+            <div class="output" id="benchmark-output">Run the benchmark to see performance results.</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, {
+            JointLimits,
+            WasmPipelineConfig,
+            WasmPlanningPipeline,
+            computePathLength,
+            computePathSmoothness
+        } from '../trajx_wasm.js';
+
+        let pipeline = null;
+        let jointLimits = null;
+        let originalPath = [];
+        let optimizedPath = [];
+        let dof = 6;
+        let collisionCheckCount = 0;
+
+        // Default joint limits (typical 6-DOF robot)
+        const DEFAULT_LIMITS = {
+            lower: [-3.14, -2.0, -2.5, -3.5, -2.0, -6.28],
+            upper: [3.14, 2.0, 2.5, 3.5, 2.0, 6.28]
+        };
+
+        // Initialize WASM
+        async function initialize() {
+            try {
+                await init();
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = 'WASM loaded. Create a pipeline to get started.';
+
+                console.log('trajx-wasm planning pipeline module initialized');
+            } catch (err) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Error: ${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // Update slider display
+        window.updateSlider = function(id) {
+            const slider = document.getElementById(id);
+            const display = document.getElementById(`${id}-val`);
+
+            if (id === 'smoothing-factor' || id === 'step-size' || id === 'noise-level') {
+                display.textContent = parseFloat(slider.value).toFixed(2);
+            } else {
+                display.textContent = slider.value;
+            }
+        };
+
+        // Create pipeline
+        window.createPipeline = function() {
+            try {
+                dof = parseInt(document.getElementById('dof').value);
+
+                // Create joint limits
+                const lower = [];
+                const upper = [];
+                for (let i = 0; i < dof; i++) {
+                    lower.push(DEFAULT_LIMITS.lower[i % 6] || -3.14);
+                    upper.push(DEFAULT_LIMITS.upper[i % 6] || 3.14);
+                }
+                jointLimits = new JointLimits(lower, upper);
+
+                // Create pipeline config
+                const config = WasmPipelineConfig.withParams(
+                    parseInt(document.getElementById('shortcut-iters').value),
+                    parseInt(document.getElementById('smooth-iters').value),
+                    parseFloat(document.getElementById('smoothing-factor').value)
+                );
+
+                const enablePostProcessing = document.getElementById('enable-post-processing').checked;
+                config.enable_post_processing = enablePostProcessing;
+
+                // Create pipeline
+                pipeline = new WasmPlanningPipeline(jointLimits, config);
+                pipeline.setStepSize(parseFloat(document.getElementById('step-size').value));
+
+                document.getElementById('status').textContent = `Pipeline created: ${dof} DOF, post-processing ${enablePostProcessing ? 'enabled' : 'disabled'}`;
+            } catch (err) {
+                alert(`Error creating pipeline: ${err.message}`);
+            }
+        };
+
+        // Reset to defaults
+        window.useDefaultConfig = function() {
+            document.getElementById('shortcut-iters').value = 100;
+            document.getElementById('smooth-iters').value = 50;
+            document.getElementById('smoothing-factor').value = 0.3;
+            document.getElementById('step-size').value = 0.05;
+            document.getElementById('enable-post-processing').checked = true;
+
+            updateSlider('shortcut-iters');
+            updateSlider('smooth-iters');
+            updateSlider('smoothing-factor');
+            updateSlider('step-size');
+        };
+
+        // Generate path
+        window.generatePath = function() {
+            dof = parseInt(document.getElementById('dof').value);
+            const numWaypoints = parseInt(document.getElementById('num-waypoints').value);
+            const pathType = document.getElementById('path-type').value;
+            const noiseLevel = parseFloat(document.getElementById('noise-level').value);
+
+            const lower = [];
+            const upper = [];
+            for (let i = 0; i < dof; i++) {
+                lower.push(DEFAULT_LIMITS.lower[i % 6] || -3.14);
+                upper.push(DEFAULT_LIMITS.upper[i % 6] || 3.14);
+            }
+
+            // Start and end configurations
+            const start = lower.map((l, i) => l + 0.2 * (upper[i] - l));
+            const end = lower.map((l, i) => l + 0.8 * (upper[i] - l));
+
+            originalPath = [];
+
+            switch (pathType) {
+                case 'noisy-line':
+                    for (let i = 0; i < numWaypoints; i++) {
+                        const t = i / (numWaypoints - 1);
+                        const waypoint = start.map((s, j) => {
+                            const base = s + t * (end[j] - s);
+                            const noise = (Math.random() - 0.5) * 2 * noiseLevel;
+                            return Math.max(lower[j], Math.min(upper[j], base + noise));
+                        });
+                        originalPath.push(waypoint);
+                    }
+                    break;
+
+                case 'zigzag':
+                    for (let i = 0; i < numWaypoints; i++) {
+                        const t = i / (numWaypoints - 1);
+                        const zigzag = Math.sin(t * Math.PI * 8) * noiseLevel * 3;
+                        const waypoint = start.map((s, j) => {
+                            const base = s + t * (end[j] - s);
+                            if (j < 2) {
+                                return Math.max(lower[j], Math.min(upper[j], base + zigzag));
+                            }
+                            return base;
+                        });
+                        originalPath.push(waypoint);
+                    }
+                    break;
+
+                case 'detour':
+                    const midpoint = start.map((s, j) => (s + end[j]) / 2 + 1.0);
+                    for (let i = 0; i < numWaypoints; i++) {
+                        const t = i / (numWaypoints - 1);
+                        let waypoint;
+                        if (t < 0.5) {
+                            const tt = t * 2;
+                            waypoint = start.map((s, j) => {
+                                const base = s + tt * (midpoint[j] - s);
+                                const noise = (Math.random() - 0.5) * noiseLevel;
+                                return Math.max(lower[j], Math.min(upper[j], base + noise));
+                            });
+                        } else {
+                            const tt = (t - 0.5) * 2;
+                            waypoint = midpoint.map((m, j) => {
+                                const base = m + tt * (end[j] - m);
+                                const noise = (Math.random() - 0.5) * noiseLevel;
+                                return Math.max(lower[j], Math.min(upper[j], base + noise));
+                            });
+                        }
+                        originalPath.push(waypoint);
+                    }
+                    break;
+
+                case 'spiral':
+                    for (let i = 0; i < numWaypoints; i++) {
+                        const t = i / (numWaypoints - 1);
+                        const angle = t * Math.PI * 4;
+                        const radius = noiseLevel * 2 * (1 - t * 0.5);
+                        const waypoint = start.map((s, j) => {
+                            const base = s + t * (end[j] - s);
+                            if (j === 0) return base + Math.cos(angle) * radius;
+                            if (j === 1) return base + Math.sin(angle) * radius;
+                            return base;
+                        });
+                        waypoint.forEach((v, j) => {
+                            waypoint[j] = Math.max(lower[j], Math.min(upper[j], v));
+                        });
+                        originalPath.push(waypoint);
+                    }
+                    break;
+            }
+
+            // Ensure start and end are exact
+            originalPath[0] = [...start];
+            originalPath[originalPath.length - 1] = [...end];
+
+            optimizedPath = [];
+
+            const output = document.getElementById('path-output');
+            output.textContent = `Generated ${pathType} path:\n`;
+            output.textContent += `${'='.repeat(40)}\n`;
+            output.textContent += `Waypoints: ${originalPath.length}\n`;
+            output.textContent += `DOF: ${dof}\n`;
+            output.textContent += `Noise Level: ${noiseLevel}\n\n`;
+            output.textContent += `Start: [${start.map(v => v.toFixed(2)).join(', ')}]\n`;
+            output.textContent += `End: [${end.map(v => v.toFixed(2)).join(', ')}]\n`;
+
+            visualizePaths();
+            resetStats();
+        };
+
+        // Load example path
+        window.loadExamplePath = function() {
+            document.getElementById('path-type').value = 'noisy-line';
+            document.getElementById('num-waypoints').value = 50;
+            document.getElementById('noise-level').value = 0.15;
+            updateSlider('noise-level');
+            generatePath();
+        };
+
+        // Run full pipeline
+        window.runFullPipeline = function() {
+            if (!pipeline || originalPath.length === 0) {
+                alert('Create pipeline and generate path first');
+                return;
+            }
+
+            showProgress();
+            collisionCheckCount = 0;
+
+            try {
+                const flatPath = originalPath.flat();
+                const useCollision = document.getElementById('enable-collision-check').checked;
+
+                let result;
+                if (useCollision) {
+                    result = pipeline.processWithCollisionCheck(flatPath, dof, collisionChecker);
+                } else {
+                    result = pipeline.process(flatPath, dof);
+                }
+
+                // Unflatten result
+                optimizedPath = [];
+                for (let i = 0; i < result.numWaypoints; i++) {
+                    optimizedPath.push(result.getWaypoint(i));
+                }
+
+                updateStats(result.metrics, result.processingTimeMs);
+                visualizePaths();
+                hideProgress();
+
+                document.getElementById('path-output').textContent += `\nPipeline completed in ${result.processingTimeMs.toFixed(2)} ms`;
+            } catch (err) {
+                hideProgress();
+                alert(`Pipeline error: ${err.message}`);
+            }
+        };
+
+        // Run shortcut only
+        window.runShortcutOnly = function() {
+            if (!pipeline || originalPath.length === 0) {
+                alert('Create pipeline and generate path first');
+                return;
+            }
+
+            showProgress();
+            collisionCheckCount = 0;
+
+            try {
+                const flatPath = originalPath.flat();
+                const useCollision = document.getElementById('enable-collision-check').checked;
+
+                const result = pipeline.shortcutPath(flatPath, dof, useCollision ? collisionChecker : null);
+
+                optimizedPath = [];
+                for (let i = 0; i < result.numWaypoints; i++) {
+                    optimizedPath.push(result.getWaypoint(i));
+                }
+
+                updateStats(result.metrics, result.processingTimeMs);
+                visualizePaths();
+                hideProgress();
+
+                document.getElementById('path-output').textContent += `\nShortcut completed in ${result.processingTimeMs.toFixed(2)} ms`;
+            } catch (err) {
+                hideProgress();
+                alert(`Shortcut error: ${err.message}`);
+            }
+        };
+
+        // Run smooth only
+        window.runSmoothOnly = function() {
+            if (!pipeline || originalPath.length === 0) {
+                alert('Create pipeline and generate path first');
+                return;
+            }
+
+            showProgress();
+            collisionCheckCount = 0;
+
+            try {
+                const flatPath = originalPath.flat();
+                const useCollision = document.getElementById('enable-collision-check').checked;
+
+                const result = pipeline.smoothPath(flatPath, dof, useCollision ? collisionChecker : null);
+
+                optimizedPath = [];
+                for (let i = 0; i < result.numWaypoints; i++) {
+                    optimizedPath.push(result.getWaypoint(i));
+                }
+
+                updateStats(result.metrics, result.processingTimeMs);
+                visualizePaths();
+                hideProgress();
+
+                document.getElementById('path-output').textContent += `\nSmooth completed in ${result.processingTimeMs.toFixed(2)} ms`;
+            } catch (err) {
+                hideProgress();
+                alert(`Smooth error: ${err.message}`);
+            }
+        };
+
+        // Calculate metrics only
+        window.calculateMetrics = function() {
+            if (!pipeline || originalPath.length === 0) {
+                alert('Create pipeline and generate path first');
+                return;
+            }
+
+            try {
+                const flatPath = originalPath.flat();
+                const metrics = pipeline.calculateMetrics(flatPath, dof);
+
+                document.getElementById('before-waypoints').textContent = metrics.waypoint_count;
+                document.getElementById('before-length').textContent = metrics.path_length.toFixed(4);
+                document.getElementById('before-smoothness').textContent = metrics.smoothness.toFixed(4);
+
+                document.getElementById('path-output').textContent += `\nMetrics: ${metrics.waypoint_count} waypoints, length=${metrics.path_length.toFixed(4)}`;
+            } catch (err) {
+                alert(`Metrics error: ${err.message}`);
+            }
+        };
+
+        // Collision checker (simple bounds check)
+        function collisionChecker(config) {
+            collisionCheckCount++;
+            // Simple check: all joints within limits
+            const lower = DEFAULT_LIMITS.lower;
+            const upper = DEFAULT_LIMITS.upper;
+            for (let i = 0; i < config.length; i++) {
+                const l = lower[i % 6] || -3.14;
+                const u = upper[i % 6] || 3.14;
+                if (config[i] < l || config[i] > u) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Update statistics display
+        function updateStats(metrics, processingTime) {
+            document.getElementById('before-waypoints').textContent = metrics.original_waypoint_count || originalPath.length;
+            document.getElementById('before-length').textContent = metrics.original_path_length.toFixed(4);
+
+            // Calculate original smoothness if needed
+            const origFlat = originalPath.flat();
+            const origSmoothness = computePathSmoothness(origFlat, dof);
+            document.getElementById('before-smoothness').textContent = origSmoothness.toFixed(4);
+
+            document.getElementById('after-waypoints').textContent = metrics.waypoint_count;
+            document.getElementById('after-length').textContent = metrics.path_length.toFixed(4);
+            document.getElementById('after-smoothness').textContent = metrics.smoothness.toFixed(4);
+
+            const waypointReduction = metrics.waypointReductionRatio * 100;
+            const lengthImprovement = metrics.improvementRatio * 100;
+
+            document.getElementById('waypoint-reduction').textContent = `${waypointReduction.toFixed(1)}%`;
+            document.getElementById('length-improvement').textContent = `${lengthImprovement.toFixed(1)}%`;
+            document.getElementById('processing-time').textContent = processingTime.toFixed(2);
+            document.getElementById('collision-checks').textContent = collisionCheckCount;
+        }
+
+        // Reset statistics
+        function resetStats() {
+            ['before-waypoints', 'before-length', 'before-smoothness',
+             'after-waypoints', 'after-length', 'after-smoothness',
+             'waypoint-reduction', 'length-improvement', 'processing-time', 'collision-checks'
+            ].forEach(id => {
+                document.getElementById(id).textContent = '-';
+            });
+        }
+
+        // Progress bar
+        function showProgress() {
+            document.getElementById('progress-bar').style.display = 'block';
+            document.getElementById('progress-fill').style.width = '50%';
+        }
+
+        function hideProgress() {
+            document.getElementById('progress-fill').style.width = '100%';
+            setTimeout(() => {
+                document.getElementById('progress-bar').style.display = 'none';
+            }, 300);
+        }
+
+        // Visualize paths
+        function visualizePaths() {
+            const canvas = document.getElementById('path-canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = canvas.offsetWidth * 2;
+            canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+
+            const width = canvas.offsetWidth;
+            const height = canvas.offsetHeight;
+
+            // Clear
+            ctx.fillStyle = '#0d1b2a';
+            ctx.fillRect(0, 0, width, height);
+
+            if (originalPath.length === 0) return;
+
+            const lower = DEFAULT_LIMITS.lower;
+            const upper = DEFAULT_LIMITS.upper;
+
+            function mapX(v) {
+                return 30 + (v - lower[0]) / (upper[0] - lower[0]) * (width - 60);
+            }
+            function mapY(v) {
+                return height - 30 - (v - lower[1]) / (upper[1] - lower[1]) * (height - 60);
+            }
+
+            // Draw grid
+            ctx.strokeStyle = '#1e3a5f';
+            ctx.lineWidth = 0.5;
+            for (let x = -3; x <= 3; x++) {
+                ctx.beginPath();
+                ctx.moveTo(mapX(x), 0);
+                ctx.lineTo(mapX(x), height);
+                ctx.stroke();
+            }
+            for (let y = -2; y <= 2; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, mapY(y));
+                ctx.lineTo(width, mapY(y));
+                ctx.stroke();
+            }
+
+            // Draw original path
+            ctx.strokeStyle = '#e6a23c';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(mapX(originalPath[0][0]), mapY(originalPath[0][1]));
+            for (let i = 1; i < originalPath.length; i++) {
+                ctx.lineTo(mapX(originalPath[i][0]), mapY(originalPath[i][1]));
+            }
+            ctx.stroke();
+
+            // Draw original waypoints
+            ctx.fillStyle = '#e6a23c55';
+            for (const wp of originalPath) {
+                ctx.beginPath();
+                ctx.arc(mapX(wp[0]), mapY(wp[1]), 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw optimized path if available
+            if (optimizedPath.length > 0) {
+                ctx.strokeStyle = '#67c23a';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(mapX(optimizedPath[0][0]), mapY(optimizedPath[0][1]));
+                for (let i = 1; i < optimizedPath.length; i++) {
+                    ctx.lineTo(mapX(optimizedPath[i][0]), mapY(optimizedPath[i][1]));
+                }
+                ctx.stroke();
+
+                // Draw optimized waypoints
+                ctx.fillStyle = '#00d9ff';
+                for (const wp of optimizedPath) {
+                    ctx.beginPath();
+                    ctx.arc(mapX(wp[0]), mapY(wp[1]), 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Draw axis labels
+            ctx.fillStyle = '#888';
+            ctx.font = '12px monospace';
+            ctx.fillText('Joint 0', width / 2 - 25, height - 5);
+            ctx.save();
+            ctx.translate(12, height / 2 + 25);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Joint 1', 0, 0);
+            ctx.restore();
+        }
+
+        // Run benchmark
+        window.runBenchmark = async function() {
+            if (!pipeline) {
+                createPipeline();
+            }
+
+            const numPaths = parseInt(document.getElementById('bench-paths').value);
+            const waypointsPerPath = parseInt(document.getElementById('bench-waypoints').value);
+            const output = document.getElementById('benchmark-output');
+
+            output.textContent = 'Running benchmark...\n';
+
+            const lower = DEFAULT_LIMITS.lower;
+            const upper = DEFAULT_LIMITS.upper;
+
+            let totalTime = 0;
+            let totalOriginalWaypoints = 0;
+            let totalOptimizedWaypoints = 0;
+            let totalOriginalLength = 0;
+            let totalOptimizedLength = 0;
+
+            for (let p = 0; p < numPaths; p++) {
+                // Generate random path
+                const path = [];
+                const start = lower.map((l, i) => l + Math.random() * (upper[i % 6] - l));
+                const end = lower.map((l, i) => l + Math.random() * (upper[i % 6] - l));
+
+                for (let i = 0; i < waypointsPerPath; i++) {
+                    const t = i / (waypointsPerPath - 1);
+                    const waypoint = start.map((s, j) => {
+                        const base = s + t * (end[j] - s);
+                        const noise = (Math.random() - 0.5) * 0.2;
+                        return Math.max(lower[j % 6], Math.min(upper[j % 6], base + noise));
+                    });
+                    path.push(waypoint);
+                }
+
+                const flatPath = path.flat();
+                const startTime = performance.now();
+                const result = pipeline.process(flatPath, dof);
+                const endTime = performance.now();
+
+                totalTime += endTime - startTime;
+                totalOriginalWaypoints += waypointsPerPath;
+                totalOptimizedWaypoints += result.numWaypoints;
+                totalOriginalLength += result.metrics.original_path_length;
+                totalOptimizedLength += result.metrics.path_length;
+            }
+
+            output.textContent = `Benchmark Results:\n`;
+            output.textContent += `${'='.repeat(40)}\n`;
+            output.textContent += `Paths Processed: ${numPaths}\n`;
+            output.textContent += `Waypoints per Path: ${waypointsPerPath}\n\n`;
+            output.textContent += `Total Time: ${totalTime.toFixed(2)} ms\n`;
+            output.textContent += `Avg Time per Path: ${(totalTime / numPaths).toFixed(2)} ms\n\n`;
+            output.textContent += `Avg Waypoint Reduction: ${((1 - totalOptimizedWaypoints / totalOriginalWaypoints) * 100).toFixed(1)}%\n`;
+            output.textContent += `Avg Length Improvement: ${((1 - totalOptimizedLength / totalOriginalLength) * 100).toFixed(1)}%\n`;
+        };
+
+        // Start initialization
+        initialize();
+    </script>
+</body>
+</html>

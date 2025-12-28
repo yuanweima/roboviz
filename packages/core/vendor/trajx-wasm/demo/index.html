@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trajx WASM Demo - Tool & Collision Testing</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        button.success {
+            background: #28a745;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .log .success { color: #4ec9b0; }
+        .log .error { color: #f48771; }
+        .log .info { color: #9cdcfe; }
+        .log .warn { color: #dcdcaa; }
+        .status {
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        .status.loading { background: #fff3cd; color: #856404; }
+        .status.ready { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .test-group {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .test-group h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        input[type="text"], input[type="number"] {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 5px;
+            width: 120px;
+        }
+        label {
+            display: inline-block;
+            margin: 5px;
+            color: #666;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Trajx WASM Demo - Tool & Collision Testing</h1>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="container">
+        <!-- Log Panel -->
+        <div class="section full-width">
+            <h2>Console Log</h2>
+            <button onclick="clearLog()">Clear Log</button>
+            <button onclick="runAllTests()" id="runAllBtn" disabled>Run All Tests</button>
+            <div id="log" class="log"></div>
+        </div>
+
+        <!-- Tool System Tests -->
+        <div class="section">
+            <h2>Tool System Tests</h2>
+
+            <div class="test-group">
+                <h3>1. WasmTcpPoint</h3>
+                <button onclick="testTcpPoint()" id="testTcpPointBtn" disabled>Test TCP Point</button>
+                <div id="tcpPointResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>2. WasmTool (Multi-TCP)</h3>
+                <button onclick="testTool()" id="testToolBtn" disabled>Test Tool</button>
+                <div id="toolResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>3. WasmToolLibrary</h3>
+                <button onclick="testToolLibrary()" id="testToolLibraryBtn" disabled>Test Tool Library</button>
+                <div id="toolLibraryResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>4. Standoff Pose Computation</h3>
+                <button onclick="testStandoffPose()" id="testStandoffBtn" disabled>Test Standoff Pose</button>
+                <div id="standoffResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Collision System Tests -->
+        <div class="section">
+            <h2>Collision System Tests</h2>
+
+            <div class="test-group">
+                <h3>1. Basic Obstacles</h3>
+                <button onclick="testBasicObstacles()" id="testBasicObstaclesBtn" disabled>Test Basic Obstacles</button>
+                <div id="basicObstaclesResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>2. Composite Obstacles</h3>
+                <button onclick="testCompositeObstacles()" id="testCompositeBtn" disabled>Test Composite Obstacles</button>
+                <div id="compositeResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>3. Collision Checking</h3>
+                <button onclick="testCollisionChecking()" id="testCollisionBtn" disabled>Test Collision Checking</button>
+                <div id="collisionResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>4. ACM (Allowed Collision Matrix)</h3>
+                <button onclick="testACM()" id="testACMBtn" disabled>Test ACM</button>
+                <div id="acmResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Robot Integration Tests -->
+        <div class="section full-width">
+            <h2>Robot Integration Tests</h2>
+
+            <div class="test-group">
+                <h3>Robot with Tool</h3>
+                <button onclick="testRobotWithTool()" id="testRobotToolBtn" disabled>Test Robot + Tool</button>
+                <div id="robotToolResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import WASM module
+        import init, * as wasm from '../trajx_wasm.js';
+
+        // Make wasm available globally for button handlers
+        window.wasm = wasm;
+
+        // Simple URDF for testing
+        const TEST_URDF = `<?xml version="1.0"?>
+<robot name="test_robot">
+  <link name="base_link"/>
+  <link name="link1"/>
+  <link name="link2"/>
+  <link name="link3"/>
+  <link name="link4"/>
+  <link name="link5"/>
+  <link name="link6"/>
+  <link name="tool0"/>
+
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="2.0" effort="100"/>
+  </joint>
+
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" velocity="2.0" effort="100"/>
+  </joint>
+
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <origin xyz="0 0 0.3" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="2.5" velocity="2.0" effort="100"/>
+  </joint>
+
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/>
+    <child link="link4"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="3.0" effort="50"/>
+  </joint>
+
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/>
+    <child link="link5"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" velocity="3.0" effort="50"/>
+  </joint>
+
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/>
+    <child link="link6"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="3.0" effort="50"/>
+  </joint>
+
+  <joint name="tool_joint" type="fixed">
+    <parent link="link6"/>
+    <child link="tool0"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+  </joint>
+</robot>`;
+
+        window.TEST_URDF = TEST_URDF;
+
+        // Logging functions
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logEl.innerHTML += `<span class="${type}">[${timestamp}] ${message}</span>\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
+
+        window.log = log;
+
+        window.clearLog = function() {
+            document.getElementById('log').innerHTML = '';
+        };
+
+        function showResult(elementId, content, success = true) {
+            const el = document.getElementById(elementId);
+            el.style.display = 'block';
+            el.style.background = success ? '#d4edda' : '#f8d7da';
+            el.textContent = typeof content === 'object' ? JSON.stringify(content, null, 2) : content;
+        }
+
+        window.showResult = showResult;
+
+        // Enable all test buttons
+        function enableButtons() {
+            document.querySelectorAll('button[disabled]').forEach(btn => {
+                btn.disabled = false;
+            });
+        }
+
+        // Initialize WASM
+        async function initialize() {
+            try {
+                await init();
+
+                const version = wasm.version();
+                const ready = wasm.is_ready();
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = `WASM Ready! Version: ${version}`;
+
+                log(`WASM module loaded successfully. Version: ${version}`, 'success');
+                log(`is_ready(): ${ready}`, 'info');
+
+                enableButtons();
+
+            } catch (error) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Failed to load WASM: ${error.message}`;
+                log(`Error loading WASM: ${error.message}`, 'error');
+            }
+        }
+
+        // Test functions
+        window.testTcpPoint = function() {
+            log('--- Testing WasmTcpPoint ---', 'info');
+            try {
+                // Create a TCP point with position offset
+                const tcp = wasm.WasmTcpPoint.simple("camera", 0.02, 0.0, 0.05);
+                log(`Created TCP: ${tcp.name}`, 'success');
+
+                // Test standoff using mutating method (setStandoff)
+                tcp.setStandoff(0.2);
+                log(`Default standoff: ${tcp.defaultStandoff}`, 'info');
+
+                // Test standoff range using mutating method (setStandoffRange)
+                tcp.setStandoffRange(0.1, 0.5);
+                const range = tcp.getStandoffRange();
+                log(`Standoff range: [${range[0]}, ${range[1]}]`, 'info');
+
+                // Test validation
+                const valid1 = tcp.validateStandoff(0.2);
+                const valid2 = tcp.validateStandoff(0.05); // Out of range
+                log(`Validate 0.2: ${valid1}, Validate 0.05: ${valid2}`, 'info');
+
+                // Get offset pose
+                const offset = tcp.getOffset();
+                log(`Offset position: (${offset.position.x.toFixed(4)}, ${offset.position.y.toFixed(4)}, ${offset.position.z.toFixed(4)})`, 'info');
+
+                // Test approach axis using mutating method (setApproachAxis)
+                tcp.setApproachAxis(0, 0, 1);
+                const axis = tcp.getApproachAxis();
+                log(`Approach axis: [${axis.map(v => v.toFixed(2)).join(', ')}]`, 'info');
+
+                showResult('tcpPointResult', {
+                    name: tcp.name,
+                    standoff: tcp.defaultStandoff,
+                    range: range,
+                    validations: { '0.2': valid1, '0.05': valid2 }
+                });
+
+                log('WasmTcpPoint tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('tcpPointResult', error.message, false);
+            }
+        };
+
+        window.testTool = function() {
+            log('--- Testing WasmTool ---', 'info');
+            try {
+                // Create a multi-TCP tool
+                const tool = new wasm.WasmTool("vision_welder");
+                log(`Created tool: ${tool.name}`, 'success');
+
+                // Add camera TCP with standoff
+                tool.addTcp("camera", [0.02, 0.0, 0.05], [0, 0, 0, 1], 0.2);
+                log('Added camera TCP with 200mm standoff', 'info');
+
+                // Add welder TCP
+                tool.addTcp("welder", [0.0, 0.0, 0.15], [0, 0, 0, 1], 0.01);
+                log('Added welder TCP with 10mm standoff', 'info');
+
+                // Add simple TCP
+                tool.addSimpleTcp("gripper", 0.0, 0.0, 0.08);
+                log('Added gripper TCP', 'info');
+
+                // Check TCP count
+                log(`TCP count: ${tool.tcpCount}`, 'info');
+                log(`Is multi-TCP: ${tool.isMultiTcp}`, 'info');
+                log(`TCP names: ${tool.tcpNames().join(', ')}`, 'info');
+
+                // Switch TCPs
+                tool.setActiveTcp("camera");
+                log(`Active TCP: ${tool.activeTcpName}`, 'info');
+
+                const cameraOffset = tool.getActiveTcpOffset();
+                log(`Camera offset: z=${cameraOffset.position.z.toFixed(4)}`, 'info');
+
+                tool.setActiveTcp("welder");
+                const welderOffset = tool.getActiveTcpOffset();
+                log(`Welder offset: z=${welderOffset.position.z.toFixed(4)}`, 'info');
+
+                // Tool length
+                log(`Tool length: ${tool.toolLength.toFixed(4)}m`, 'info');
+
+                // Get standoff
+                log(`Active standoff: ${tool.getActiveDefaultStandoff()}m`, 'info');
+
+                // Obstacle exclusion
+                tool.excludeObstacle("workpiece");
+                log(`Excluded obstacle 'workpiece'`, 'info');
+                log(`Is 'workpiece' excluded: ${tool.isObstacleExcluded("workpiece")}`, 'info');
+                log(`Excluded obstacles: ${tool.getExcludedObstacles().join(', ')}`, 'info');
+
+                // Mass and CoM
+                tool.setMass(2.5);
+                tool.setCenterOfMass(0, 0, 0.05);
+                log(`Mass: ${tool.mass}kg`, 'info');
+                log(`CoM: ${tool.getCenterOfMass()}`, 'info');
+
+                showResult('toolResult', {
+                    name: tool.name,
+                    tcpCount: tool.tcpCount,
+                    tcpNames: tool.tcpNames(),
+                    toolLength: tool.toolLength,
+                    mass: tool.mass
+                });
+
+                log('WasmTool tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('toolResult', error.message, false);
+            }
+        };
+
+        window.testToolLibrary = function() {
+            log('--- Testing WasmToolLibrary ---', 'info');
+            try {
+                const library = new wasm.WasmToolLibrary();
+                log('Created tool library', 'success');
+
+                // Create and add tools
+                const torch = wasm.WasmTool.simplePosition("torch", 0, 0, 0.15);
+                const gripper = wasm.WasmTool.simplePosition("gripper", 0, 0, 0.08);
+
+                library.addTool(torch);
+                library.addTool(gripper);
+                log(`Added tools: ${library.toolNames().join(', ')}`, 'info');
+                log(`Tool count: ${library.len}`, 'info');
+
+                // Activate tool
+                library.activateTool("torch");
+                log(`Active tool: ${library.activeToolName}`, 'info');
+
+                // Get offset
+                const offset = library.getActiveToolOffset();
+                log(`Active tool offset: z=${offset.position.z.toFixed(4)}`, 'info');
+
+                // Switch tools
+                library.activateTool("gripper");
+                log(`Switched to: ${library.activeToolName}`, 'info');
+
+                // Check tool exists
+                log(`Has 'torch': ${library.hasTool("torch")}`, 'info');
+                log(`Has 'unknown': ${library.hasTool("unknown")}`, 'info');
+
+                // Remove tool
+                library.removeTool("torch");
+                log(`After removal: ${library.toolNames().join(', ')}`, 'info');
+
+                showResult('toolLibraryResult', {
+                    toolCount: library.len,
+                    tools: library.toolNames(),
+                    activeTool: library.activeToolName
+                });
+
+                log('WasmToolLibrary tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('toolLibraryResult', error.message, false);
+            }
+        };
+
+        window.testStandoffPose = function() {
+            log('--- Testing Standoff Pose Computation ---', 'info');
+            try {
+                const tool = wasm.WasmTool.simplePosition("laser", 0, 0, 0.1);
+
+                // Compute standoff pose
+                const targetPoint = [0.5, 0.3, 0.1];     // Point on workpiece
+                const approachDir = [0, 0, -1];          // Approach from above
+                const standoffDist = 0.05;               // 50mm standoff
+
+                const pose = tool.computeStandoffPose(targetPoint, approachDir, standoffDist);
+
+                log(`Target point: [${targetPoint.join(', ')}]`, 'info');
+                log(`Approach direction: [${approachDir.join(', ')}]`, 'info');
+                log(`Standoff distance: ${standoffDist}m`, 'info');
+                log(`Computed pose position: (${pose.position.x.toFixed(4)}, ${pose.position.y.toFixed(4)}, ${pose.position.z.toFixed(4)})`, 'success');
+                log(`Computed pose orientation: (${pose.orientation.x.toFixed(4)}, ${pose.orientation.y.toFixed(4)}, ${pose.orientation.z.toFixed(4)}, ${pose.orientation.w.toFixed(4)})`, 'info');
+
+                // Verify: position should be target + standoff * approach
+                const expectedZ = targetPoint[2] + standoffDist * approachDir[2];
+                log(`Expected Z: ${expectedZ.toFixed(4)}, Got: ${pose.position.z.toFixed(4)}`,
+                    Math.abs(expectedZ - pose.position.z) < 0.001 ? 'success' : 'error');
+
+                showResult('standoffResult', {
+                    target: targetPoint,
+                    approach: approachDir,
+                    standoff: standoffDist,
+                    resultPosition: [pose.position.x, pose.position.y, pose.position.z]
+                });
+
+                log('Standoff pose tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('standoffResult', error.message, false);
+            }
+        };
+
+        window.testBasicObstacles = function() {
+            log('--- Testing Basic Obstacles ---', 'info');
+            try {
+                const env = new wasm.CollisionEnvironment();
+                log('Created collision environment', 'success');
+
+                // Add box obstacle
+                const boxPose = new wasm.Pose(
+                    new wasm.Position(0.5, 0.0, 0.3),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                env.addBox("table", [0.3, 0.2, 0.02], boxPose);
+                log('Added box obstacle "table"', 'info');
+
+                // Add sphere obstacle
+                env.addSphere("ball", 0.05, [0.3, 0.2, 0.4]);
+                log('Added sphere obstacle "ball"', 'info');
+
+                // Add cylinder obstacle
+                const cylPose = new wasm.Pose(
+                    new wasm.Position(0.0, 0.5, 0.2),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                env.addCylinder("pillar", 0.05, 0.2, cylPose);
+                log('Added cylinder obstacle "pillar"', 'info');
+
+                // Check count
+                log(`Number of obstacles: ${env.numObstacles}`, 'info');
+                log(`Obstacle IDs: ${env.obstacleIds().join(', ')}`, 'info');
+
+                // Update pose
+                const newPose = new wasm.Pose(
+                    new wasm.Position(0.6, 0.0, 0.3),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                env.updateObstaclePose("table", newPose);
+                log('Updated table pose', 'info');
+
+                // Remove obstacle
+                const removed = env.removeObstacle("ball");
+                log(`Removed 'ball': ${removed}`, 'info');
+                log(`Remaining obstacles: ${env.obstacleIds().join(', ')}`, 'info');
+
+                showResult('basicObstaclesResult', {
+                    count: env.numObstacles,
+                    ids: env.obstacleIds()
+                });
+
+                log('Basic obstacles tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('basicObstaclesResult', error.message, false);
+            }
+        };
+
+        window.testCompositeObstacles = function() {
+            log('--- Testing Composite Obstacles ---', 'info');
+            try {
+                // Create composite obstacle (workpiece with multiple parts)
+                const workpiece = new wasm.WasmCompositeObstacle("workpiece");
+                log(`Created composite obstacle: ${workpiece.id}`, 'success');
+
+                // Add box base
+                workpiece.addBoxPart("base", [0.1, 0.1, 0.02], [0, 0, 0], [0, 0, 0, 1]);
+                log('Added box base part', 'info');
+
+                // Add cylinder pin
+                workpiece.addCylinderPart("pin1", 0.02, 0.05, [0.05, 0.05, 0.07], [0, 0, 0, 1]);
+                log('Added cylinder pin part', 'info');
+
+                // Add sphere knob
+                workpiece.addSpherePart("knob", 0.03, [-0.05, -0.05, 0.05]);
+                log('Added sphere knob part', 'info');
+
+                log(`Number of parts: ${workpiece.numParts}`, 'info');
+
+                // Set base pose
+                const basePose = new wasm.Pose(
+                    new wasm.Position(0.5, 0.3, 0.1),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                workpiece.setBasePose(basePose);
+                log('Set base pose', 'info');
+
+                // Get part world pose
+                const pinPose = workpiece.getPartWorldPose(1);
+                if (pinPose) {
+                    log(`Pin world position: (${pinPose.position.x.toFixed(4)}, ${pinPose.position.y.toFixed(4)}, ${pinPose.position.z.toFixed(4)})`, 'info');
+                }
+
+                // Add to environment
+                const env = new wasm.CollisionEnvironment();
+                env.addCompositeObstacle(workpiece);
+                log('Added composite obstacle to environment', 'success');
+
+                log(`Composite obstacles: ${env.compositeObstacleIds().join(', ')}`, 'info');
+                log(`Total obstacles: ${env.totalObstacles}`, 'info');
+                log(`All obstacle IDs: ${env.allObstacleIds().join(', ')}`, 'info');
+
+                // Update composite pose
+                const newPose = new wasm.Pose(
+                    new wasm.Position(0.6, 0.4, 0.1),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                env.updateCompositeObstaclePose("workpiece", newPose);
+                log('Updated composite obstacle pose', 'info');
+
+                showResult('compositeResult', {
+                    id: "workpiece",
+                    numParts: 3,
+                    compositeIds: env.compositeObstacleIds(),
+                    totalObstacles: env.totalObstacles
+                });
+
+                log('Composite obstacles tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('compositeResult', error.message, false);
+            }
+        };
+
+        window.testCollisionChecking = function() {
+            log('--- Testing Collision Checking ---', 'info');
+            try {
+                const env = new wasm.CollisionEnvironment();
+
+                // Add a box obstacle at origin
+                const boxPose = new wasm.Pose(
+                    new wasm.Position(0.0, 0.0, 0.0),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                env.addBox("obstacle1", [0.1, 0.1, 0.1], boxPose);
+                log('Added box at origin', 'info');
+
+                // Check collision with sphere - should collide
+                const collidingPose = new wasm.Pose(
+                    new wasm.Position(0.05, 0.0, 0.0),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                const collision1 = env.checkShapeCollision("sphere", [0.1], collidingPose);
+                log(`Sphere at (0.05, 0, 0) collides: ${collision1}`, collision1 ? 'warn' : 'success');
+
+                // Check collision with sphere - should NOT collide
+                const freePose = new wasm.Pose(
+                    new wasm.Position(0.5, 0.0, 0.0),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                const collision2 = env.checkShapeCollision("sphere", [0.1], freePose);
+                log(`Sphere at (0.5, 0, 0) collides: ${collision2}`, !collision2 ? 'success' : 'warn');
+
+                // Test isCollisionFree
+                const free1 = env.isCollisionFree([0.05, 0.0, 0.0], 0.05);
+                const free2 = env.isCollisionFree([0.5, 0.0, 0.0], 0.05);
+                log(`Position (0.05, 0, 0) collision-free: ${free1}`, !free1 ? 'success' : 'warn');
+                log(`Position (0.5, 0, 0) collision-free: ${free2}`, free2 ? 'success' : 'warn');
+
+                // Test with box shape
+                const boxCheckPose = new wasm.Pose(
+                    new wasm.Position(0.15, 0.0, 0.0),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                const collision3 = env.checkShapeCollision("box", [0.05, 0.05, 0.05], boxCheckPose);
+                log(`Box at (0.15, 0, 0) collides: ${collision3}`, collision3 ? 'warn' : 'success');
+
+                showResult('collisionResult', {
+                    sphereColliding: collision1,
+                    sphereFree: !collision2,
+                    positionFree1: !free1,
+                    positionFree2: free2
+                });
+
+                log('Collision checking tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('collisionResult', error.message, false);
+            }
+        };
+
+        window.testACM = function() {
+            log('--- Testing ACM (Allowed Collision Matrix) ---', 'info');
+            try {
+                const env = new wasm.CollisionEnvironment();
+
+                // Add obstacles
+                const pose1 = new wasm.Pose(new wasm.Position(0, 0, 0), new wasm.Quaternion(0, 0, 0, 1));
+                env.addBox("table", [0.5, 0.3, 0.02], pose1);
+                env.addSphere("workpiece", 0.1, [0, 0, 0.1]);
+                log('Added table and workpiece obstacles', 'info');
+
+                // Test link-obstacle pair ignore
+                env.ignoreLinkObstaclePair("base_link", "table");
+                log('Ignored base_link vs table', 'info');
+
+                const ignored1 = env.isLinkObstaclePairIgnored("base_link", "table");
+                const ignored2 = env.isLinkObstaclePairIgnored("link1", "table");
+                log(`base_link vs table ignored: ${ignored1}`, ignored1 ? 'success' : 'error');
+                log(`link1 vs table ignored: ${ignored2}`, !ignored2 ? 'success' : 'error');
+
+                // Test global link ignore
+                env.ignoreLink("tool0");
+                log('Globally ignored tool0 link', 'info');
+                log(`Ignored links: ${env.getIgnoredLinks().join(', ')}`, 'info');
+
+                // Test global obstacle ignore
+                env.ignoreObstacle("workpiece");
+                log('Globally ignored workpiece obstacle', 'info');
+                log(`Ignored obstacles: ${env.getIgnoredObstacles().join(', ')}`, 'info');
+
+                // Unignore
+                env.unignoreLinkObstaclePair("base_link", "table");
+                log('Unignored base_link vs table', 'info');
+                log(`base_link vs table still ignored: ${env.isLinkObstaclePairIgnored("base_link", "table")}`, 'info');
+
+                // Clear ACM
+                env.clearAcm();
+                log('Cleared all ACM settings', 'info');
+                log(`Ignored links after clear: ${env.getIgnoredLinks().length}`, 'info');
+                log(`Ignored obstacles after clear: ${env.getIgnoredObstacles().length}`, 'info');
+
+                showResult('acmResult', {
+                    testPassed: true,
+                    ignoredLinksCleared: env.getIgnoredLinks().length === 0,
+                    ignoredObstaclesCleared: env.getIgnoredObstacles().length === 0
+                });
+
+                log('ACM tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('acmResult', error.message, false);
+            }
+        };
+
+        window.testRobotWithTool = function() {
+            log('--- Testing Robot with Tool Integration ---', 'info');
+            try {
+                // Create robot from URDF
+                const robot = wasm.createRobot(TEST_URDF);
+                log(`Created robot: ${robot.name}`, 'success');
+                log(`DOF: ${robot.dof}`, 'info');
+                log(`Links: ${robot.linkNames().join(', ')}`, 'info');
+
+                // Create and attach tool
+                const tool = new wasm.WasmTool("welding_torch");
+                tool.addTcp("tip", [0.0, 0.0, 0.12], [0, 0, 0, 1], 0.01);
+                tool.setActiveTcp("tip");
+                log(`Created tool: ${tool.name} with TCP at z=0.12m`, 'info');
+
+                // Attach tool to robot
+                const toolOffset = tool.getActiveTcpOffset();
+                robot.attachTool(toolOffset);
+                log(`Attached tool, hasTool: ${robot.hasTool()}`, 'success');
+
+                // Forward kinematics with tool (using forwardKinematicsTcp for TCP pose)
+                const joints = [0, 0.5, -0.5, 0, 0.5, 0];
+                const pose = robot.forwardKinematicsTcp(joints);
+                log(`FK TCP result with tool:`, 'info');
+                log(`  Position: (${pose.position.x.toFixed(4)}, ${pose.position.y.toFixed(4)}, ${pose.position.z.toFixed(4)})`, 'info');
+                log(`  Orientation: (${pose.orientation.w.toFixed(4)}, ${pose.orientation.x.toFixed(4)}, ${pose.orientation.y.toFixed(4)}, ${pose.orientation.z.toFixed(4)})`, 'info');
+
+                // Get link transforms
+                const transforms = robot.getLinkTransforms(joints);
+                log('Link transforms computed', 'info');
+
+                // Detach tool
+                robot.detachTool();
+                log(`Detached tool, hasTool: ${robot.hasTool()}`, 'info');
+
+                // FK without tool (forwardKinematicsTcp returns EE pose when no tool attached)
+                const poseNoTool = robot.forwardKinematicsTcp(joints);
+                log(`FK TCP result without tool:`, 'info');
+                log(`  Position: (${poseNoTool.position.x.toFixed(4)}, ${poseNoTool.position.y.toFixed(4)}, ${poseNoTool.position.z.toFixed(4)})`, 'info');
+
+                // Position difference should be the tool offset
+                const zDiff = pose.position.z - poseNoTool.position.z;
+                log(`Z difference (should be ~0.12): ${zDiff.toFixed(4)}`, Math.abs(zDiff - 0.12) < 0.01 ? 'success' : 'warn');
+
+                showResult('robotToolResult', {
+                    robotName: robot.name,
+                    dof: robot.dof,
+                    toolAttached: true,
+                    fkWithTool: { x: pose.position.x, y: pose.position.y, z: pose.position.z },
+                    fkWithoutTool: { x: poseNoTool.position.x, y: poseNoTool.position.y, z: poseNoTool.position.z },
+                    zDifference: zDiff
+                });
+
+                log('Robot with tool integration tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('robotToolResult', error.message, false);
+            }
+        };
+
+        // Run all tests
+        window.runAllTests = async function() {
+            log('========== RUNNING ALL TESTS ==========', 'info');
+
+            const tests = [
+                testTcpPoint,
+                testTool,
+                testToolLibrary,
+                testStandoffPose,
+                testBasicObstacles,
+                testCompositeObstacles,
+                testCollisionChecking,
+                testACM,
+                testRobotWithTool
+            ];
+
+            for (const test of tests) {
+                try {
+                    test();
+                    log('', 'info');
+                } catch (e) {
+                    log(`Test failed: ${e.message}`, 'error');
+                }
+            }
+
+            log('========== ALL TESTS COMPLETED ==========', 'success');
+        };
+
+        // Start initialization
+        initialize();
+    </script>
+</body>
+</html>

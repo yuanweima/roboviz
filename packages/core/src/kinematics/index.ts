@@ -69,6 +69,9 @@ export {
   type TrajxTool,
   type TrajxTcpPoint,
   type TrajxToolLibrary,
+  // Cable Management types (NEW in melbourne - integrated into WasmMotion)
+  type TrajxCableConfig,
+  type TrajxMotionResult,
 } from './kinematics-manager';
 
 // ============================================================================
@@ -134,6 +137,12 @@ export {
   useFK,
   type UseFKOptions,
   type UseFKReturn,
+
+  // Cable configuration hook (NEW in melbourne - cable tracking is now in WasmMotion)
+  useTrajxCableConfig,
+  type CablePresetType,
+  type UseTrajxCableConfigOptions,
+  type UseTrajxCableConfigReturn,
 } from './useTrajx';
 
 // ============================================================================

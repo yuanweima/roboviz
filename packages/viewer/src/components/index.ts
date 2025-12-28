@@ -9,3 +9,4 @@ export { CoordinateFrame, FrameConnection } from './CoordinateFrame';
 export { FrameTree } from './FrameTree';
 export { PointCloud, PointCloudRenderer } from './PointCloud';
 export { ControlPanel } from './ControlPanel';
+export { CableDemo, CableDemoPanel } from './CableDemo';

@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Motion Validator Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        h2 { color: #00d9ff; margin-top: 0; font-size: 18px; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+        }
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.loading { background: #e6a23c22; color: #e6a23c; border: 1px solid #e6a23c44; }
+        .status.ready { background: #67c23a22; color: #67c23a; border: 1px solid #67c23a44; }
+        .status.error { background: #f56c6c22; color: #f56c6c; border: 1px solid #f56c6c44; }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        button.secondary {
+            background: #0f3460;
+            border: 1px solid #00d9ff;
+        }
+        button.success {
+            background: linear-gradient(135deg, #67c23a 0%, #4a9e2a 100%);
+        }
+        button.danger {
+            background: linear-gradient(135deg, #f56c6c 0%, #c45050 100%);
+        }
+
+        .output {
+            background: #0d1b2a;
+            color: #67c23a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #1e3a5f;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+        .input-group label {
+            display: flex;
+            flex-direction: column;
+            color: #aaa;
+            font-size: 12px;
+        }
+        .input-group input, .input-group select {
+            padding: 8px;
+            border: 1px solid #1e3a5f;
+            border-radius: 4px;
+            background: #0d1b2a;
+            color: #eee;
+            font-family: monospace;
+            width: 80px;
+        }
+        .input-group input.wide {
+            width: 150px;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            padding: 8px;
+            background: #0d1b2a;
+            border-radius: 6px;
+        }
+        .slider-group label {
+            width: 80px;
+            font-weight: 500;
+            color: #aaa;
+        }
+        .slider-group input[type="range"] {
+            flex: 1;
+            margin: 0 10px;
+            accent-color: #00d9ff;
+        }
+        .slider-group span {
+            width: 80px;
+            text-align: right;
+            font-family: monospace;
+            color: #00d9ff;
+        }
+
+        .validation-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 10px 0;
+        }
+        .validation-indicator.valid {
+            background: #67c23a22;
+            color: #67c23a;
+            border: 1px solid #67c23a44;
+        }
+        .validation-indicator.invalid {
+            background: #f56c6c22;
+            color: #f56c6c;
+            border: 1px solid #f56c6c44;
+        }
+        .validation-indicator .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .validation-indicator.valid .dot {
+            background: #67c23a;
+            box-shadow: 0 0 8px #67c23a;
+        }
+        .validation-indicator.invalid .dot {
+            background: #f56c6c;
+            box-shadow: 0 0 8px #f56c6c;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: #0d1b2a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #1e3a5f;
+        }
+        .stat-box .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #00d9ff;
+        }
+        .stat-box .label {
+            font-size: 11px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .config-display {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            margin: 10px 0;
+        }
+        .joint-value {
+            background: #0d1b2a;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #1e3a5f;
+        }
+        .joint-value.valid { color: #67c23a; }
+        .joint-value.invalid { color: #f56c6c; }
+
+        canvas {
+            width: 100%;
+            height: 200px;
+            background: #0d1b2a;
+            border-radius: 8px;
+            border: 1px solid #1e3a5f;
+            margin-top: 10px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #0d1b2a;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #67c23a, #00d9ff);
+            transition: width 0.1s;
+        }
+    </style>
+</head>
+<body>
+    <h1>Motion Validator Demo</h1>
+    <p class="subtitle">Demonstrates WasmConfigurationSpace, WasmDiscreteMotionValidator, edge validation with interpolation caching</p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="grid">
+        <!-- Configuration Space Setup -->
+        <div class="card">
+            <h2>1. Configuration Space</h2>
+            <p style="color: #888; font-size: 13px;">Define joint limits for a 6-DOF robot</p>
+
+            <div class="input-group">
+                <label>
+                    DOF
+                    <input type="number" id="dof" value="6" min="1" max="12">
+                </label>
+                <label>
+                    Step Size (rad)
+                    <input type="number" id="step-size" value="0.1" step="0.01" min="0.01">
+                </label>
+            </div>
+
+            <div id="limits-container">
+                <!-- Joint limit inputs will be generated here -->
+            </div>
+
+            <button onclick="createConfigSpace()">Create Configuration Space</button>
+            <button class="secondary" onclick="useDefaultLimits()">Use Robot Defaults</button>
+
+            <div class="output" id="cspace-output">Configure joint limits and create the configuration space.</div>
+        </div>
+
+        <!-- Motion Validation -->
+        <div class="card">
+            <h2>2. Motion Validation</h2>
+            <p style="color: #888; font-size: 13px;">Validate motion between two configurations</p>
+
+            <h3 style="color: #aaa; font-size: 14px; margin-top: 15px;">Start Configuration</h3>
+            <div id="start-config" class="config-display">
+                <span style="color: #888;">Create config space first</span>
+            </div>
+
+            <h3 style="color: #aaa; font-size: 14px; margin-top: 15px;">End Configuration</h3>
+            <div id="end-config" class="config-display">
+                <span style="color: #888;">Create config space first</span>
+            </div>
+
+            <div style="margin-top: 15px;">
+                <button onclick="randomizeConfigs()">Randomize</button>
+                <button onclick="setNearConfigs()">Set Near</button>
+                <button onclick="setFarConfigs()">Set Far</button>
+                <button onclick="setInvalidConfig()">Make Invalid</button>
+            </div>
+
+            <div id="motion-result" class="validation-indicator valid" style="display: none;">
+                <div class="dot"></div>
+                <span>Motion Valid</span>
+            </div>
+
+            <button class="success" onclick="validateMotion()">Validate Motion</button>
+        </div>
+
+        <!-- Edge Validation with Caching -->
+        <div class="card">
+            <h2>3. Edge Validation with Dense Path</h2>
+            <p style="color: #888; font-size: 13px;">Validate edge and retrieve interpolated points</p>
+
+            <div class="input-group">
+                <label>
+                    <input type="checkbox" id="enable-caching" checked> Enable Caching
+                </label>
+            </div>
+
+            <div class="stats-grid" id="edge-stats">
+                <div class="stat-box">
+                    <div class="value" id="edge-valid">-</div>
+                    <div class="label">Valid</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="edge-points">-</div>
+                    <div class="label">Interpolated Points</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="edge-distance">-</div>
+                    <div class="label">Distance (rad)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="edge-steps">-</div>
+                    <div class="label">Steps</div>
+                </div>
+            </div>
+
+            <button onclick="validateEdge()">Validate Edge</button>
+            <button class="secondary" onclick="showInterpolatedPoints()">Show Points</button>
+
+            <div class="output" id="edge-output">Validate an edge to see interpolated points.</div>
+        </div>
+
+        <!-- Path Validation -->
+        <div class="card">
+            <h2>4. Path Validation</h2>
+            <p style="color: #888; font-size: 13px;">Validate an entire path (multiple waypoints)</p>
+
+            <div class="input-group">
+                <label>
+                    Waypoints
+                    <input type="number" id="num-waypoints" value="10" min="2" max="100">
+                </label>
+                <label>
+                    Path Type
+                    <select id="path-type">
+                        <option value="linear">Linear</option>
+                        <option value="random">Random Walk</option>
+                        <option value="zigzag">Zigzag</option>
+                    </select>
+                </label>
+            </div>
+
+            <button onclick="generatePath()">Generate Path</button>
+            <button class="success" onclick="validatePath()">Validate Path</button>
+
+            <div class="progress-bar" id="path-progress" style="display: none;">
+                <div class="progress-bar-fill" id="path-progress-fill" style="width: 0%"></div>
+            </div>
+
+            <div id="path-result" class="validation-indicator valid" style="display: none;">
+                <div class="dot"></div>
+                <span>Path Valid</span>
+            </div>
+
+            <div class="output" id="path-output">Generate and validate a path.</div>
+        </div>
+
+        <!-- Collision Checking Callback Demo -->
+        <div class="card full-width">
+            <h2>5. Motion Validation with Collision Callback</h2>
+            <p style="color: #888; font-size: 13px;">Demonstrates using JS callback for collision checking</p>
+
+            <div class="input-group">
+                <label>
+                    Forbidden Zone X Range
+                    <input type="number" id="forbidden-x-min" value="-0.5" step="0.1"> to <input type="number" id="forbidden-x-max" value="0.5" step="0.1">
+                </label>
+                <label>
+                    Forbidden Zone Y Range
+                    <input type="number" id="forbidden-y-min" value="-0.5" step="0.1"> to <input type="number" id="forbidden-y-max" value="0.5" step="0.1">
+                </label>
+            </div>
+
+            <p style="color: #888; font-size: 12px; margin: 10px 0;">
+                The collision checker marks configurations as invalid if joints 0 and 1 fall within the forbidden zone.
+            </p>
+
+            <button onclick="validateWithCollisionCheck()">Validate with Collision Check</button>
+            <button class="secondary" onclick="testManyConfigs()">Test 100 Random Configs</button>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="value" id="coll-checked">0</div>
+                    <div class="label">Configs Checked</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="coll-valid">0</div>
+                    <div class="label">Valid</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="coll-invalid">0</div>
+                    <div class="label">Invalid (Collision)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="coll-time">0</div>
+                    <div class="label">Time (ms)</div>
+                </div>
+            </div>
+
+            <div class="output" id="collision-output">Run collision-aware validation to see results.</div>
+        </div>
+
+        <!-- Visualization -->
+        <div class="card full-width">
+            <h2>6. Path Visualization (Joint 0 & 1)</h2>
+            <p style="color: #888; font-size: 13px;">2D projection of path in configuration space</p>
+
+            <canvas id="path-canvas"></canvas>
+
+            <div style="margin-top: 10px;">
+                <span style="color: #67c23a;">Green: Valid waypoints</span> |
+                <span style="color: #f56c6c;">Red: Invalid waypoints</span> |
+                <span style="color: #e6a23c; ">Orange box: Forbidden zone</span>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, {
+            WasmConfigurationSpace,
+            WasmDiscreteMotionValidator,
+            JointLimits
+        } from '../trajx_wasm.js';
+
+        let configSpace = null;
+        let validator = null;
+        let currentPath = [];
+        let startConfig = [];
+        let endConfig = [];
+        let dof = 6;
+
+        // Default joint limits (typical 6-DOF robot)
+        const DEFAULT_LIMITS = {
+            lower: [-3.14, -2.0, -2.5, -3.5, -2.0, -6.28],
+            upper: [3.14, 2.0, 2.5, 3.5, 2.0, 6.28]
+        };
+
+        // Initialize WASM
+        async function initialize() {
+            try {
+                await init();
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = 'WASM loaded. Configure the configuration space to get started.';
+
+                generateLimitInputs();
+                console.log('trajx-wasm motion validator module initialized');
+            } catch (err) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Error: ${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // Generate joint limit inputs
+        function generateLimitInputs() {
+            dof = parseInt(document.getElementById('dof').value);
+            const container = document.getElementById('limits-container');
+            container.innerHTML = '';
+
+            for (let i = 0; i < dof; i++) {
+                const lower = DEFAULT_LIMITS.lower[i] || -3.14;
+                const upper = DEFAULT_LIMITS.upper[i] || 3.14;
+
+                const div = document.createElement('div');
+                div.className = 'input-group';
+                div.innerHTML = `
+                    <label>J${i + 1} Lower <input type="number" id="lower-${i}" value="${lower.toFixed(2)}" step="0.1"></label>
+                    <label>J${i + 1} Upper <input type="number" id="upper-${i}" value="${upper.toFixed(2)}" step="0.1"></label>
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        // Handle DOF change
+        document.getElementById('dof').addEventListener('change', generateLimitInputs);
+
+        // Create configuration space
+        window.createConfigSpace = function() {
+            try {
+                dof = parseInt(document.getElementById('dof').value);
+                const stepSize = parseFloat(document.getElementById('step-size').value);
+
+                const lower = [];
+                const upper = [];
+                for (let i = 0; i < dof; i++) {
+                    lower.push(parseFloat(document.getElementById(`lower-${i}`).value));
+                    upper.push(parseFloat(document.getElementById(`upper-${i}`).value));
+                }
+
+                configSpace = new WasmConfigurationSpace(dof, lower, upper);
+
+                // Create validator with caching enabled
+                const enableCaching = document.getElementById('enable-caching').checked;
+                if (enableCaching) {
+                    validator = WasmDiscreteMotionValidator.withCaching(configSpace, stepSize);
+                } else {
+                    validator = new WasmDiscreteMotionValidator(configSpace, stepSize);
+                }
+
+                // Initialize configurations
+                startConfig = lower.map(() => 0);
+                endConfig = lower.map((l, i) => (l + upper[i]) / 2);
+
+                updateConfigDisplay();
+
+                const output = document.getElementById('cspace-output');
+                output.textContent = `Configuration Space Created:\n`;
+                output.textContent += `${'='.repeat(40)}\n`;
+                output.textContent += `DOF: ${dof}\n`;
+                output.textContent += `Step Size: ${stepSize.toFixed(3)} rad\n`;
+                output.textContent += `Caching: ${enableCaching ? 'Enabled' : 'Disabled'}\n\n`;
+                output.textContent += `Joint Limits:\n`;
+                for (let i = 0; i < dof; i++) {
+                    output.textContent += `  J${i + 1}: [${lower[i].toFixed(2)}, ${upper[i].toFixed(2)}] rad\n`;
+                }
+
+                document.getElementById('status').textContent = 'Configuration space created. Ready for motion validation.';
+            } catch (err) {
+                document.getElementById('cspace-output').textContent = `Error: ${err.message}`;
+            }
+        };
+
+        // Use default limits
+        window.useDefaultLimits = function() {
+            dof = 6;
+            document.getElementById('dof').value = dof;
+            generateLimitInputs();
+
+            for (let i = 0; i < dof; i++) {
+                document.getElementById(`lower-${i}`).value = DEFAULT_LIMITS.lower[i].toFixed(2);
+                document.getElementById(`upper-${i}`).value = DEFAULT_LIMITS.upper[i].toFixed(2);
+            }
+        };
+
+        // Update configuration display
+        function updateConfigDisplay() {
+            const startDiv = document.getElementById('start-config');
+            const endDiv = document.getElementById('end-config');
+
+            startDiv.innerHTML = startConfig.map((v, i) =>
+                `<span class="joint-value">J${i + 1}: ${v.toFixed(2)}</span>`
+            ).join('');
+
+            endDiv.innerHTML = endConfig.map((v, i) =>
+                `<span class="joint-value">J${i + 1}: ${v.toFixed(2)}</span>`
+            ).join('');
+        }
+
+        // Randomize configurations
+        window.randomizeConfigs = function() {
+            if (!configSpace) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            const lower = Array.from(configSpace.lowerBounds);
+            const upper = Array.from(configSpace.upperBounds);
+
+            startConfig = lower.map((l, i) => l + Math.random() * (upper[i] - l));
+            endConfig = lower.map((l, i) => l + Math.random() * (upper[i] - l));
+
+            updateConfigDisplay();
+        };
+
+        // Set near configurations
+        window.setNearConfigs = function() {
+            if (!configSpace) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            startConfig = startConfig.map(() => 0);
+            endConfig = startConfig.map(v => v + 0.05);
+            updateConfigDisplay();
+        };
+
+        // Set far configurations
+        window.setFarConfigs = function() {
+            if (!configSpace) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            const lower = Array.from(configSpace.lowerBounds);
+            const upper = Array.from(configSpace.upperBounds);
+
+            startConfig = lower.map((l, i) => l + 0.1 * (upper[i] - l));
+            endConfig = lower.map((l, i) => l + 0.9 * (upper[i] - l));
+            updateConfigDisplay();
+        };
+
+        // Set invalid configuration
+        window.setInvalidConfig = function() {
+            if (!configSpace) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            const upper = Array.from(configSpace.upperBounds);
+            endConfig = upper.map(u => u + 1.0); // Beyond limits
+            updateConfigDisplay();
+        };
+
+        // Validate motion
+        window.validateMotion = function() {
+            if (!validator) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            try {
+                const valid = validator.validateMotion(startConfig, endConfig);
+
+                const indicator = document.getElementById('motion-result');
+                indicator.style.display = 'inline-flex';
+                if (valid) {
+                    indicator.className = 'validation-indicator valid';
+                    indicator.innerHTML = '<div class="dot"></div><span>Motion VALID</span>';
+                } else {
+                    indicator.className = 'validation-indicator invalid';
+                    indicator.innerHTML = '<div class="dot"></div><span>Motion INVALID</span>';
+                }
+            } catch (err) {
+                alert(`Validation error: ${err.message}`);
+            }
+        };
+
+        // Validate edge with caching
+        window.validateEdge = function() {
+            if (!validator) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            const enableCaching = document.getElementById('enable-caching').checked;
+            validator.setCaching(enableCaching);
+
+            try {
+                const result = validator.validateEdge(startConfig, endConfig);
+
+                document.getElementById('edge-valid').textContent = result.valid ? 'YES' : 'NO';
+                document.getElementById('edge-points').textContent = result.numPoints;
+
+                const distance = configSpace.distance(startConfig, endConfig);
+                document.getElementById('edge-distance').textContent = distance.toFixed(3);
+
+                const steps = Math.ceil(distance / validator.maxStepSize);
+                document.getElementById('edge-steps').textContent = steps;
+
+                const output = document.getElementById('edge-output');
+                output.textContent = `Edge Validation Result:\n`;
+                output.textContent += `${'='.repeat(40)}\n`;
+                output.textContent += `Valid: ${result.valid}\n`;
+                output.textContent += `Caching Enabled: ${enableCaching}\n`;
+                output.textContent += `Interpolated Points: ${result.numPoints}\n`;
+                output.textContent += `Distance: ${distance.toFixed(4)} rad\n`;
+                output.textContent += `Steps: ${steps}\n`;
+
+            } catch (err) {
+                document.getElementById('edge-output').textContent = `Error: ${err.message}`;
+            }
+        };
+
+        // Show interpolated points
+        window.showInterpolatedPoints = function() {
+            if (!validator) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            validator.setCaching(true);
+
+            try {
+                const result = validator.validateEdge(startConfig, endConfig);
+
+                if (!result.valid) {
+                    document.getElementById('edge-output').textContent = 'Edge is invalid, no interpolated points.';
+                    return;
+                }
+
+                const output = document.getElementById('edge-output');
+                output.textContent = `Interpolated Points (${result.numPoints}):\n`;
+                output.textContent += `${'='.repeat(40)}\n\n`;
+
+                for (let i = 0; i < Math.min(result.numPoints, 10); i++) {
+                    const point = result.getPoint(i);
+                    output.textContent += `Point ${i}: [${point.map(v => v.toFixed(3)).join(', ')}]\n`;
+                }
+
+                if (result.numPoints > 10) {
+                    output.textContent += `... and ${result.numPoints - 10} more points\n`;
+                }
+
+                // Visualize on canvas
+                visualizePath([startConfig, endConfig], result);
+            } catch (err) {
+                document.getElementById('edge-output').textContent = `Error: ${err.message}`;
+            }
+        };
+
+        // Generate path
+        window.generatePath = function() {
+            if (!configSpace) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            const numWaypoints = parseInt(document.getElementById('num-waypoints').value);
+            const pathType = document.getElementById('path-type').value;
+
+            const lower = Array.from(configSpace.lowerBounds);
+            const upper = Array.from(configSpace.upperBounds);
+
+            currentPath = [];
+
+            switch (pathType) {
+                case 'linear':
+                    for (let i = 0; i < numWaypoints; i++) {
+                        const t = i / (numWaypoints - 1);
+                        currentPath.push(startConfig.map((s, j) => s + t * (endConfig[j] - s)));
+                    }
+                    break;
+
+                case 'random':
+                    currentPath.push([...startConfig]);
+                    let current = [...startConfig];
+                    for (let i = 1; i < numWaypoints - 1; i++) {
+                        current = current.map((v, j) => {
+                            const step = (Math.random() - 0.5) * 0.5;
+                            return Math.max(lower[j], Math.min(upper[j], v + step));
+                        });
+                        currentPath.push([...current]);
+                    }
+                    currentPath.push([...endConfig]);
+                    break;
+
+                case 'zigzag':
+                    for (let i = 0; i < numWaypoints; i++) {
+                        const t = i / (numWaypoints - 1);
+                        const zigzag = Math.sin(t * Math.PI * 4) * 0.3;
+                        currentPath.push(startConfig.map((s, j) => {
+                            const linear = s + t * (endConfig[j] - s);
+                            if (j < 2) {
+                                return Math.max(lower[j], Math.min(upper[j], linear + zigzag));
+                            }
+                            return linear;
+                        }));
+                    }
+                    break;
+            }
+
+            const output = document.getElementById('path-output');
+            output.textContent = `Generated ${pathType} path with ${numWaypoints} waypoints.\n`;
+            output.textContent += `First: [${currentPath[0].map(v => v.toFixed(2)).join(', ')}]\n`;
+            output.textContent += `Last: [${currentPath[numWaypoints - 1].map(v => v.toFixed(2)).join(', ')}]\n`;
+
+            visualizePath(currentPath, null);
+        };
+
+        // Validate path
+        window.validatePath = function() {
+            if (!validator || currentPath.length === 0) {
+                alert('Generate a path first');
+                return;
+            }
+
+            try {
+                // Flatten path
+                const flat = currentPath.flat();
+
+                document.getElementById('path-progress').style.display = 'block';
+                document.getElementById('path-progress-fill').style.width = '50%';
+
+                const valid = validator.validatePath(flat, dof);
+
+                document.getElementById('path-progress-fill').style.width = '100%';
+                setTimeout(() => {
+                    document.getElementById('path-progress').style.display = 'none';
+                }, 500);
+
+                const indicator = document.getElementById('path-result');
+                indicator.style.display = 'inline-flex';
+                if (valid) {
+                    indicator.className = 'validation-indicator valid';
+                    indicator.innerHTML = '<div class="dot"></div><span>Path VALID - All edges collision-free</span>';
+                } else {
+                    indicator.className = 'validation-indicator invalid';
+                    indicator.innerHTML = '<div class="dot"></div><span>Path INVALID - Contains invalid segments</span>';
+                }
+
+                const output = document.getElementById('path-output');
+                output.textContent += `\nPath Validation: ${valid ? 'VALID' : 'INVALID'}\n`;
+                output.textContent += `Checked ${currentPath.length - 1} edges\n`;
+
+            } catch (err) {
+                document.getElementById('path-output').textContent = `Error: ${err.message}`;
+            }
+        };
+
+        // Collision checker function
+        function collisionChecker(config) {
+            const xMin = parseFloat(document.getElementById('forbidden-x-min').value);
+            const xMax = parseFloat(document.getElementById('forbidden-x-max').value);
+            const yMin = parseFloat(document.getElementById('forbidden-y-min').value);
+            const yMax = parseFloat(document.getElementById('forbidden-y-max').value);
+
+            // Check if joints 0 and 1 are in forbidden zone
+            const x = config[0];
+            const y = config[1];
+
+            if (x >= xMin && x <= xMax && y >= yMin && y <= yMax) {
+                return false; // In collision
+            }
+            return true; // Valid
+        }
+
+        // Validate with collision check
+        window.validateWithCollisionCheck = function() {
+            if (!validator) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            try {
+                const startTime = performance.now();
+                const valid = validator.validateMotionWithCollisionCheck(
+                    startConfig,
+                    endConfig,
+                    collisionChecker
+                );
+                const endTime = performance.now();
+
+                document.getElementById('coll-checked').textContent = '1';
+                document.getElementById('coll-valid').textContent = valid ? '1' : '0';
+                document.getElementById('coll-invalid').textContent = valid ? '0' : '1';
+                document.getElementById('coll-time').textContent = (endTime - startTime).toFixed(2);
+
+                const output = document.getElementById('collision-output');
+                output.textContent = `Motion Validation with Collision Check:\n`;
+                output.textContent += `${'='.repeat(40)}\n`;
+                output.textContent += `Result: ${valid ? 'VALID' : 'COLLISION DETECTED'}\n`;
+                output.textContent += `Time: ${(endTime - startTime).toFixed(3)} ms\n`;
+
+                visualizePath([startConfig, endConfig], null);
+            } catch (err) {
+                document.getElementById('collision-output').textContent = `Error: ${err.message}`;
+            }
+        };
+
+        // Test many configurations
+        window.testManyConfigs = function() {
+            if (!configSpace) {
+                alert('Create configuration space first');
+                return;
+            }
+
+            const lower = Array.from(configSpace.lowerBounds);
+            const upper = Array.from(configSpace.upperBounds);
+
+            let checked = 0;
+            let valid = 0;
+            let invalid = 0;
+
+            const startTime = performance.now();
+
+            for (let i = 0; i < 100; i++) {
+                const config = lower.map((l, j) => l + Math.random() * (upper[j] - l));
+
+                if (collisionChecker(config)) {
+                    valid++;
+                } else {
+                    invalid++;
+                }
+                checked++;
+            }
+
+            const endTime = performance.now();
+
+            document.getElementById('coll-checked').textContent = checked;
+            document.getElementById('coll-valid').textContent = valid;
+            document.getElementById('coll-invalid').textContent = invalid;
+            document.getElementById('coll-time').textContent = (endTime - startTime).toFixed(2);
+
+            const output = document.getElementById('collision-output');
+            output.textContent = `Batch Configuration Test:\n`;
+            output.textContent += `${'='.repeat(40)}\n`;
+            output.textContent += `Tested: ${checked} configurations\n`;
+            output.textContent += `Valid: ${valid} (${(valid / checked * 100).toFixed(1)}%)\n`;
+            output.textContent += `Invalid: ${invalid} (${(invalid / checked * 100).toFixed(1)}%)\n`;
+            output.textContent += `Total Time: ${(endTime - startTime).toFixed(3)} ms\n`;
+            output.textContent += `Avg Time per Config: ${((endTime - startTime) / checked).toFixed(4)} ms\n`;
+        };
+
+        // Visualize path on canvas
+        function visualizePath(path, edgeResult) {
+            const canvas = document.getElementById('path-canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Set canvas size
+            canvas.width = canvas.offsetWidth * 2;
+            canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+
+            const width = canvas.offsetWidth;
+            const height = canvas.offsetHeight;
+
+            // Clear
+            ctx.fillStyle = '#0d1b2a';
+            ctx.fillRect(0, 0, width, height);
+
+            if (!configSpace || path.length === 0) return;
+
+            const lower = Array.from(configSpace.lowerBounds);
+            const upper = Array.from(configSpace.upperBounds);
+
+            // Map coordinates
+            function mapX(v) {
+                return 20 + (v - lower[0]) / (upper[0] - lower[0]) * (width - 40);
+            }
+            function mapY(v) {
+                return height - 20 - (v - lower[1]) / (upper[1] - lower[1]) * (height - 40);
+            }
+
+            // Draw forbidden zone
+            const xMin = parseFloat(document.getElementById('forbidden-x-min').value);
+            const xMax = parseFloat(document.getElementById('forbidden-x-max').value);
+            const yMin = parseFloat(document.getElementById('forbidden-y-min').value);
+            const yMax = parseFloat(document.getElementById('forbidden-y-max').value);
+
+            ctx.fillStyle = 'rgba(230, 162, 60, 0.3)';
+            ctx.strokeStyle = '#e6a23c';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.rect(mapX(xMin), mapY(yMax), mapX(xMax) - mapX(xMin), mapY(yMin) - mapY(yMax));
+            ctx.fill();
+            ctx.stroke();
+
+            // Draw interpolated points if available
+            if (edgeResult && edgeResult.numPoints > 0) {
+                ctx.fillStyle = 'rgba(64, 158, 255, 0.5)';
+                for (let i = 0; i < edgeResult.numPoints; i++) {
+                    const point = edgeResult.getPoint(i);
+                    ctx.beginPath();
+                    ctx.arc(mapX(point[0]), mapY(point[1]), 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Draw path
+            ctx.strokeStyle = '#00d9ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(mapX(path[0][0]), mapY(path[0][1]));
+            for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(mapX(path[i][0]), mapY(path[i][1]));
+            }
+            ctx.stroke();
+
+            // Draw waypoints
+            for (let i = 0; i < path.length; i++) {
+                const valid = collisionChecker(path[i]);
+                ctx.fillStyle = valid ? '#67c23a' : '#f56c6c';
+                ctx.beginPath();
+                ctx.arc(mapX(path[i][0]), mapY(path[i][1]), 6, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw axis labels
+            ctx.fillStyle = '#888';
+            ctx.font = '12px monospace';
+            ctx.fillText('J1', width / 2, height - 5);
+            ctx.save();
+            ctx.translate(10, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('J2', 0, 0);
+            ctx.restore();
+        }
+
+        // Start initialization
+        initialize();
+    </script>
+</body>
+</html>

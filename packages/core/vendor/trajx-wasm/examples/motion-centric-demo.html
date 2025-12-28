@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trajx WASM - Motion-Centric API Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .full-width { grid-column: 1 / -1; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        button.success { background: #28a745; }
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .log .success { color: #4ec9b0; }
+        .log .error { color: #f48771; }
+        .log .info { color: #9cdcfe; }
+        .log .warn { color: #dcdcaa; }
+        .status {
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        .status.loading { background: #fff3cd; color: #856404; }
+        .status.ready { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .test-group {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .test-group h3 { margin-top: 0; color: #495057; }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .code {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .code .keyword { color: #66d9ef; }
+        .code .string { color: #a6e22e; }
+        .code .number { color: #ae81ff; }
+        .code .comment { color: #75715e; }
+    </style>
+</head>
+<body>
+    <h1>Trajx WASM - Motion-Centric API Demo</h1>
+    <p>This demo showcases the new Motion-Centric API for robot motion planning.</p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="container">
+        <!-- Log Panel -->
+        <div class="section full-width">
+            <h2>Console Log</h2>
+            <button onclick="clearLog()">Clear Log</button>
+            <button onclick="runAllMotionTests()" id="runAllBtn" disabled>Run All Motion Tests</button>
+            <div id="log" class="log"></div>
+        </div>
+
+        <!-- Motion API Tests -->
+        <div class="section">
+            <h2>WasmMotion API</h2>
+
+            <div class="test-group">
+                <h3>1. Simple Point-to-Point Motion</h3>
+                <div class="code">
+<span class="comment">// Simple motion to target joints</span>
+<span class="keyword">const</span> result = WasmMotion.<span class="keyword">to</span>([<span class="number">1.0</span>, <span class="number">0.5</span>, <span class="number">-0.5</span>, <span class="number">0</span>, <span class="number">0.5</span>, <span class="number">0</span>])
+    .<span class="keyword">run</span>(robot);
+                </div>
+                <button onclick="testSimpleMotion()" id="testSimpleMotionBtn" disabled>Test Simple Motion</button>
+                <div id="simpleMotionResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>2. Motion with Constraints</h3>
+                <div class="code">
+<span class="comment">// Motion with speed and smoothness</span>
+<span class="keyword">const</span> result = WasmMotion.<span class="keyword">to</span>(goal)
+    .<span class="keyword">speed</span>(<span class="number">0.5</span>)
+    .<span class="keyword">smooth</span>()
+    .<span class="keyword">run</span>(robot);
+                </div>
+                <button onclick="testConstrainedMotion()" id="testConstrainedMotionBtn" disabled>Test Constrained Motion</button>
+                <div id="constrainedMotionResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>3. Linear Motion</h3>
+                <div class="code">
+<span class="comment">// Linear Cartesian interpolation</span>
+<span class="keyword">const</span> result = WasmMotion.<span class="keyword">to</span>(goal)
+    .<span class="keyword">linear</span>()
+    .<span class="keyword">safe</span>()
+    .<span class="keyword">run</span>(robot);
+                </div>
+                <button onclick="testLinearMotion()" id="testLinearMotionBtn" disabled>Test Linear Motion</button>
+                <div id="linearMotionResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>4. Precision Mode</h3>
+                <div class="code">
+<span class="comment">// Slow + very smooth = precision</span>
+<span class="keyword">const</span> result = WasmMotion.<span class="keyword">to</span>(goal)
+    .<span class="keyword">precise</span>()  <span class="comment">// = .slow().verySmooth()</span>
+    .<span class="keyword">run</span>(robot);
+                </div>
+                <button onclick="testPrecisionMotion()" id="testPrecisionMotionBtn" disabled>Test Precision Motion</button>
+                <div id="precisionMotionResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Path and Sequence Tests -->
+        <div class="section">
+            <h2>WasmPath & WasmSequence API</h2>
+
+            <div class="test-group">
+                <h3>5. Multi-Waypoint Path</h3>
+                <div class="code">
+<span class="comment">// Path through multiple waypoints</span>
+<span class="keyword">const</span> path = WasmPath.<span class="keyword">through</span>(waypoints, dof)
+    .<span class="keyword">linear</span>()
+    .<span class="keyword">speed</span>(<span class="number">0.8</span>)
+    .<span class="keyword">run</span>(robot);
+                </div>
+                <button onclick="testPath()" id="testPathBtn" disabled>Test Path</button>
+                <div id="pathResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>6. Motion Sequence</h3>
+                <div class="code">
+<span class="comment">// Chain multiple motions</span>
+<span class="keyword">const</span> seq = WasmSequence.<span class="keyword">start</span>(motion1)
+    .<span class="keyword">then</span>(motion2)
+    .<span class="keyword">then</span>(motion3)
+    .<span class="keyword">run</span>(robot);
+                </div>
+                <button onclick="testSequence()" id="testSequenceBtn" disabled>Test Sequence</button>
+                <div id="sequenceResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>7. Trajectory Inspection</h3>
+                <div class="code">
+<span class="comment">// Inspect trajectory result</span>
+result.<span class="keyword">numPoints</span>
+result.<span class="keyword">trajectoryDuration</span>
+result.<span class="keyword">pathLength</span>
+result.<span class="keyword">getPositionsAt</span>(index)
+                </div>
+                <button onclick="testTrajectoryInspection()" id="testTrajectoryBtn" disabled>Inspect Trajectory</button>
+                <div id="trajectoryResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Integration Tests -->
+        <div class="section full-width">
+            <h2>Integration Test: Pick and Place</h2>
+            <div class="code">
+<span class="comment">// Simulated pick and place sequence</span>
+<span class="keyword">const</span> pickApproach = WasmMotion.<span class="keyword">to</span>(pickApproachPos).<span class="keyword">fast</span>();
+<span class="keyword">const</span> pick = WasmMotion.<span class="keyword">to</span>(pickPos).<span class="keyword">linear</span>().<span class="keyword">slow</span>();
+<span class="keyword">const</span> pickRetreat = WasmMotion.<span class="keyword">to</span>(pickRetreatPos).<span class="keyword">linear</span>();
+<span class="keyword">const</span> placeApproach = WasmMotion.<span class="keyword">to</span>(placeApproachPos).<span class="keyword">fast</span>();
+<span class="keyword">const</span> place = WasmMotion.<span class="keyword">to</span>(placePos).<span class="keyword">linear</span>().<span class="keyword">slow</span>();
+<span class="keyword">const</span> placeRetreat = WasmMotion.<span class="keyword">to</span>(placeRetreatPos).<span class="keyword">linear</span>();
+
+<span class="keyword">const</span> result = WasmSequence.<span class="keyword">start</span>(pickApproach)
+    .<span class="keyword">then</span>(pick)
+    .<span class="keyword">then</span>(pickRetreat)
+    .<span class="keyword">then</span>(placeApproach)
+    .<span class="keyword">then</span>(place)
+    .<span class="keyword">then</span>(placeRetreat)
+    .<span class="keyword">run</span>(robot);
+            </div>
+            <button onclick="testPickAndPlace()" id="testPickPlaceBtn" disabled>Run Pick and Place</button>
+            <div id="pickPlaceResult" class="result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, * as wasm from '../trajx_wasm.js';
+
+        window.wasm = wasm;
+
+        // Test URDF
+        const TEST_URDF = `<?xml version="1.0"?>
+<robot name="test_robot">
+  <link name="base_link"/>
+  <link name="link1"/><link name="link2"/><link name="link3"/>
+  <link name="link4"/><link name="link5"/><link name="link6"/>
+  <link name="tool0"/>
+
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/><child link="link1"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="2.0" effort="100"/>
+  </joint>
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/><child link="link2"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" velocity="2.0" effort="100"/>
+  </joint>
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/><child link="link3"/>
+    <origin xyz="0 0 0.3" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="2.5" velocity="2.0" effort="100"/>
+  </joint>
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/><child link="link4"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="3.0" effort="50"/>
+  </joint>
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/><child link="link5"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" velocity="3.0" effort="50"/>
+  </joint>
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/><child link="link6"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="3.0" effort="50"/>
+  </joint>
+  <joint name="tool_joint" type="fixed">
+    <parent link="link6"/><child link="tool0"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+  </joint>
+</robot>`;
+
+        window.TEST_URDF = TEST_URDF;
+        window.robot = null;
+
+        // Logging
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logEl.innerHTML += `<span class="${type}">[${timestamp}] ${message}</span>\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+        window.log = log;
+
+        window.clearLog = function() {
+            document.getElementById('log').innerHTML = '';
+        };
+
+        function showResult(elementId, content, success = true) {
+            const el = document.getElementById(elementId);
+            el.style.display = 'block';
+            el.style.background = success ? '#d4edda' : '#f8d7da';
+            el.textContent = typeof content === 'object' ? JSON.stringify(content, null, 2) : content;
+        }
+        window.showResult = showResult;
+
+        function enableButtons() {
+            document.querySelectorAll('button[disabled]').forEach(btn => btn.disabled = false);
+        }
+
+        // Initialize
+        async function initialize() {
+            try {
+                await init();
+                const version = wasm.version();
+
+                // Create robot
+                window.robot = wasm.createRobot(TEST_URDF);
+                window.robot.setJointPositions([0, 0, 0, 0, 0, 0]);
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = `WASM Ready! Version: ${version} | Robot: ${robot.name} (${robot.dof} DOF)`;
+
+                log(`WASM loaded. Version: ${version}`, 'success');
+                log(`Robot created: ${robot.name} with ${robot.dof} DOF`, 'success');
+
+                enableButtons();
+            } catch (error) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Failed: ${error.message}`;
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test: Simple Motion
+        window.testSimpleMotion = function() {
+            log('--- Testing Simple Motion ---', 'info');
+            try {
+                const target = [1.0, 0.5, -0.5, 0, 0.5, 0];
+                const motion = wasm.WasmMotion.to(target);
+                const result = motion.run(robot);
+
+                log(`Motion executed: ${result.executed}`, 'success');
+                log(`Trajectory points: ${result.numPoints}`, 'info');
+                log(`Duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+                log(`Path length: ${result.pathLength.toFixed(4)} rad`, 'info');
+                log(`Collision-free: ${result.collisionFree}`, 'info');
+
+                showResult('simpleMotionResult', {
+                    executed: result.executed,
+                    numPoints: result.numPoints,
+                    duration: result.trajectoryDuration,
+                    pathLength: result.pathLength
+                });
+
+                log('Simple motion test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('simpleMotionResult', error.message, false);
+            }
+        };
+
+        // Test: Constrained Motion
+        window.testConstrainedMotion = function() {
+            log('--- Testing Constrained Motion ---', 'info');
+            try {
+                const target = [0.5, 0.3, -0.3, 0, 0.3, 0];
+                const motion = wasm.WasmMotion.to(target)
+                    .speed(0.5)
+                    .smooth();
+                const result = motion.run(robot);
+
+                log(`Speed scale: 0.5 -> Duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+                log(`Trajectory points: ${result.numPoints}`, 'info');
+
+                // Verify slower speed = longer duration
+                const fastMotion = wasm.WasmMotion.to(target).speed(1.0);
+                const fastResult = fastMotion.run(robot);
+
+                log(`Fast (1.0) duration: ${fastResult.trajectoryDuration.toFixed(3)}s`, 'info');
+                log(`Duration ratio: ${(result.trajectoryDuration / fastResult.trajectoryDuration).toFixed(2)}x`, 'info');
+
+                showResult('constrainedMotionResult', {
+                    slowDuration: result.trajectoryDuration,
+                    fastDuration: fastResult.trajectoryDuration,
+                    ratio: result.trajectoryDuration / fastResult.trajectoryDuration
+                });
+
+                log('Constrained motion test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('constrainedMotionResult', error.message, false);
+            }
+        };
+
+        // Test: Linear Motion
+        window.testLinearMotion = function() {
+            log('--- Testing Linear Motion ---', 'info');
+            try {
+                const target = [0.8, 0.4, -0.4, 0, 0.4, 0];
+                const motion = wasm.WasmMotion.to(target)
+                    .linear()
+                    .safe();
+                const result = motion.run(robot);
+
+                log(`Linear motion executed`, 'success');
+                log(`Points: ${result.numPoints}, Duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+
+                showResult('linearMotionResult', {
+                    executed: result.executed,
+                    numPoints: result.numPoints,
+                    duration: result.trajectoryDuration
+                });
+
+                log('Linear motion test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('linearMotionResult', error.message, false);
+            }
+        };
+
+        // Test: Precision Motion
+        window.testPrecisionMotion = function() {
+            log('--- Testing Precision Motion ---', 'info');
+            try {
+                const target = [0.2, 0.1, -0.1, 0, 0.1, 0];
+                const motion = wasm.WasmMotion.to(target).precise();
+                const result = motion.run(robot);
+
+                // Precision = slow (0.3 speed) + verySmooth
+                log(`Precision motion executed`, 'success');
+                log(`Duration (slow): ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+
+                // Compare with fast motion
+                const fastMotion = wasm.WasmMotion.to(target).fast();
+                const fastResult = fastMotion.run(robot);
+
+                const expectedRatio = 1.0 / 0.3; // ~3.33x slower
+                const actualRatio = result.trajectoryDuration / fastResult.trajectoryDuration;
+                log(`Expected ratio: ~${expectedRatio.toFixed(2)}x, Actual: ${actualRatio.toFixed(2)}x`, 'info');
+
+                showResult('precisionMotionResult', {
+                    precisionDuration: result.trajectoryDuration,
+                    fastDuration: fastResult.trajectoryDuration,
+                    ratio: actualRatio,
+                    expectedRatio: expectedRatio
+                });
+
+                log('Precision motion test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('precisionMotionResult', error.message, false);
+            }
+        };
+
+        // Test: Path
+        window.testPath = function() {
+            log('--- Testing Multi-Waypoint Path ---', 'info');
+            try {
+                // Create waypoints (flattened array)
+                const dof = 6;
+                const waypoints = [
+                    0.5, 0.3, -0.3, 0, 0.3, 0,    // wp1
+                    1.0, 0.5, -0.5, 0, 0.5, 0,    // wp2
+                    0.8, 0.4, -0.4, 0, 0.4, 0,    // wp3
+                    0.3, 0.2, -0.2, 0, 0.2, 0     // wp4
+                ];
+
+                const path = wasm.WasmPath.through(waypoints, dof)
+                    .linear()
+                    .speed(0.8);
+                const result = path.run(robot);
+
+                log(`Path executed through 4 waypoints`, 'success');
+                log(`Points: ${result.numPoints}, Duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+                log(`Path length: ${result.pathLength.toFixed(4)} rad`, 'info');
+
+                showResult('pathResult', {
+                    waypointCount: 4,
+                    numPoints: result.numPoints,
+                    duration: result.trajectoryDuration,
+                    pathLength: result.pathLength
+                });
+
+                log('Path test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('pathResult', error.message, false);
+            }
+        };
+
+        // Test: Sequence
+        window.testSequence = function() {
+            log('--- Testing Motion Sequence ---', 'info');
+            try {
+                const motion1 = wasm.WasmMotion.to([0.5, 0.3, -0.3, 0, 0.3, 0]).fast();
+                const motion2 = wasm.WasmMotion.to([1.0, 0.5, -0.5, 0, 0.5, 0]).slow();
+                const motion3 = wasm.WasmMotion.to([0.0, 0.0, 0.0, 0, 0.0, 0]).speed(0.7);
+
+                const sequence = wasm.WasmSequence.start(motion1)
+                    .then(motion2)
+                    .then(motion3);
+                const result = sequence.run(robot);
+
+                log(`Sequence executed: 3 motions`, 'success');
+                log(`Total points: ${result.numPoints}`, 'info');
+                log(`Total duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+                log(`Total path length: ${result.pathLength.toFixed(4)} rad`, 'info');
+
+                showResult('sequenceResult', {
+                    motionCount: 3,
+                    totalPoints: result.numPoints,
+                    totalDuration: result.trajectoryDuration,
+                    totalPathLength: result.pathLength
+                });
+
+                log('Sequence test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('sequenceResult', error.message, false);
+            }
+        };
+
+        // Test: Trajectory Inspection
+        window.testTrajectoryInspection = function() {
+            log('--- Testing Trajectory Inspection ---', 'info');
+            try {
+                const motion = wasm.WasmMotion.to([1.0, 0.5, -0.5, 0, 0.5, 0]);
+                const result = motion.run(robot);
+
+                log(`Trajectory inspection:`, 'info');
+                log(`  - DOF: ${result.dof}`, 'info');
+                log(`  - Points: ${result.numPoints}`, 'info');
+                log(`  - Duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+                log(`  - Planning time: ${result.planningTimeMs.toFixed(3)}ms`, 'info');
+
+                // Inspect individual points
+                const firstPos = result.getPositionsAt(0);
+                const lastPos = result.getPositionsAt(result.numPoints - 1);
+                const firstTime = result.getTimeAt(0);
+                const lastTime = result.getTimeAt(result.numPoints - 1);
+
+                log(`  - First point (t=${firstTime.toFixed(3)}s): [${firstPos.map(v => v.toFixed(3)).join(', ')}]`, 'info');
+                log(`  - Last point (t=${lastTime.toFixed(3)}s): [${lastPos.map(v => v.toFixed(3)).join(', ')}]`, 'info');
+
+                // Get raw trajectory
+                const trajectory = result.getTrajectory();
+                log(`  - Raw trajectory length: ${trajectory.length} values`, 'info');
+
+                showResult('trajectoryResult', {
+                    dof: result.dof,
+                    numPoints: result.numPoints,
+                    duration: result.trajectoryDuration,
+                    planningTime: result.planningTimeMs,
+                    firstPos: firstPos,
+                    lastPos: lastPos,
+                    trajectorySize: trajectory.length
+                });
+
+                log('Trajectory inspection test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('trajectoryResult', error.message, false);
+            }
+        };
+
+        // Test: Pick and Place
+        window.testPickAndPlace = function() {
+            log('--- Testing Pick and Place Sequence ---', 'info');
+            try {
+                // Define positions
+                const pickApproachPos = [0.5, 0.5, -0.3, 0, 0.3, 0];
+                const pickPos = [0.5, 0.5, -0.5, 0, 0.5, 0];
+                const pickRetreatPos = [0.5, 0.5, -0.3, 0, 0.3, 0];
+                const placeApproachPos = [-0.5, 0.5, -0.3, 0, 0.3, 0];
+                const placePos = [-0.5, 0.5, -0.5, 0, 0.5, 0];
+                const placeRetreatPos = [-0.5, 0.5, -0.3, 0, 0.3, 0];
+
+                // Create motions
+                const pickApproach = wasm.WasmMotion.to(pickApproachPos).fast();
+                const pick = wasm.WasmMotion.to(pickPos).linear().slow();
+                const pickRetreat = wasm.WasmMotion.to(pickRetreatPos).linear();
+                const placeApproach = wasm.WasmMotion.to(placeApproachPos).fast();
+                const place = wasm.WasmMotion.to(placePos).linear().slow();
+                const placeRetreat = wasm.WasmMotion.to(placeRetreatPos).linear();
+
+                // Build sequence
+                const sequence = wasm.WasmSequence.start(pickApproach)
+                    .then(pick)
+                    .then(pickRetreat)
+                    .then(placeApproach)
+                    .then(place)
+                    .then(placeRetreat);
+
+                const result = sequence.run(robot);
+
+                log(`Pick and Place sequence completed!`, 'success');
+                log(`  - Total motions: 6`, 'info');
+                log(`  - Total points: ${result.numPoints}`, 'info');
+                log(`  - Total duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+                log(`  - Total path length: ${result.pathLength.toFixed(4)} rad`, 'info');
+                log(`  - Collision-free: ${result.collisionFree}`, 'info');
+                log(`  - Planning time: ${result.planningTimeMs.toFixed(3)}ms`, 'info');
+
+                showResult('pickPlaceResult', {
+                    motionCount: 6,
+                    totalPoints: result.numPoints,
+                    totalDuration: result.trajectoryDuration,
+                    totalPathLength: result.pathLength,
+                    collisionFree: result.collisionFree,
+                    planningTimeMs: result.planningTimeMs
+                });
+
+                log('Pick and Place test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('pickPlaceResult', error.message, false);
+            }
+        };
+
+        // Run all tests
+        window.runAllMotionTests = async function() {
+            log('========== RUNNING ALL MOTION TESTS ==========', 'info');
+
+            const tests = [
+                testSimpleMotion,
+                testConstrainedMotion,
+                testLinearMotion,
+                testPrecisionMotion,
+                testPath,
+                testSequence,
+                testTrajectoryInspection,
+                testPickAndPlace
+            ];
+
+            for (const test of tests) {
+                try {
+                    test();
+                    log('', 'info');
+                } catch (e) {
+                    log(`Test failed: ${e.message}`, 'error');
+                }
+            }
+
+            log('========== ALL MOTION TESTS COMPLETED ==========', 'success');
+        };
+
+        initialize();
+    </script>
+</body>
+</html>

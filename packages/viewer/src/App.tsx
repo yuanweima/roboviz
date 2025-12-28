@@ -7,8 +7,16 @@
 import * as React from 'react';
 import { useViewerStore } from './store/viewerStore';
 import { useWebSocket, useKeyboardShortcuts, getKeyboardShortcuts } from './hooks';
-import { Scene, Robot, Obstacle, SafetyZone, Waypoint, TrajectoryPlayer, CollisionVisualizer, FrameTree, PointCloudRenderer, ControlPanel } from './components';
+import { Scene, Robot, Obstacle, SafetyZone, Waypoint, TrajectoryPlayer, CollisionVisualizer, FrameTree, PointCloudRenderer, ControlPanel, CableDemo, CableDemoPanel } from './components';
 import type { CollisionPair, Vector3 } from './types';
+
+// Check for demo mode from query params
+function isDemoMode(): 'cable' | false {
+  const params = new URLSearchParams(window.location.search);
+  const demo = params.get('demo');
+  if (demo === 'cable') return 'cable';
+  return false;
+}
 
 // Get WebSocket URL from query params or default
 function getWebSocketUrl(): string {
@@ -230,18 +238,22 @@ interface ViewerSceneProps {
   onCollisionDetected?: (pairs: CollisionPair[]) => void;
   onCollisionCleared?: () => void;
   onPointCloudClick?: (pointCloudId: string, pointIndex: number, position: Vector3) => void;
+  demoMode?: 'cable' | false;
 }
 
-function ViewerScene({ onTrajectoryEnded, onRobotSelect, onRobotJointChange, onCollisionDetected, onCollisionCleared, onPointCloudClick }: ViewerSceneProps) {
+function ViewerScene({ onTrajectoryEnded, onRobotSelect, onRobotJointChange, onCollisionDetected, onCollisionCleared, onPointCloudClick, demoMode }: ViewerSceneProps) {
   const { scene, camera, robots, obstacles, safetyZones, waypoints } = useViewerStore();
 
   return (
     <Scene config={scene} camera={camera}>
-      {/* Trajectory playback controller */}
-      <TrajectoryPlayer onTrajectoryEnded={onTrajectoryEnded} />
+      {/* Demo mode: Cable Management */}
+      {demoMode === 'cable' && <CableDemo visible />}
+
+      {/* Normal mode: Trajectory playback controller */}
+      {!demoMode && <TrajectoryPlayer onTrajectoryEnded={onTrajectoryEnded} />}
 
       {/* Render robots */}
-      {Array.from(robots.values()).map((robot) => (
+      {!demoMode && Array.from(robots.values()).map((robot) => (
         <Robot
           key={robot.id}
           data={robot}
@@ -251,42 +263,45 @@ function ViewerScene({ onTrajectoryEnded, onRobotSelect, onRobotJointChange, onC
       ))}
 
       {/* Render obstacles */}
-      {Array.from(obstacles.values()).map((obstacle) => (
+      {!demoMode && Array.from(obstacles.values()).map((obstacle) => (
         <Obstacle key={obstacle.id} data={obstacle} />
       ))}
 
       {/* Render safety zones */}
-      {Array.from(safetyZones.values()).map((zone) => (
+      {!demoMode && Array.from(safetyZones.values()).map((zone) => (
         <SafetyZone key={zone.id} data={zone} />
       ))}
 
       {/* Render waypoints */}
-      {Array.from(waypoints.values()).map((waypoint) => (
+      {!demoMode && Array.from(waypoints.values()).map((waypoint) => (
         <Waypoint key={waypoint.id} data={waypoint} />
       ))}
 
       {/* Collision detection and visualization */}
-      <CollisionVisualizer
-        onCollisionDetected={onCollisionDetected}
-        onCollisionCleared={onCollisionCleared}
-      />
+      {!demoMode && (
+        <CollisionVisualizer
+          onCollisionDetected={onCollisionDetected}
+          onCollisionCleared={onCollisionCleared}
+        />
+      )}
 
       {/* Coordinate frame tree */}
-      <FrameTree />
+      {!demoMode && <FrameTree />}
 
       {/* Point clouds */}
-      <PointCloudRenderer onPointCloudClick={onPointCloudClick} />
+      {!demoMode && <PointCloudRenderer onPointCloudClick={onPointCloudClick} />}
     </Scene>
   );
 }
 
 export default function App() {
   const wsUrl = React.useMemo(() => getWebSocketUrl(), []);
+  const demoMode = React.useMemo(() => isDemoMode(), []);
 
-  // Connect to WebSocket server
+  // Connect to WebSocket server (skip in demo mode)
   const { sendEvent } = useWebSocket(wsUrl, {
-    autoConnect: true,
-    reconnect: true,
+    autoConnect: !demoMode,
+    reconnect: !demoMode,
     reconnectInterval: 2000,
     debug: true,
   });
@@ -350,10 +365,14 @@ export default function App() {
         onCollisionDetected={handleCollisionDetected}
         onCollisionCleared={handleCollisionCleared}
         onPointCloudClick={handlePointCloudClick}
+        demoMode={demoMode}
       />
-      <StatusBar />
-      <PlaybackControls />
-      <ControlPanel onJointChange={handleRobotJointChange} />
+      {!demoMode && <StatusBar />}
+      {!demoMode && <PlaybackControls />}
+      {!demoMode && <ControlPanel onJointChange={handleRobotJointChange} />}
+
+      {/* Cable Demo Panel */}
+      {demoMode === 'cable' && <CableDemoPanel />}
 
       {/* Title */}
       <div
@@ -369,25 +388,27 @@ export default function App() {
           fontFamily: 'system-ui',
         }}
       >
-        RoboViz Viewer
+        {demoMode === 'cable' ? 'RoboViz - 线束管理演示' : 'RoboViz Viewer'}
       </div>
 
-      {/* Connection info */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 10,
-          right: 10,
-          padding: '8px 16px',
-          background: 'rgba(0, 0, 0, 0.7)',
-          borderRadius: 4,
-          color: '#888',
-          fontSize: 11,
-          fontFamily: 'monospace',
-        }}
-      >
-        WS: {wsUrl}
-      </div>
+      {/* Connection info (hide in demo mode) */}
+      {!demoMode && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+            padding: '8px 16px',
+            background: 'rgba(0, 0, 0, 0.7)',
+            borderRadius: 4,
+            color: '#888',
+            fontSize: 11,
+            fontFamily: 'monospace',
+          }}
+        >
+          WS: {wsUrl}
+        </div>
+      )}
 
       {/* Keyboard shortcuts help button */}
       <button
