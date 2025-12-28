@@ -50,6 +50,7 @@ import {
   useGhostPreview,
   type UseGhostPreviewResult,
   type GhostPreviewStatus,
+  type GhostInputMode,
 } from '../../hooks/useGhostPreview';
 import {
   usePoseTrajectoryPlayer,
@@ -90,13 +91,17 @@ export interface RobotProcessState {
   hasTool: boolean;
 
   // Ghost Preview
-  /** Ghost joint angles (IK solution for target) */
+  /** Ghost joint angles (IK solution for target or direct joints) */
   ghostJointAngles: JointAngles | null;
   /** Ghost preview status */
   ghostStatus: GhostPreviewStatus;
-  /** Current target pose for ghost */
+  /** Ghost input mode ('pose' for IK-based, 'joints' for direct control) */
+  ghostInputMode: GhostInputMode;
+  /** Current target pose for ghost (only in pose mode) */
   ghostTargetPose: Pose3D | null;
-  /** Whether ghost is computing IK */
+  /** Current target joints for ghost (only in joints mode) */
+  ghostTargetJoints: JointAngles | null;
+  /** Whether ghost is computing IK (only in pose mode) */
   ghostIsComputing: boolean;
 
   // Trajectory Playback
@@ -143,10 +148,14 @@ export interface RobotProcessActions {
   detachTool: () => void;
 
   // Ghost Preview
-  /** Set target pose for ghost preview */
+  /** Set target pose for ghost preview (switches to pose mode, uses IK) */
   setGhostTarget: (pose: Pose3D | null) => void;
+  /** Set target joints for ghost preview (switches to joints mode, direct control) */
+  setGhostJoints: (joints: JointAngles | null) => void;
   /** Clear ghost preview */
   clearGhost: () => void;
+  /** Apply ghost to robot (returns current ghost joints) */
+  applyGhostToRobot: () => JointAngles | null;
 
   // Trajectory Playback
   /** Load a trajectory */
@@ -329,7 +338,9 @@ export function RobotProcessProvider({
     // Ghost Preview
     ghostJointAngles: ghost.jointAngles,
     ghostStatus: ghost.status,
+    ghostInputMode: ghost.inputMode,
     ghostTargetPose: ghost.targetPose,
+    ghostTargetJoints: ghost.targetJoints,
     ghostIsComputing: ghost.isComputing,
 
     // Trajectory Playback
@@ -350,7 +361,7 @@ export function RobotProcessProvider({
     processError: processState?.error ?? null,
   }), [
     robot.ready, robot.loading, robot.error, robot.dof, robot.jointAngles, robot.tcpPose, robot.hasTool,
-    ghost.jointAngles, ghost.status, ghost.targetPose, ghost.isComputing,
+    ghost.jointAngles, ghost.status, ghost.inputMode, ghost.targetPose, ghost.targetJoints, ghost.isComputing,
     player.state, player.isPlaying, player.position, player.speed, player.trajectory, player.currentPose, player.ikError,
     activeProcess, processState,
   ]);
@@ -364,7 +375,9 @@ export function RobotProcessProvider({
 
     // Ghost Preview
     setGhostTarget: ghost.setTargetPose,
+    setGhostJoints: ghost.setTargetJoints,
     clearGhost: ghost.clear,
+    applyGhostToRobot: ghost.applyToRobot,
 
     // Trajectory Playback
     loadTrajectory: player.load,
@@ -389,7 +402,7 @@ export function RobotProcessProvider({
     },
   }), [
     robot.setJointAngles, robot.attachTool, robot.detachTool, robot.fkPose, robot.fkTcpPose, robot.ikTcp,
-    ghost.setTargetPose, ghost.clear,
+    ghost.setTargetPose, ghost.setTargetJoints, ghost.clear, ghost.applyToRobot,
     player.load, player.clear, player.play, player.pause, player.stop, player.toggle, player.seek, player.setSpeed, player.tick,
   ]);
 
@@ -461,21 +474,54 @@ export function useProcessRobot(): {
 
 /**
  * Hook to access just the ghost preview part
+ *
+ * Supports two input modes:
+ * - Pose mode: setTarget(pose) uses IK to compute joint angles
+ * - Joints mode: setTargetJoints(joints) sets joints directly without IK
+ *
+ * @example Pose mode (clicking workpoints)
+ * ```tsx
+ * const ghost = useProcessGhost();
+ * ghost.setTarget({ position: [0.5, 0, 0.3], quaternion: [0, 0, 0, 1] });
+ * ```
+ *
+ * @example Joints mode (gamepad control)
+ * ```tsx
+ * const ghost = useProcessGhost();
+ * ghost.setTargetJoints([0, -0.5, 0.5, 0, 0.5, 0]);
+ * ```
  */
 export function useProcessGhost(): {
+  /** Ghost joint angles (IK solution or direct joints) */
   jointAngles: JointAngles | null;
+  /** Ghost preview status */
   status: GhostPreviewStatus;
+  /** Current input mode */
+  inputMode: GhostInputMode;
+  /** Current target pose (only in pose mode) */
   targetPose: Pose3D | null;
+  /** Current target joints (only in joints mode) */
+  targetJoints: JointAngles | null;
+  /** Set target pose (switches to pose mode, uses IK) */
   setTarget: (pose: Pose3D | null) => void;
+  /** Set target joints directly (switches to joints mode) */
+  setTargetJoints: (joints: JointAngles | null) => void;
+  /** Clear ghost preview */
   clear: () => void;
+  /** Apply ghost to robot (returns current joints) */
+  applyToRobot: () => JointAngles | null;
 } {
   const { state, actions } = useRobotProcessContext();
   return {
     jointAngles: state.ghostJointAngles,
     status: state.ghostStatus,
+    inputMode: state.ghostInputMode,
     targetPose: state.ghostTargetPose,
+    targetJoints: state.ghostTargetJoints,
     setTarget: actions.setGhostTarget,
+    setTargetJoints: actions.setGhostJoints,
     clear: actions.clearGhost,
+    applyToRobot: actions.applyGhostToRobot,
   };
 }
 

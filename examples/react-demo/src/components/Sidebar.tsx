@@ -43,6 +43,7 @@ const MODULES: ModuleInfo[] = [
   { id: 'multi-robot', label: 'Multi-Robot', icon: '👥', description: 'Robot coordination', category: 'robot' },
   { id: 'ghost-robot', label: 'Ghost Robot', icon: '👻', description: 'Target pose preview', category: 'robot' },
   { id: 'trajx-wasm', label: 'Trajx WASM', icon: '⚡', description: 'FK/IK solver', category: 'robot' },
+  { id: 'gamepad-control', label: 'Gamepad', icon: '🎮', description: 'Controller input', category: 'robot' },
 
   // Trajectory
   { id: 'trajectory', label: 'Trajectory', icon: '📈', description: 'Playback, waypoints', category: 'trajectory' },

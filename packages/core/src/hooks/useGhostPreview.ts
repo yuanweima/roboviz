@@ -1,26 +1,20 @@
 /**
  * useGhostPreview Hook
  *
- * Provides ghost robot preview functionality with automatic IK computation.
- * Use this hook to show a preview of robot pose when hovering over workpoints
- * or dragging end-effector targets.
+ * Provides ghost robot preview functionality with two input modes:
+ * 1. Pose-based (Cartesian) - with automatic IK computation
+ * 2. Joint-based (direct) - for gamepad/keyboard joint mode control
  *
  * All coordinates use Z-up convention (robotics standard).
  *
- * @example
+ * @example Pose-based mode (clicking workpoints, IK preview)
  * ```tsx
  * function WorkpointPreview({ kinematics, workpoint }) {
- *   const {
- *     jointAngles,
- *     status,
- *     setTargetPose,
- *   } = useGhostPreview({
+ *   const { jointAngles, status, setTargetPose } = useGhostPreview({
  *     kinematics,
  *     enabled: true,
- *     standoffDistance: 0.005,
  *   });
  *
- *   // Update target when hovering workpoint
  *   useEffect(() => {
  *     if (workpoint) {
  *       setTargetPose({
@@ -33,8 +27,24 @@
  *   }, [workpoint, setTargetPose]);
  *
  *   if (!jointAngles) return null;
- *
  *   return <GhostRobot jointAngles={jointAngles} status={status} />;
+ * }
+ * ```
+ *
+ * @example Joint-based mode (gamepad joint control)
+ * ```tsx
+ * function GamepadGhost({ gamepadJoints }) {
+ *   const { jointAngles, setTargetJoints } = useGhostPreview({
+ *     kinematics,
+ *     enabled: true,
+ *   });
+ *
+ *   useEffect(() => {
+ *     setTargetJoints(gamepadJoints);
+ *   }, [gamepadJoints, setTargetJoints]);
+ *
+ *   if (!jointAngles) return null;
+ *   return <GhostRobot jointAngles={jointAngles} status="valid" />;
  * }
  * ```
  */
@@ -55,6 +65,13 @@ import type { UseRobotKinematicsReturn } from '../coordinates/useRobotKinematics
  * Ghost robot status for IK preview
  */
 export type GhostPreviewStatus = 'valid' | 'warning' | 'error' | 'neutral';
+
+/**
+ * Ghost input mode
+ * - 'pose': Cartesian mode - set target pose, IK computes joints
+ * - 'joints': Joint mode - set joints directly, no IK needed
+ */
+export type GhostInputMode = 'pose' | 'joints';
 
 /**
  * Options for useGhostPreview hook
@@ -80,18 +97,26 @@ export interface UseGhostPreviewOptions {
  * Return type for useGhostPreview hook
  */
 export interface UseGhostPreviewResult {
-  /** Ghost joint angles (IK solution for target) */
+  /** Ghost joint angles (IK solution for target or direct joints) */
   jointAngles: JointAngles | null;
   /** Ghost preview status */
   status: GhostPreviewStatus;
-  /** Current target pose */
+  /** Current input mode */
+  inputMode: GhostInputMode;
+  /** Current target pose (only valid in 'pose' mode) */
   targetPose: Pose3D | null;
-  /** Set target pose for ghost preview (Z-up) */
+  /** Current target joints (only valid in 'joints' mode) */
+  targetJoints: JointAngles | null;
+  /** Set target pose for ghost preview (Z-up) - switches to pose mode */
   setTargetPose: (pose: Pose3D | null) => void;
+  /** Set target joints directly - switches to joints mode */
+  setTargetJoints: (joints: JointAngles | null) => void;
   /** Clear ghost preview */
   clear: () => void;
-  /** Whether IK is currently computing */
+  /** Whether IK is currently computing (only in pose mode) */
   isComputing: boolean;
+  /** Apply current ghost to robot (returns the current joint angles) */
+  applyToRobot: () => JointAngles | null;
 }
 
 // =============================================================================
@@ -107,7 +132,11 @@ const DEFAULT_STANDOFF = 0.005; // 5mm
 // =============================================================================
 
 /**
- * useGhostPreview - Ghost robot preview with automatic IK
+ * useGhostPreview - Ghost robot preview with dual input modes
+ *
+ * Supports two modes:
+ * - Pose mode: Set target pose, IK computes joint angles
+ * - Joints mode: Set joints directly, no IK computation
  */
 export function useGhostPreview(options: UseGhostPreviewOptions): UseGhostPreviewResult {
   const {
@@ -122,8 +151,16 @@ export function useGhostPreview(options: UseGhostPreviewOptions): UseGhostPrevie
 
   const { ready, ikTcp } = kinematics;
 
-  // State
+  // State - input mode tracking
+  const [inputMode, setInputMode] = useState<GhostInputMode>('pose');
+
+  // State - pose mode
   const [targetPose, setTargetPoseInternal] = useState<Pose3D | null>(null);
+
+  // State - joints mode
+  const [targetJoints, setTargetJointsInternal] = useState<JointAngles | null>(null);
+
+  // State - output (shared between modes)
   const [jointAngles, setJointAngles] = useState<JointAngles | null>(null);
   const [status, setStatus] = useState<GhostPreviewStatus>('neutral');
   const [isComputing, setIsComputing] = useState(false);
@@ -145,21 +182,56 @@ export function useGhostPreview(options: UseGhostPreviewOptions): UseGhostPrevie
     onSolutionChangeRef.current = onSolutionChange;
   }, [onSolutionChange]);
 
-  // Set target pose
+  // Set target pose (switches to pose mode)
   const setTargetPose = useCallback((pose: Pose3D | null) => {
+    setInputMode('pose');
     setTargetPoseInternal(pose);
+    // Clear joints mode state
+    setTargetJointsInternal(null);
+  }, []);
+
+  // Set target joints directly (switches to joints mode)
+  const setTargetJoints = useCallback((joints: JointAngles | null) => {
+    setInputMode('joints');
+    setTargetJointsInternal(joints);
+    // Clear pose mode state
+    setTargetPoseInternal(null);
+
+    // In joints mode, directly set joint angles without IK
+    if (joints) {
+      setJointAngles(joints);
+      setStatus('valid');
+      setIsComputing(false);
+      onSolutionChangeRef.current?.(joints, 'valid');
+    } else {
+      setJointAngles(null);
+      setStatus('neutral');
+      onSolutionChangeRef.current?.(null, 'neutral');
+    }
   }, []);
 
   // Clear ghost preview
   const clear = useCallback(() => {
     setTargetPoseInternal(null);
+    setTargetJointsInternal(null);
     setJointAngles(null);
     setStatus('neutral');
     setIsComputing(false);
+    setInputMode('pose'); // Reset to default mode
   }, []);
 
-  // IK computation with debounce
+  // Apply ghost to robot (returns current joints)
+  const applyToRobot = useCallback(() => {
+    return jointAngles;
+  }, [jointAngles]);
+
+  // IK computation with debounce (only in pose mode)
   useEffect(() => {
+    // Skip IK if in joints mode
+    if (inputMode === 'joints') {
+      return;
+    }
+
     // Clear if disabled or no target
     if (!enabled || !ready || !targetPose) {
       setJointAngles(null);
@@ -234,7 +306,7 @@ export function useGhostPreview(options: UseGhostPreviewOptions): UseGhostPrevie
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [enabled, ready, targetPose, ikTcp, standoffDistance, debounceMs, warningThreshold]);
+  }, [enabled, ready, targetPose, inputMode, ikTcp, standoffDistance, debounceMs, warningThreshold]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -248,9 +320,13 @@ export function useGhostPreview(options: UseGhostPreviewOptions): UseGhostPrevie
   return {
     jointAngles,
     status,
+    inputMode,
     targetPose,
+    targetJoints,
     setTargetPose,
+    setTargetJoints,
     clear,
     isComputing,
+    applyToRobot,
   };
 }
