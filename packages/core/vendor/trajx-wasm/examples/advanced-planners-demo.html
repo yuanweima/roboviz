@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Planners Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        h2 { color: #00d9ff; margin-top: 0; font-size: 18px; }
+        h3 { color: #aaa; font-size: 14px; margin: 15px 0 10px 0; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+        }
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.loading { background: #e6a23c22; color: #e6a23c; border: 1px solid #e6a23c44; }
+        .status.ready { background: #67c23a22; color: #67c23a; border: 1px solid #67c23a44; }
+        .status.error { background: #f56c6c22; color: #f56c6c; border: 1px solid #f56c6c44; }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        button.secondary {
+            background: #0f3460;
+            border: 1px solid #00d9ff;
+        }
+        button.success {
+            background: linear-gradient(135deg, #67c23a 0%, #4a9e2a 100%);
+        }
+        button.warning {
+            background: linear-gradient(135deg, #e6a23c 0%, #c48a2a 100%);
+        }
+
+        .output {
+            background: #0d1b2a;
+            color: #67c23a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 250px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #1e3a5f;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .input-group label {
+            display: flex;
+            flex-direction: column;
+            color: #aaa;
+            font-size: 12px;
+        }
+        .input-group input, .input-group select {
+            padding: 8px;
+            border: 1px solid #1e3a5f;
+            border-radius: 4px;
+            background: #0d1b2a;
+            color: #eee;
+            font-family: monospace;
+            width: 80px;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            padding: 8px;
+            background: #0d1b2a;
+            border-radius: 6px;
+        }
+        .slider-group label {
+            width: 130px;
+            font-weight: 500;
+            color: #aaa;
+            font-size: 13px;
+        }
+        .slider-group input[type="range"] {
+            flex: 1;
+            margin: 0 10px;
+            accent-color: #00d9ff;
+        }
+        .slider-group span {
+            width: 60px;
+            text-align: right;
+            font-family: monospace;
+            color: #00d9ff;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: #0d1b2a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #1e3a5f;
+        }
+        .stat-box .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #00d9ff;
+        }
+        .stat-box .label {
+            font-size: 10px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .stat-box.success .value { color: #67c23a; }
+        .stat-box.warning .value { color: #e6a23c; }
+        .stat-box.error .value { color: #f56c6c; }
+
+        canvas {
+            width: 100%;
+            height: 300px;
+            background: #0d1b2a;
+            border-radius: 8px;
+            border: 1px solid #1e3a5f;
+            margin-top: 10px;
+        }
+
+        .planner-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        .planner-tab {
+            padding: 10px 20px;
+            background: #0f3460;
+            border: 1px solid #1e3a5f;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            color: #aaa;
+            font-weight: 500;
+        }
+        .planner-tab.active {
+            background: #16213e;
+            border-bottom-color: #16213e;
+            color: #00d9ff;
+        }
+        .planner-content {
+            display: none;
+        }
+        .planner-content.active {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #0d1b2a;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #00d9ff);
+            transition: width 0.1s;
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 15px;
+            margin: 10px 0;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #aaa;
+            cursor: pointer;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .comparison-table th, .comparison-table td {
+            padding: 10px;
+            border: 1px solid #1e3a5f;
+            text-align: center;
+        }
+        .comparison-table th {
+            background: #0f3460;
+            color: #00d9ff;
+        }
+        .comparison-table td {
+            background: #0d1b2a;
+        }
+        .comparison-table tr.best td {
+            background: #67c23a22;
+        }
+    </style>
+</head>
+<body>
+    <h1>Advanced Planners Demo</h1>
+    <p class="subtitle">Demonstrates BiRRT, RRT*, and PRM planners with configurable parameters and comparison</p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="grid">
+        <!-- Planner Configuration -->
+        <div class="card">
+            <h2>1. Planner Selection & Configuration</h2>
+
+            <div class="planner-tabs">
+                <div class="planner-tab active" onclick="switchPlanner('birrt')">BiRRT</div>
+                <div class="planner-tab" onclick="switchPlanner('rrtstar')">RRT*</div>
+                <div class="planner-tab" onclick="switchPlanner('prm')">PRM</div>
+            </div>
+
+            <!-- BiRRT Config -->
+            <div id="birrt-config" class="planner-content active">
+                <p style="color: #888; font-size: 12px; margin-bottom: 10px;">
+                    Fast bidirectional RRT for point-to-point planning
+                </p>
+
+                <div class="slider-group">
+                    <label>Max Iterations</label>
+                    <input type="range" id="birrt-max-iter" min="100" max="10000" value="3000" oninput="updateSliderValue(this)">
+                    <span>3000</span>
+                </div>
+                <div class="slider-group">
+                    <label>Goal Bias</label>
+                    <input type="range" id="birrt-goal-bias" min="0" max="0.5" step="0.01" value="0.1" oninput="updateSliderValue(this)">
+                    <span>0.10</span>
+                </div>
+                <div class="slider-group">
+                    <label>Max Extension</label>
+                    <input type="range" id="birrt-max-ext" min="0.05" max="1.0" step="0.05" value="0.3" oninput="updateSliderValue(this)">
+                    <span>0.30</span>
+                </div>
+                <div class="slider-group">
+                    <label>Connect Threshold</label>
+                    <input type="range" id="birrt-connect" min="0.01" max="0.2" step="0.01" value="0.05" oninput="updateSliderValue(this)">
+                    <span>0.05</span>
+                </div>
+            </div>
+
+            <!-- RRT* Config -->
+            <div id="rrtstar-config" class="planner-content">
+                <p style="color: #888; font-size: 12px; margin-bottom: 10px;">
+                    Optimal RRT variant with rewiring for path quality
+                </p>
+
+                <div class="slider-group">
+                    <label>Max Iterations</label>
+                    <input type="range" id="rrtstar-max-iter" min="100" max="10000" value="3000" oninput="updateSliderValue(this)">
+                    <span>3000</span>
+                </div>
+                <div class="slider-group">
+                    <label>Goal Bias</label>
+                    <input type="range" id="rrtstar-goal-bias" min="0" max="0.5" step="0.01" value="0.1" oninput="updateSliderValue(this)">
+                    <span>0.10</span>
+                </div>
+                <div class="slider-group">
+                    <label>Max Extension</label>
+                    <input type="range" id="rrtstar-max-ext" min="0.05" max="1.0" step="0.05" value="0.3" oninput="updateSliderValue(this)">
+                    <span>0.30</span>
+                </div>
+                <div class="slider-group">
+                    <label>Goal Radius</label>
+                    <input type="range" id="rrtstar-goal-radius" min="0.01" max="0.2" step="0.01" value="0.05" oninput="updateSliderValue(this)">
+                    <span>0.05</span>
+                </div>
+                <div class="slider-group">
+                    <label>Rewire Factor</label>
+                    <input type="range" id="rrtstar-rewire" min="0.5" max="3.0" step="0.1" value="1.1" oninput="updateSliderValue(this)">
+                    <span>1.10</span>
+                </div>
+            </div>
+
+            <!-- PRM Config -->
+            <div id="prm-config" class="planner-content">
+                <p style="color: #888; font-size: 12px; margin-bottom: 10px;">
+                    Probabilistic Roadmap for multi-query planning
+                </p>
+
+                <div class="slider-group">
+                    <label>Num Samples</label>
+                    <input type="range" id="prm-samples" min="100" max="2000" step="100" value="500" oninput="updateSliderValue(this)">
+                    <span>500</span>
+                </div>
+                <div class="slider-group">
+                    <label>K Neighbors</label>
+                    <input type="range" id="prm-k-neighbors" min="2" max="30" value="10" oninput="updateSliderValue(this)">
+                    <span>10</span>
+                </div>
+                <div class="slider-group">
+                    <label>Max Connection</label>
+                    <input type="range" id="prm-max-conn" min="0.2" max="3.0" step="0.1" value="1.0" oninput="updateSliderValue(this)">
+                    <span>1.00</span>
+                </div>
+
+                <button onclick="buildRoadmap()">Build Roadmap</button>
+                <button class="secondary" onclick="clearRoadmap()">Clear Roadmap</button>
+
+                <div id="prm-status" style="margin-top: 10px; color: #888; font-size: 12px;">
+                    Roadmap not built
+                </div>
+            </div>
+
+            <div class="checkbox-group" style="margin-top: 15px;">
+                <label>
+                    <input type="checkbox" id="enable-collision" checked>
+                    Collision Checking
+                </label>
+            </div>
+        </div>
+
+        <!-- Start/Goal Configuration -->
+        <div class="card">
+            <h2>2. Start & Goal Configuration</h2>
+            <p style="color: #888; font-size: 13px;">Define planning problem (2D for visualization)</p>
+
+            <h3>Start Configuration</h3>
+            <div class="input-group">
+                <label>J1 <input type="number" id="start-j1" value="-2.0" step="0.1"></label>
+                <label>J2 <input type="number" id="start-j2" value="-1.5" step="0.1"></label>
+            </div>
+
+            <h3>Goal Configuration</h3>
+            <div class="input-group">
+                <label>J1 <input type="number" id="goal-j1" value="2.0" step="0.1"></label>
+                <label>J2 <input type="number" id="goal-j2" value="1.5" step="0.1"></label>
+            </div>
+
+            <h3>Obstacle (Forbidden Zone)</h3>
+            <div class="input-group">
+                <label>X Min <input type="number" id="obs-x-min" value="-0.5" step="0.1"></label>
+                <label>X Max <input type="number" id="obs-x-max" value="0.5" step="0.1"></label>
+                <label>Y Min <input type="number" id="obs-y-min" value="-0.5" step="0.1"></label>
+                <label>Y Max <input type="number" id="obs-y-max" value="0.5" step="0.1"></label>
+            </div>
+
+            <div style="margin-top: 15px;">
+                <button onclick="randomizeStartGoal()">Randomize</button>
+                <button class="secondary" onclick="swapStartGoal()">Swap Start/Goal</button>
+            </div>
+
+            <div class="output" id="config-output">Configure start and goal, then run a planner.</div>
+        </div>
+
+        <!-- Planning Execution -->
+        <div class="card full-width">
+            <h2>3. Planning Execution</h2>
+
+            <div style="margin-bottom: 15px;">
+                <button class="success" onclick="runPlanning()">Run Selected Planner</button>
+                <button onclick="runAllPlanners()">Compare All Planners</button>
+                <button class="secondary" onclick="clearResults()">Clear Results</button>
+            </div>
+
+            <div class="progress-bar" id="progress-bar" style="display: none;">
+                <div class="progress-bar-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="value" id="result-status">-</div>
+                    <div class="label">Status</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="result-time">-</div>
+                    <div class="label">Planning Time (ms)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="result-length">-</div>
+                    <div class="label">Path Length</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="result-nodes">-</div>
+                    <div class="label">Nodes Explored</div>
+                </div>
+            </div>
+
+            <canvas id="planning-canvas"></canvas>
+
+            <div style="margin-top: 10px; font-size: 12px;">
+                <span style="color: #67c23a;">Green: Start</span> |
+                <span style="color: #f56c6c;">Red: Goal</span> |
+                <span style="color: #00d9ff;">Blue: Path</span> |
+                <span style="color: #e6a23c;">Orange: Obstacle</span> |
+                <span style="color: #555;">Gray: Tree/Roadmap</span>
+            </div>
+        </div>
+
+        <!-- Planner Comparison -->
+        <div class="card full-width">
+            <h2>4. Planner Comparison</h2>
+            <p style="color: #888; font-size: 13px;">Results from running all planners on the same problem</p>
+
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th>Planner</th>
+                        <th>Success</th>
+                        <th>Time (ms)</th>
+                        <th>Path Length</th>
+                        <th>Nodes/Samples</th>
+                        <th>Waypoints</th>
+                    </tr>
+                </thead>
+                <tbody id="comparison-body">
+                    <tr>
+                        <td>BiRRT</td>
+                        <td id="comp-birrt-success">-</td>
+                        <td id="comp-birrt-time">-</td>
+                        <td id="comp-birrt-length">-</td>
+                        <td id="comp-birrt-nodes">-</td>
+                        <td id="comp-birrt-waypoints">-</td>
+                    </tr>
+                    <tr>
+                        <td>RRT*</td>
+                        <td id="comp-rrtstar-success">-</td>
+                        <td id="comp-rrtstar-time">-</td>
+                        <td id="comp-rrtstar-length">-</td>
+                        <td id="comp-rrtstar-nodes">-</td>
+                        <td id="comp-rrtstar-waypoints">-</td>
+                    </tr>
+                    <tr>
+                        <td>PRM</td>
+                        <td id="comp-prm-success">-</td>
+                        <td id="comp-prm-time">-</td>
+                        <td id="comp-prm-length">-</td>
+                        <td id="comp-prm-nodes">-</td>
+                        <td id="comp-prm-waypoints">-</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="output" id="comparison-output">Run "Compare All Planners" to see detailed comparison.</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, {
+            JointLimits,
+            BiRRTConfig,
+            BiRRTPlanner,
+            RRTStarConfig,
+            RRTStarPlanner,
+            PRMConfig,
+            PRMPlanner
+        } from '../trajx_wasm.js';
+
+        let jointLimits = null;
+        let currentPlanner = 'birrt';
+        let birrtPlanner = null;
+        let rrtstarPlanner = null;
+        let prmPlanner = null;
+        let currentPath = [];
+        let plannerPaths = {};
+
+        // Joint limits for 2D visualization
+        const LIMITS = {
+            lower: [-3.14, -2.5],
+            upper: [3.14, 2.5]
+        };
+
+        // Initialize WASM
+        async function initialize() {
+            try {
+                await init();
+
+                jointLimits = new JointLimits(LIMITS.lower, LIMITS.upper);
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = 'WASM loaded. Select a planner and run planning.';
+
+                visualize();
+                console.log('trajx-wasm advanced planners module initialized');
+            } catch (err) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Error: ${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // Switch planner tab
+        window.switchPlanner = function(planner) {
+            currentPlanner = planner;
+
+            document.querySelectorAll('.planner-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.planner-content').forEach(content => content.classList.remove('active'));
+
+            document.querySelector(`.planner-tab:nth-child(${planner === 'birrt' ? 1 : planner === 'rrtstar' ? 2 : 3})`).classList.add('active');
+            document.getElementById(`${planner}-config`).classList.add('active');
+        };
+
+        // Update slider value display
+        window.updateSliderValue = function(slider) {
+            const span = slider.nextElementSibling;
+            const val = parseFloat(slider.value);
+            if (slider.step && slider.step.includes('.')) {
+                span.textContent = val.toFixed(2);
+            } else {
+                span.textContent = val;
+            }
+        };
+
+        // Collision checker
+        function collisionChecker(config) {
+            const xMin = parseFloat(document.getElementById('obs-x-min').value);
+            const xMax = parseFloat(document.getElementById('obs-x-max').value);
+            const yMin = parseFloat(document.getElementById('obs-y-min').value);
+            const yMax = parseFloat(document.getElementById('obs-y-max').value);
+
+            const x = config[0];
+            const y = config[1];
+
+            // In collision if inside obstacle
+            if (x >= xMin && x <= xMax && y >= yMin && y <= yMax) {
+                return false;
+            }
+            return true;
+        }
+
+        // Get start and goal
+        function getStartGoal() {
+            return {
+                start: [
+                    parseFloat(document.getElementById('start-j1').value),
+                    parseFloat(document.getElementById('start-j2').value)
+                ],
+                goal: [
+                    parseFloat(document.getElementById('goal-j1').value),
+                    parseFloat(document.getElementById('goal-j2').value)
+                ]
+            };
+        }
+
+        // Randomize start/goal
+        window.randomizeStartGoal = function() {
+            const xMin = parseFloat(document.getElementById('obs-x-min').value);
+            const xMax = parseFloat(document.getElementById('obs-x-max').value);
+            const yMin = parseFloat(document.getElementById('obs-y-min').value);
+            const yMax = parseFloat(document.getElementById('obs-y-max').value);
+
+            function randomOutsideObstacle() {
+                let x, y;
+                do {
+                    x = LIMITS.lower[0] + Math.random() * (LIMITS.upper[0] - LIMITS.lower[0]);
+                    y = LIMITS.lower[1] + Math.random() * (LIMITS.upper[1] - LIMITS.lower[1]);
+                } while (x >= xMin && x <= xMax && y >= yMin && y <= yMax);
+                return [x, y];
+            }
+
+            const start = randomOutsideObstacle();
+            const goal = randomOutsideObstacle();
+
+            document.getElementById('start-j1').value = start[0].toFixed(2);
+            document.getElementById('start-j2').value = start[1].toFixed(2);
+            document.getElementById('goal-j1').value = goal[0].toFixed(2);
+            document.getElementById('goal-j2').value = goal[1].toFixed(2);
+
+            visualize();
+        };
+
+        // Swap start/goal
+        window.swapStartGoal = function() {
+            const s1 = document.getElementById('start-j1').value;
+            const s2 = document.getElementById('start-j2').value;
+            const g1 = document.getElementById('goal-j1').value;
+            const g2 = document.getElementById('goal-j2').value;
+
+            document.getElementById('start-j1').value = g1;
+            document.getElementById('start-j2').value = g2;
+            document.getElementById('goal-j1').value = s1;
+            document.getElementById('goal-j2').value = s2;
+
+            visualize();
+        };
+
+        // Build PRM roadmap
+        window.buildRoadmap = function() {
+            const numSamples = parseInt(document.getElementById('prm-samples').value);
+            const kNeighbors = parseInt(document.getElementById('prm-k-neighbors').value);
+            const maxConn = parseFloat(document.getElementById('prm-max-conn').value);
+
+            const config = new PRMConfig()
+                .withNumSamples(numSamples)
+                .withKNeighbors(kNeighbors)
+                .withMaxConnectionDistance(maxConn);
+
+            prmPlanner = new PRMPlanner(jointLimits, config);
+
+            const useCollision = document.getElementById('enable-collision').checked;
+            const startTime = performance.now();
+
+            let roadmapSize;
+            if (useCollision) {
+                roadmapSize = prmPlanner.buildRoadmapWithCollisionCheck(collisionChecker);
+            } else {
+                roadmapSize = prmPlanner.buildRoadmap();
+            }
+
+            const buildTime = performance.now() - startTime;
+
+            document.getElementById('prm-status').textContent =
+                `Roadmap built: ${roadmapSize} nodes in ${buildTime.toFixed(2)}ms`;
+            document.getElementById('prm-status').style.color = '#67c23a';
+
+            visualize();
+        };
+
+        // Clear PRM roadmap
+        window.clearRoadmap = function() {
+            if (prmPlanner) {
+                prmPlanner.clearRoadmap();
+            }
+            document.getElementById('prm-status').textContent = 'Roadmap not built';
+            document.getElementById('prm-status').style.color = '#888';
+            visualize();
+        };
+
+        // Run planning with selected planner
+        window.runPlanning = function() {
+            const { start, goal } = getStartGoal();
+            const useCollision = document.getElementById('enable-collision').checked;
+
+            showProgress();
+
+            let result;
+            try {
+                switch (currentPlanner) {
+                    case 'birrt':
+                        result = runBiRRT(start, goal, useCollision);
+                        break;
+                    case 'rrtstar':
+                        result = runRRTStar(start, goal, useCollision);
+                        break;
+                    case 'prm':
+                        result = runPRM(start, goal, useCollision);
+                        break;
+                }
+
+                updateResults(result);
+                currentPath = extractPath(result);
+                visualize();
+            } catch (err) {
+                document.getElementById('result-status').textContent = 'Error';
+                document.getElementById('config-output').textContent = `Error: ${err.message}`;
+            }
+
+            hideProgress();
+        };
+
+        // Run BiRRT
+        function runBiRRT(start, goal, useCollision) {
+            const maxIter = parseInt(document.getElementById('birrt-max-iter').value);
+            const goalBias = parseFloat(document.getElementById('birrt-goal-bias').value);
+            const maxExt = parseFloat(document.getElementById('birrt-max-ext').value);
+            const connect = parseFloat(document.getElementById('birrt-connect').value);
+
+            const config = new BiRRTConfig()
+                .withMaxIterations(maxIter)
+                .withGoalBias(goalBias)
+                .withMaxExtension(maxExt)
+                .withConnectionThreshold(connect);
+
+            birrtPlanner = new BiRRTPlanner(jointLimits, config);
+
+            if (useCollision) {
+                return birrtPlanner.planWithCollisionCheck(start, goal, collisionChecker);
+            } else {
+                return birrtPlanner.plan(start, goal);
+            }
+        }
+
+        // Run RRT*
+        function runRRTStar(start, goal, useCollision) {
+            const maxIter = parseInt(document.getElementById('rrtstar-max-iter').value);
+            const goalBias = parseFloat(document.getElementById('rrtstar-goal-bias').value);
+            const maxExt = parseFloat(document.getElementById('rrtstar-max-ext').value);
+            const goalRadius = parseFloat(document.getElementById('rrtstar-goal-radius').value);
+            const rewire = parseFloat(document.getElementById('rrtstar-rewire').value);
+
+            const config = new RRTStarConfig()
+                .withMaxIterations(maxIter)
+                .withGoalBias(goalBias)
+                .withMaxExtension(maxExt)
+                .withGoalRadius(goalRadius)
+                .withRewireFactor(rewire);
+
+            rrtstarPlanner = new RRTStarPlanner(jointLimits, config);
+
+            if (useCollision) {
+                return rrtstarPlanner.planWithCollisionCheck(start, goal, collisionChecker);
+            } else {
+                return rrtstarPlanner.plan(start, goal);
+            }
+        }
+
+        // Run PRM
+        function runPRM(start, goal, useCollision) {
+            if (!prmPlanner || !prmPlanner.isRoadmapBuilt) {
+                buildRoadmap();
+            }
+
+            if (useCollision) {
+                return prmPlanner.queryWithCollisionCheck(start, goal, collisionChecker);
+            } else {
+                return prmPlanner.query(start, goal);
+            }
+        }
+
+        // Helper to extract path from WASM result
+        function extractPath(result) {
+            if (!result.success) return [];
+            const path = [];
+            const count = result.waypointCount;
+            for (let i = 0; i < count; i++) {
+                const wp = result.getWaypoint(i);
+                // Convert object {0: x, 1: y} to array [x, y]
+                path.push([wp[0], wp[1]]);
+            }
+            return path;
+        }
+
+        // Update results display
+        function updateResults(result) {
+            const statusEl = document.getElementById('result-status');
+            if (result.success) {
+                statusEl.textContent = 'Success';
+                statusEl.parentElement.classList.add('success');
+                statusEl.parentElement.classList.remove('error');
+            } else {
+                statusEl.textContent = 'Failed';
+                statusEl.parentElement.classList.add('error');
+                statusEl.parentElement.classList.remove('success');
+            }
+
+            document.getElementById('result-time').textContent = result.planningTimeMs.toFixed(2);
+            document.getElementById('result-length').textContent = result.pathLength.toFixed(4);
+            document.getElementById('result-nodes').textContent = result.nodesExplored;
+
+            const output = document.getElementById('config-output');
+            output.textContent = `Planning Result:\n`;
+            output.textContent += `${'='.repeat(40)}\n`;
+            output.textContent += `Success: ${result.success}\n`;
+            output.textContent += `Time: ${result.planningTimeMs.toFixed(2)} ms\n`;
+            output.textContent += `Path Length: ${result.pathLength.toFixed(4)}\n`;
+            output.textContent += `Nodes Explored: ${result.nodesExplored}\n`;
+
+            if (result.success) {
+                const path = extractPath(result);
+                output.textContent += `Waypoints: ${path.length}\n\n`;
+                output.textContent += `Path:\n`;
+                for (let i = 0; i < Math.min(path.length, 10); i++) {
+                    const wp = path[i];
+                    output.textContent += `  [${wp.map(v => v.toFixed(3)).join(', ')}]\n`;
+                }
+                if (path.length > 10) {
+                    output.textContent += `  ... and ${path.length - 10} more waypoints\n`;
+                }
+            } else {
+                output.textContent += `\nError: ${result.error || 'Unknown error'}\n`;
+            }
+        }
+
+        // Run all planners for comparison
+        window.runAllPlanners = async function() {
+            const { start, goal } = getStartGoal();
+            const useCollision = document.getElementById('enable-collision').checked;
+
+            showProgress();
+            document.getElementById('comparison-output').textContent = 'Running comparison...\n';
+
+            plannerPaths = {};
+
+            // Build PRM roadmap first
+            if (!prmPlanner || !prmPlanner.isRoadmapBuilt) {
+                buildRoadmap();
+            }
+
+            // Run each planner
+            const planners = ['birrt', 'rrtstar', 'prm'];
+            const results = {};
+            let bestLength = Infinity;
+            let bestPlanner = null;
+
+            for (const planner of planners) {
+                try {
+                    let result;
+                    switch (planner) {
+                        case 'birrt':
+                            result = runBiRRT(start, goal, useCollision);
+                            break;
+                        case 'rrtstar':
+                            result = runRRTStar(start, goal, useCollision);
+                            break;
+                        case 'prm':
+                            result = runPRM(start, goal, useCollision);
+                            break;
+                    }
+                    results[planner] = result;
+
+                    if (result.success) {
+                        const path = extractPath(result);
+                        plannerPaths[planner] = path;
+                        if (result.pathLength < bestLength) {
+                            bestLength = result.pathLength;
+                            bestPlanner = planner;
+                        }
+                    }
+
+                    // Update table
+                    document.getElementById(`comp-${planner}-success`).textContent = result.success ? 'Yes' : 'No';
+                    document.getElementById(`comp-${planner}-time`).textContent = result.planningTimeMs.toFixed(2);
+                    document.getElementById(`comp-${planner}-length`).textContent = result.success ? result.pathLength.toFixed(4) : '-';
+                    document.getElementById(`comp-${planner}-nodes`).textContent = result.nodesExplored;
+                    document.getElementById(`comp-${planner}-waypoints`).textContent = result.success ? result.waypointCount : '-';
+                } catch (err) {
+                    document.getElementById(`comp-${planner}-success`).textContent = 'Error';
+                }
+            }
+
+            // Highlight best planner
+            document.querySelectorAll('#comparison-body tr').forEach(row => row.classList.remove('best'));
+            if (bestPlanner) {
+                const idx = planners.indexOf(bestPlanner);
+                document.querySelectorAll('#comparison-body tr')[idx].classList.add('best');
+            }
+
+            // Summary
+            const output = document.getElementById('comparison-output');
+            output.textContent = `Comparison Summary:\n`;
+            output.textContent += `${'='.repeat(40)}\n\n`;
+
+            if (bestPlanner) {
+                output.textContent += `Best Path Quality: ${bestPlanner.toUpperCase()} (length: ${bestLength.toFixed(4)})\n`;
+            }
+
+            const fastestTime = Math.min(...Object.values(results).map(r => r.planningTimeMs));
+            const fastest = Object.entries(results).find(([k, v]) => v.planningTimeMs === fastestTime);
+            if (fastest) {
+                output.textContent += `Fastest Planner: ${fastest[0].toUpperCase()} (${fastestTime.toFixed(2)}ms)\n`;
+            }
+
+            output.textContent += `\nDetailed Results:\n`;
+            for (const [name, result] of Object.entries(results)) {
+                output.textContent += `\n${name.toUpperCase()}:\n`;
+                output.textContent += `  Success: ${result.success}\n`;
+                output.textContent += `  Time: ${result.planningTimeMs.toFixed(2)}ms\n`;
+                if (result.success) {
+                    output.textContent += `  Path Length: ${result.pathLength.toFixed(4)}\n`;
+                    output.textContent += `  Waypoints: ${result.waypointCount}\n`;
+                }
+            }
+
+            // Visualize best path
+            if (bestPlanner && plannerPaths[bestPlanner]) {
+                currentPath = plannerPaths[bestPlanner];
+            }
+            visualize();
+            hideProgress();
+        };
+
+        // Clear results
+        window.clearResults = function() {
+            currentPath = [];
+            plannerPaths = {};
+
+            document.getElementById('result-status').textContent = '-';
+            document.getElementById('result-time').textContent = '-';
+            document.getElementById('result-length').textContent = '-';
+            document.getElementById('result-nodes').textContent = '-';
+
+            ['birrt', 'rrtstar', 'prm'].forEach(p => {
+                document.getElementById(`comp-${p}-success`).textContent = '-';
+                document.getElementById(`comp-${p}-time`).textContent = '-';
+                document.getElementById(`comp-${p}-length`).textContent = '-';
+                document.getElementById(`comp-${p}-nodes`).textContent = '-';
+                document.getElementById(`comp-${p}-waypoints`).textContent = '-';
+            });
+
+            document.querySelectorAll('#comparison-body tr').forEach(row => row.classList.remove('best'));
+
+            visualize();
+        };
+
+        // Progress bar
+        function showProgress() {
+            document.getElementById('progress-bar').style.display = 'block';
+            document.getElementById('progress-fill').style.width = '50%';
+        }
+
+        function hideProgress() {
+            document.getElementById('progress-fill').style.width = '100%';
+            setTimeout(() => {
+                document.getElementById('progress-bar').style.display = 'none';
+            }, 300);
+        }
+
+        // Visualize
+        function visualize() {
+            const canvas = document.getElementById('planning-canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = canvas.offsetWidth * 2;
+            canvas.height = canvas.offsetHeight * 2;
+            ctx.scale(2, 2);
+
+            const width = canvas.offsetWidth;
+            const height = canvas.offsetHeight;
+
+            // Clear
+            ctx.fillStyle = '#0d1b2a';
+            ctx.fillRect(0, 0, width, height);
+
+            function mapX(v) {
+                return 30 + (v - LIMITS.lower[0]) / (LIMITS.upper[0] - LIMITS.lower[0]) * (width - 60);
+            }
+            function mapY(v) {
+                return height - 30 - (v - LIMITS.lower[1]) / (LIMITS.upper[1] - LIMITS.lower[1]) * (height - 60);
+            }
+
+            // Draw grid
+            ctx.strokeStyle = '#1e3a5f';
+            ctx.lineWidth = 0.5;
+            for (let x = -3; x <= 3; x++) {
+                ctx.beginPath();
+                ctx.moveTo(mapX(x), 0);
+                ctx.lineTo(mapX(x), height);
+                ctx.stroke();
+            }
+            for (let y = -2; y <= 2; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, mapY(y));
+                ctx.lineTo(width, mapY(y));
+                ctx.stroke();
+            }
+
+            // Draw obstacle
+            const xMin = parseFloat(document.getElementById('obs-x-min').value);
+            const xMax = parseFloat(document.getElementById('obs-x-max').value);
+            const yMin = parseFloat(document.getElementById('obs-y-min').value);
+            const yMax = parseFloat(document.getElementById('obs-y-max').value);
+
+            ctx.fillStyle = 'rgba(230, 162, 60, 0.4)';
+            ctx.strokeStyle = '#e6a23c';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.rect(mapX(xMin), mapY(yMax), mapX(xMax) - mapX(xMin), mapY(yMin) - mapY(yMax));
+            ctx.fill();
+            ctx.stroke();
+
+            // Draw PRM roadmap if available
+            if (prmPlanner && prmPlanner.isRoadmapBuilt && currentPlanner === 'prm') {
+                // Note: We can't directly access roadmap nodes from WASM, so this is just a placeholder
+                ctx.fillStyle = '#555';
+                ctx.font = '12px monospace';
+                ctx.fillText(`PRM Roadmap: ${prmPlanner.roadmapSize} nodes`, 10, 20);
+            }
+
+            // Draw path
+            if (currentPath.length > 0) {
+                ctx.strokeStyle = '#00d9ff';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(mapX(currentPath[0][0]), mapY(currentPath[0][1]));
+                for (let i = 1; i < currentPath.length; i++) {
+                    ctx.lineTo(mapX(currentPath[i][0]), mapY(currentPath[i][1]));
+                }
+                ctx.stroke();
+
+                // Draw waypoints
+                ctx.fillStyle = '#00d9ff';
+                for (const wp of currentPath) {
+                    ctx.beginPath();
+                    ctx.arc(mapX(wp[0]), mapY(wp[1]), 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Draw start and goal
+            const { start, goal } = getStartGoal();
+
+            ctx.fillStyle = '#67c23a';
+            ctx.beginPath();
+            ctx.arc(mapX(start[0]), mapY(start[1]), 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 10px monospace';
+            ctx.fillText('S', mapX(start[0]) - 4, mapY(start[1]) + 4);
+
+            ctx.fillStyle = '#f56c6c';
+            ctx.beginPath();
+            ctx.arc(mapX(goal[0]), mapY(goal[1]), 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.fillText('G', mapX(goal[0]) - 4, mapY(goal[1]) + 4);
+
+            // Draw axis labels
+            ctx.fillStyle = '#888';
+            ctx.font = '12px monospace';
+            ctx.fillText('J1', width / 2 - 8, height - 5);
+            ctx.save();
+            ctx.translate(12, height / 2 + 8);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('J2', 0, 0);
+            ctx.restore();
+        }
+
+        // Start initialization
+        initialize();
+    </script>
+</body>
+</html>

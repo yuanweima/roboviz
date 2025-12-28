@@ -1,13 +1,13 @@
 /* tslint:disable */
 /* eslint-disable */
 /**
- * Create a robot from a URDF string
- */
-export function createRobot(urdf_content: string): Robot;
-/**
  * List available robots in the DH database
  */
 export function listDhDatabase(): string[];
+/**
+ * Create a robot from a URDF string
+ */
+export function createRobot(urdf_content: string): Robot;
 /**
  * Compute forward kinematics for visualization (returns all link poses)
  *
@@ -15,17 +15,6 @@ export function listDhDatabase(): string[];
  * Array of poses for each link (useful for rendering robot in 3D)
  */
 export function forwardKinematicsChainDh(dh_params: DhParam[], joint_angles: Float64Array): Pose[];
-/**
- * Compute forward kinematics from DH parameters
- *
- * # Arguments
- * * `dh_params` - Array of DH parameters [a, alpha, d, theta] for each joint
- * * `joint_angles` - Current joint angles in radians
- *
- * # Returns
- * End-effector pose (position + orientation)
- */
-export function forwardKinematicsDh(dh_params: DhParam[], joint_angles: Float64Array): Pose;
 /**
  * Compute inverse kinematics using numerical method (Damped Least Squares)
  *
@@ -42,6 +31,17 @@ export function forwardKinematicsDh(dh_params: DhParam[], joint_angles: Float64A
  */
 export function inverseKinematicsDh(dh_params: DhParam[], target_pose: Pose, seed?: Float64Array | null, joint_limits?: JointLimits | null, max_iterations?: number | null, tolerance?: number | null): IkResult;
 /**
+ * Compute forward kinematics from DH parameters
+ *
+ * # Arguments
+ * * `dh_params` - Array of DH parameters [a, alpha, d, theta] for each joint
+ * * `joint_angles` - Current joint angles in radians
+ *
+ * # Returns
+ * End-effector pose (position + orientation)
+ */
+export function forwardKinematicsDh(dh_params: DhParam[], joint_angles: Float64Array): Pose;
+/**
  * Create a simple trajectory from waypoints using default limits
  */
 export function createSimpleTrajectory(waypoints: Float64Array, dof: number, max_velocity: number, max_acceleration: number): WasmTrajectory;
@@ -49,10 +49,6 @@ export function createSimpleTrajectory(waypoints: Float64Array, dof: number, max
  * Get list of all supported robot names from the default database
  */
 export function listSupportedRobots(): string[];
-/**
- * Initialize panic hook for better error messages in browser console
- */
-export function init(): void;
 /**
  * Check if the library is initialized
  */
@@ -62,18 +58,58 @@ export function is_ready(): boolean;
  */
 export function version(): string;
 /**
- * Interpolate between waypoints with specified resolution
- * Input/output as flat array: [dof, n_waypoints, j1_1, j2_1, ..., j1_2, j2_2, ...]
+ * Initialize panic hook for better error messages in browser console
  */
-export function interpolatePathFlat(path_flat: Float64Array, resolution: number): Float64Array;
+export function init(): void;
+/**
+ * Get a precision cable configuration (2π limit with auto-unwind)
+ * For applications requiring minimal cable stress
+ */
+export function cablePresetPrecision(): CableConfig;
+/**
+ * Get a heavy-duty cable configuration (2π limit, 1 full rotation / 360°)
+ * For thick, stiff cables that cannot twist much
+ */
+export function cablePresetHeavyDuty(): CableConfig;
+/**
+ * Get a standard cable configuration (4π limit, 2 full rotations / 720°)
+ */
+export function cablePresetStandard(): CableConfig;
+/**
+ * Get a light cable configuration (8π limit, 4 full rotations / 1440°)
+ * For thin, flexible cables
+ */
+export function cablePresetLight(): CableConfig;
+/**
+ * Compute path length from flat array
+ */
+export function computePathLength(path_flat: Float64Array, dof: number): number;
 /**
  * Compute path smoothness from flat array (sum of squared accelerations)
  */
 export function computePathSmoothness(path_flat: Float64Array, dof: number): number;
 /**
- * Compute path length from flat array
+ * Interpolate between waypoints with specified resolution
+ * Input/output as flat array: [dof, n_waypoints, j1_1, j2_1, ..., j1_2, j2_2, ...]
  */
-export function computePathLength(path_flat: Float64Array, dof: number): number;
+export function interpolatePathFlat(path_flat: Float64Array, resolution: number): Float64Array;
+/**
+ * Cable constraint mode
+ */
+export enum CableMode {
+  /**
+   * No cable tracking (default)
+   */
+  Disabled = 0,
+  /**
+   * Track cable twist without constraining planning
+   */
+  TrackOnly = 1,
+  /**
+   * Constrain planning to respect cable limits
+   */
+  Constrained = 2,
+}
 /**
  * Collision handling mode
  */
@@ -206,6 +242,56 @@ export class BiRRTPlanner {
    * Plan a path from start to goal (joint limits only, no collision checking)
    */
   plan(start: Float64Array, goal: Float64Array): PlanningResult;
+}
+/**
+ * Cable configuration for cable-aware motion planning
+ *
+ * Configure cable twist limits and warning thresholds.
+ * Used with `WasmMotion.cableAwareWith(config)`.
+ */
+export class CableConfig {
+  free(): void;
+  /**
+   * Check if a twist value is within limits
+   */
+  isTwistValid(twist: number): boolean;
+  /**
+   * Check if twist is in warning zone
+   */
+  isTwistWarning(twist: number): boolean;
+  /**
+   * Enable/disable auto-unwind strategy
+   */
+  withAutoUnwind(enabled: boolean): CableConfig;
+  /**
+   * Set initial twist (radians)
+   */
+  withInitialTwist(twist: number): CableConfig;
+  /**
+   * Set maximum twist rate (radians per meter)
+   */
+  withMaxTwistRate(rate: number): CableConfig;
+  /**
+   * Set maximum total twist (radians)
+   */
+  withMaxTotalTwist(max_twist: number): CableConfig;
+  /**
+   * Set warning threshold (fraction of max_total_twist, 0.0-1.0)
+   */
+  withWarningThreshold(threshold: number): CableConfig;
+  /**
+   * Create default cable configuration
+   * - max_total_twist: 4*PI (2 full rotations / 720°)
+   * - max_twist_rate: PI rad/m
+   * - enable_auto_unwind: true
+   * - warning_threshold: 0.75
+   */
+  constructor();
+  readonly initialTwist: number;
+  readonly maxTwistRate: number;
+  readonly maxTotalTwist: number;
+  readonly warningThreshold: number;
+  readonly autoUnwindEnabled: boolean;
 }
 /**
  * DH Parameter for a single joint
@@ -1251,9 +1337,50 @@ export class WasmMotion {
   private constructor();
   free(): void;
   /**
+   * Enable cable-aware planning with standard preset (4π limit)
+   *
+   * This enables cable twist tracking and constrains the path planner
+   * to respect cable twist limits during motion planning.
+   *
+   * # Example
+   * ```typescript
+   * const result = WasmMotion.to(goal)
+   *     .cableAware()
+   *     .run(robot);
+   * console.log(result.cableTwist);
+   * ```
+   */
+  cableAware(): WasmMotion;
+  /**
+   * Track cable twist without constraining the planner
+   *
+   * This only tracks twist during motion without modifying the planned path.
+   * Useful for monitoring cable state when twist constraints are soft.
+   */
+  cableTrack(): WasmMotion;
+  /**
    * Set very high smoothness
    */
   verySmooth(): WasmMotion;
+  /**
+   * Enable cable-aware planning with custom configuration
+   *
+   * # Example
+   * ```typescript
+   * const config = new CableConfig().withMaxTotalTwist(2 * Math.PI);
+   * const result = WasmMotion.to(goal)
+   *     .cableAwareWith(config)
+   *     .run(robot);
+   * ```
+   */
+  cableAwareWith(config: CableConfig): WasmMotion;
+  /**
+   * Set initial cable twist for this motion (for multi-segment tracking)
+   *
+   * Use this when planning multiple motions in sequence to maintain
+   * accumulated twist state between motions.
+   */
+  withCableTwist(twist: number): WasmMotion;
   /**
    * Create a motion to the target joint positions
    */
@@ -1345,9 +1472,29 @@ export class WasmMotionResult {
    * Get number of trajectory points
    */
   readonly numPoints: number;
+  /**
+   * Get cable twist at end of motion (if cable-aware)
+   */
+  readonly cableTwist: number | undefined;
   readonly pathLength: number;
+  /**
+   * Check if motion entered cable warning zone
+   */
+  readonly cableWarning: boolean;
+  /**
+   * Check if motion exceeded cable limit
+   */
+  readonly cableExceeded: boolean;
   readonly collisionFree: boolean;
+  /**
+   * Get maximum cable twist during motion
+   */
+  readonly cableMaxTwist: number | undefined;
   readonly planningTimeMs: number;
+  /**
+   * Check if cable tracking was enabled for this motion
+   */
+  readonly hasCableTracking: boolean;
   readonly trajectoryDuration: number;
   readonly dof: number;
   readonly executed: boolean;
@@ -1602,6 +1749,21 @@ export class WasmRobotConfig {
 export class WasmSequence {
   private constructor();
   free(): void;
+  /**
+   * Enable cable-aware tracking for the entire sequence
+   *
+   * This tracks cable twist across all motions in the sequence,
+   * accumulating twist from motion to motion.
+   */
+  cableAware(): WasmSequence;
+  /**
+   * Enable cable-aware tracking with custom configuration
+   */
+  cableAwareWith(config: CableConfig): WasmSequence;
+  /**
+   * Set initial cable twist for the sequence
+   */
+  withCableTwist(twist: number): WasmSequence;
   /**
    * Execute all motions in sequence
    */
@@ -2063,6 +2225,20 @@ export interface InitOutput {
   readonly birrtplanner_new: (a: number, b: number) => number;
   readonly birrtplanner_plan: (a: number, b: number, c: number, d: number, e: number) => number;
   readonly birrtplanner_planWithCollisionCheck: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+  readonly cablePresetHeavyDuty: () => number;
+  readonly cablePresetLight: () => number;
+  readonly cablePresetPrecision: () => number;
+  readonly cablePresetStandard: () => number;
+  readonly cableconfig_autoUnwindEnabled: (a: number) => number;
+  readonly cableconfig_initialTwist: (a: number) => number;
+  readonly cableconfig_isTwistValid: (a: number, b: number) => number;
+  readonly cableconfig_isTwistWarning: (a: number, b: number) => number;
+  readonly cableconfig_maxTotalTwist: (a: number) => number;
+  readonly cableconfig_maxTwistRate: (a: number) => number;
+  readonly cableconfig_warningThreshold: (a: number) => number;
+  readonly cableconfig_withAutoUnwind: (a: number, b: number) => number;
+  readonly cableconfig_withMaxTotalTwist: (a: number, b: number) => number;
+  readonly cableconfig_withWarningThreshold: (a: number, b: number) => number;
   readonly computePathLength: (a: number, b: number, c: number) => number;
   readonly computePathSmoothness: (a: number, b: number, c: number) => number;
   readonly createRobot: (a: number, b: number, c: number) => void;
@@ -2100,7 +2276,6 @@ export interface InitOutput {
   readonly motionconstraints_dwell_ms: (a: number, b: number) => void;
   readonly motionconstraints_new: () => number;
   readonly motionconstraints_smoothness: (a: number) => number;
-  readonly motionconstraints_speed_scale: (a: number) => number;
   readonly motionvalidationstats_new: () => number;
   readonly motionvalidationstats_validityRatio: (a: number) => number;
   readonly multiikresult_errorMessage: (a: number, b: number) => void;
@@ -2118,8 +2293,6 @@ export interface InitOutput {
   readonly planningresult_getPathFlat: (a: number, b: number) => void;
   readonly planningresult_getWaypoint: (a: number, b: number, c: number) => void;
   readonly planningresult_nodesExplored: (a: number) => number;
-  readonly planningresult_pathLength: (a: number) => number;
-  readonly planningresult_planningTimeMs: (a: number) => number;
   readonly planningresult_waypointCount: (a: number) => number;
   readonly pose_fromPositionEuler: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
   readonly pose_getOrientationArray: (a: number, b: number) => void;
@@ -2211,7 +2384,6 @@ export interface InitOutput {
   readonly taskspaceplanningresult_treeSize: (a: number) => number;
   readonly taskspaceplanningresult_waypointCount: (a: number) => number;
   readonly taskspacerrtconfig_new: () => number;
-  readonly taskspacerrtconfig_orientationTolerance: (a: number) => number;
   readonly taskspacerrtconfig_set_goalBias: (a: number, b: number) => void;
   readonly taskspacerrtconfig_set_maxIterations: (a: number, b: number) => void;
   readonly taskspacerrtconfig_set_orientationTolerance: (a: number, b: number) => void;
@@ -2260,6 +2432,9 @@ export interface InitOutput {
   readonly wasmdiscretemotionvalidator_withCaching: (a: number, b: number, c: number) => void;
   readonly wasmdiscretemotionvalidator_withDefaultStep: (a: number) => number;
   readonly wasmmotion_adaptive: (a: number) => number;
+  readonly wasmmotion_cableAware: (a: number) => number;
+  readonly wasmmotion_cableAwareWith: (a: number, b: number) => number;
+  readonly wasmmotion_cableTrack: (a: number) => number;
   readonly wasmmotion_dwellMs: (a: number, b: bigint) => number;
   readonly wasmmotion_fast: (a: number) => number;
   readonly wasmmotion_from: (a: number, b: number, c: number) => number;
@@ -2277,13 +2452,21 @@ export interface InitOutput {
   readonly wasmmotion_to: (a: number, b: number) => number;
   readonly wasmmotion_verified: (a: number) => number;
   readonly wasmmotion_verySmooth: (a: number) => number;
+  readonly wasmmotion_withCableTwist: (a: number, b: number) => number;
+  readonly wasmmotionresult_cableExceeded: (a: number) => number;
+  readonly wasmmotionresult_cableMaxTwist: (a: number, b: number) => void;
+  readonly wasmmotionresult_cableWarning: (a: number) => number;
   readonly wasmmotionresult_collisionFree: (a: number) => number;
   readonly wasmmotionresult_dof: (a: number) => number;
   readonly wasmmotionresult_executed: (a: number) => number;
   readonly wasmmotionresult_getPositionsAt: (a: number, b: number, c: number) => void;
   readonly wasmmotionresult_getTimeAt: (a: number, b: number, c: number) => void;
   readonly wasmmotionresult_getTrajectory: (a: number, b: number) => void;
+  readonly wasmmotionresult_hasCableTracking: (a: number) => number;
   readonly wasmmotionresult_numPoints: (a: number) => number;
+  readonly wasmmotionresult_pathLength: (a: number) => number;
+  readonly wasmmotionresult_planningTimeMs: (a: number) => number;
+  readonly wasmmotionresult_trajectoryDuration: (a: number) => number;
   readonly wasmpath_from: (a: number, b: number, c: number) => number;
   readonly wasmpath_joint: (a: number) => number;
   readonly wasmpath_linear: (a: number) => number;
@@ -2305,7 +2488,6 @@ export interface InitOutput {
   readonly wasmpipelineresult_getWaypoint: (a: number, b: number, c: number) => void;
   readonly wasmpipelineresult_path: (a: number, b: number) => void;
   readonly wasmpipelineresult_postProcessed: (a: number) => number;
-  readonly wasmpipelineresult_processingTimeMs: (a: number) => number;
   readonly wasmplanningpipeline_calculateMetrics: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly wasmplanningpipeline_new: (a: number, b: number) => number;
   readonly wasmplanningpipeline_process: (a: number, b: number, c: number, d: number, e: number) => void;
@@ -2321,9 +2503,12 @@ export interface InitOutput {
   readonly wasmrobotconfig_getJointLimits: (a: number, b: number) => void;
   readonly wasmrobotconfig_getVelocityLimits: (a: number, b: number) => void;
   readonly wasmrobotconfig_name: (a: number, b: number) => void;
+  readonly wasmsequence_cableAware: (a: number) => number;
+  readonly wasmsequence_cableAwareWith: (a: number, b: number) => number;
   readonly wasmsequence_run: (a: number, b: number, c: number) => void;
   readonly wasmsequence_start: (a: number) => number;
   readonly wasmsequence_then: (a: number, b: number) => number;
+  readonly wasmsequence_withCableTwist: (a: number, b: number) => number;
   readonly wasmtcppoint_defaultStandoff: (a: number) => number;
   readonly wasmtcppoint_getApproachAxis: (a: number, b: number) => void;
   readonly wasmtcppoint_getOffset: (a: number) => number;
@@ -2425,7 +2610,9 @@ export interface InitOutput {
   readonly __wbg_set_wasmpipelineconfig_shortcut_iterations: (a: number, b: number) => void;
   readonly __wbg_set_wasmpipelineconfig_smooth_iterations: (a: number, b: number) => void;
   readonly __wbg_set_wasmpipelineconfig_smoothing_factor: (a: number, b: number) => void;
+  readonly cableconfig_withMaxTwistRate: (a: number, b: number) => number;
   readonly ikresult_positionError: (a: number, b: number) => void;
+  readonly wasmmotionresult_cableTwist: (a: number, b: number) => void;
   readonly wasmtool_mass: (a: number, b: number) => void;
   readonly robot_fromString: (a: number, b: number, c: number) => void;
   readonly planningresult_success: (a: number) => number;
@@ -2457,23 +2644,28 @@ export interface InitOutput {
   readonly __wbg_get_wasmpipelineconfig_smooth_iterations: (a: number) => number;
   readonly __wbg_get_wasmpipelineconfig_smoothing_factor: (a: number) => number;
   readonly planningresult_pathFlat: (a: number, b: number) => void;
+  readonly cableconfig_withInitialTwist: (a: number, b: number) => number;
+  readonly cableconfig_new: () => number;
+  readonly motionconstraints_speed_scale: (a: number) => number;
+  readonly planningresult_pathLength: (a: number) => number;
+  readonly planningresult_planningTimeMs: (a: number) => number;
   readonly taskspaceplanningresult_planningTimeMs: (a: number) => number;
   readonly taskspacerrtconfig_goalBias: (a: number) => number;
   readonly taskspacerrtconfig_maxIterations: (a: number) => number;
+  readonly taskspacerrtconfig_orientationTolerance: (a: number) => number;
   readonly taskspacerrtconfig_positionTolerance: (a: number) => number;
   readonly taskspacerrtconfig_stepSize: (a: number) => number;
   readonly trajectoryconfig_timeStep: (a: number) => number;
   readonly wasmdiscretemotionvalidator_maxStepSize: (a: number) => number;
-  readonly wasmmotionresult_pathLength: (a: number) => number;
-  readonly wasmmotionresult_planningTimeMs: (a: number) => number;
-  readonly wasmmotionresult_trajectoryDuration: (a: number) => number;
   readonly wasmpipelineresult_dof: (a: number) => number;
   readonly wasmpipelineresult_numWaypoints: (a: number) => number;
+  readonly wasmpipelineresult_processingTimeMs: (a: number) => number;
   readonly wasmtrajectory_numJoints: (a: number) => number;
   readonly wasmtrajectorypoint_time: (a: number) => number;
   readonly workspaceanalysis_conditionNumber: (a: number) => number;
   readonly workspaceanalysis_manipulability: (a: number) => number;
   readonly workspaceanalysis_minSingularValue: (a: number) => number;
+  readonly __wbg_cableconfig_free: (a: number, b: number) => void;
   readonly __wbg_motionconstraints_free: (a: number, b: number) => void;
   readonly __wbg_position_free: (a: number, b: number) => void;
   readonly __wbg_prmconfig_free: (a: number, b: number) => void;

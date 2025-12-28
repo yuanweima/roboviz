@@ -33,6 +33,7 @@ const MODULES: ModuleInfo[] = [
   { id: 'welding', label: 'Welding', icon: '🔥', description: 'Industrial welding simulation', category: 'scenes', isFeatured: true },
   { id: 'grinding', label: 'Grinding', icon: '⚙️', description: 'Force-controlled grinding', category: 'scenes', isFeatured: true },
   { id: 'inspection', label: 'Inspection', icon: '🔍', description: 'AI defect detection', category: 'scenes', isFeatured: true },
+  { id: 'cable-management', label: 'Cable Management', icon: '🔌', description: 'Cable twist tracking', category: 'scenes', isFeatured: true },
 
   // Core Features
   { id: 'robot', label: 'Robot Basics', icon: '🤖', description: 'URDF loading, joint control', category: 'core' },

@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URDF Cartesian Space Control Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        h2 { color: #00d9ff; margin-top: 0; font-size: 18px; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+        }
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.loading { background: #e6a23c22; color: #e6a23c; border: 1px solid #e6a23c44; }
+        .status.ready { background: #67c23a22; color: #67c23a; border: 1px solid #67c23a44; }
+        .status.error { background: #f56c6c22; color: #f56c6c; border: 1px solid #f56c6c44; }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        button.secondary {
+            background: #0f3460;
+            border: 1px solid #00d9ff;
+        }
+
+        .output {
+            background: #0d1b2a;
+            color: #67c23a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 250px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #1e3a5f;
+        }
+
+        .pose-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .pose-value {
+            background: #0d1b2a;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #1e3a5f;
+        }
+        .pose-value label {
+            display: block;
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+        .pose-value span {
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: 600;
+            color: #00d9ff;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            padding: 8px;
+            background: #0d1b2a;
+            border-radius: 6px;
+        }
+        .slider-group label {
+            width: 60px;
+            font-weight: 500;
+            color: #aaa;
+        }
+        .slider-group input[type="range"] {
+            flex: 1;
+            margin: 0 10px;
+            accent-color: #00d9ff;
+        }
+        .slider-group span {
+            width: 70px;
+            text-align: right;
+            font-family: monospace;
+            color: #00d9ff;
+        }
+
+        .cartesian-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .axis-control {
+            background: #0d1b2a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #1e3a5f;
+        }
+        .axis-control label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .axis-control.x label { color: #f56c6c; }
+        .axis-control.y label { color: #67c23a; }
+        .axis-control.z label { color: #409eff; }
+        .axis-buttons {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+        }
+        .axis-buttons button {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            margin: 5px;
+        }
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+
+        .validation-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 13px;
+        }
+        .validation-table th, .validation-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #1e3a5f;
+        }
+        .validation-table th {
+            background: #0d1b2a;
+            color: #00d9ff;
+        }
+        .validation-table .pass { color: #67c23a; }
+        .validation-table .fail { color: #f56c6c; }
+
+        .step-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+            padding: 10px;
+            background: #0d1b2a;
+            border-radius: 8px;
+        }
+        .step-control label { color: #aaa; }
+        .step-control input {
+            width: 80px;
+            padding: 8px;
+            border: 1px solid #1e3a5f;
+            border-radius: 4px;
+            background: #16213e;
+            color: #eee;
+            font-family: monospace;
+        }
+        .step-control span { color: #888; font-size: 12px; }
+
+        .dh-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: #0d1b2a;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .dh-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .dh-indicator.active { background: #67c23a; box-shadow: 0 0 8px #67c23a; }
+        .dh-indicator.inactive { background: #f56c6c; }
+    </style>
+</head>
+<body>
+    <h1>URDF Cartesian Space Control Demo</h1>
+    <p class="subtitle">Load URDF, move in Cartesian space, verify IK/FK consistency with URDF transforms</p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="grid">
+        <!-- URDF Loading -->
+        <div class="card">
+            <h2>1. Load Robot</h2>
+            <p style="color: #888; font-size: 13px;">Load Fanuc LR Mate 200iD/7L or upload your own URDF</p>
+
+            <button onclick="loadFanucRobot()">Load Fanuc LR Mate 200iD/7L</button>
+            <div class="file-input-wrapper">
+                <button class="secondary">Upload URDF File</button>
+                <input type="file" id="urdfFileInput" accept=".urdf,.xml" onchange="loadUrdfFile(event)">
+            </div>
+
+            <div class="dh-status" id="dhStatus" style="display: none;">
+                <div class="dh-indicator" id="dhIndicator"></div>
+                <span id="dhStatusText"></span>
+            </div>
+
+            <div class="output" id="urdf-output">Click "Load Fanuc LR Mate 200iD/7L" to start</div>
+        </div>
+
+        <!-- Current Pose Display -->
+        <div class="card">
+            <h2>2. Current End-Effector Pose</h2>
+            <p style="color: #888; font-size: 13px;">Real-time position and orientation from forward kinematics</p>
+
+            <div class="pose-grid">
+                <div class="pose-value"><label>X (mm)</label><span id="pose-x">-</span></div>
+                <div class="pose-value"><label>Y (mm)</label><span id="pose-y">-</span></div>
+                <div class="pose-value"><label>Z (mm)</label><span id="pose-z">-</span></div>
+                <div class="pose-value"><label>Roll</label><span id="pose-roll">-</span></div>
+                <div class="pose-value"><label>Pitch</label><span id="pose-pitch">-</span></div>
+                <div class="pose-value"><label>Yaw</label><span id="pose-yaw">-</span></div>
+            </div>
+
+            <div style="margin-top: 15px;">
+                <strong style="color: #aaa;">Quaternion:</strong>
+                <span id="pose-quat" style="font-family: monospace; color: #888;">-</span>
+            </div>
+        </div>
+
+        <!-- Cartesian Control -->
+        <div class="card">
+            <h2>3. Cartesian Space Movement</h2>
+            <p style="color: #888; font-size: 13px;">Move end-effector in X/Y/Z using IK, verify with FK</p>
+
+            <div class="step-control">
+                <label>Step Size:</label>
+                <input type="number" id="stepSize" value="10" min="1" max="100" step="1">
+                <span>mm per click</span>
+            </div>
+
+            <div class="cartesian-controls">
+                <div class="axis-control x">
+                    <label>X Axis</label>
+                    <div class="axis-buttons">
+                        <button onclick="moveCartesian('x', -1)">-</button>
+                        <button onclick="moveCartesian('x', 1)">+</button>
+                    </div>
+                </div>
+                <div class="axis-control y">
+                    <label>Y Axis</label>
+                    <div class="axis-buttons">
+                        <button onclick="moveCartesian('y', -1)">-</button>
+                        <button onclick="moveCartesian('y', 1)">+</button>
+                    </div>
+                </div>
+                <div class="axis-control z">
+                    <label>Z Axis</label>
+                    <div class="axis-buttons">
+                        <button onclick="moveCartesian('z', -1)">-</button>
+                        <button onclick="moveCartesian('z', 1)">+</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="output" id="ik-output">Move in Cartesian space to see IK results and FK verification</div>
+        </div>
+
+        <!-- Joint Control -->
+        <div class="card">
+            <h2>4. Joint Space Control</h2>
+            <p style="color: #888; font-size: 13px;">Direct joint angle control with real-time FK</p>
+
+            <div id="joint-sliders">
+                <p style="color: #888;">Load a robot first</p>
+            </div>
+
+            <button onclick="resetJoints()">Reset to Zero</button>
+            <button onclick="setReadyPose()">Ready Pose</button>
+            <button onclick="randomJoints()">Random</button>
+        </div>
+
+        <!-- IK/FK Verification -->
+        <div class="card full-width">
+            <h2>5. IK/FK Verification & URDF Transform Check</h2>
+            <p style="color: #888; font-size: 13px;">Verify: FK(joints) -> IK(pose) -> FK(solution) matches; Link transforms use URDF coordinates</p>
+
+            <button onclick="runVerification()">Run IK/FK Round-Trip</button>
+            <button onclick="runMultiSolutionTest()">Test All IK Solutions</button>
+            <button onclick="runLinkTransformsTest()">Verify Link Transforms</button>
+
+            <table class="validation-table" id="verification-table">
+                <thead>
+                    <tr>
+                        <th>Test</th>
+                        <th>Expected</th>
+                        <th>Actual</th>
+                        <th>Error</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="verification-body">
+                    <tr><td colspan="5" style="color: #888; text-align: center;">Run verification to see results</td></tr>
+                </tbody>
+            </table>
+
+            <div class="output" id="verification-output"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, {
+            createRobot,
+            listDhDatabase,
+            Pose,
+            Position,
+            Quaternion
+        } from '../trajx_wasm.js';
+
+        // Fanuc LR Mate 200iD/7L URDF (embedded)
+        const FANUC_URDF = `<robot name="Fanuc_LR_Mate_200iD_7L">
+  <link name="world"></link>
+  <link name="base_link">
+    <inertial>
+      <origin xyz="-0.019334 -0.0028548 0.078986" rpy="0 0 0" />
+      <mass value="5.3603" />
+      <inertia ixx="0.019658" ixy="-6.3523E-06" ixz="3.7532E-05" iyy="0.022873" iyz="-0.00015988" izz="0.021627" />
+    </inertial>
+  </link>
+  <joint name="world" type="fixed">
+    <parent link="world" />
+    <child link="base_link" />
+  </joint>
+  <link name="link1">
+    <inertial>
+      <origin xyz="-4.0413E-17 0 -0.33053" rpy="0 0 0" />
+      <mass value="0" />
+      <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+    </inertial>
+  </link>
+  <joint name="joint1" type="revolute">
+    <origin xyz="0 0 0.33" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="link1" />
+    <axis xyz="0 0 1" />
+    <limit effort="16" lower="-2.9" upper="2.9" velocity="5.16" />
+  </joint>
+  <link name="link2">
+    <inertial>
+      <origin xyz="-0.0096686 -0.001548 0.17503" rpy="0 0 0" />
+      <mass value="7.9664" />
+      <inertia ixx="0.1957" ixy="9.5863E-05" ixz="0.002726" iyy="0.17474" iyz="-0.00088461" izz="0.035822" />
+    </inertial>
+  </link>
+  <joint name="joint2" type="revolute">
+    <origin xyz="0.05 0 0" rpy="0 0 0" />
+    <parent link="link1" />
+    <child link="link2" />
+    <axis xyz="0 1 0" />
+    <limit effort="16" lower="-1.7" upper="2.5" velocity="4.32" />
+  </joint>
+  <link name="link3">
+    <inertial>
+      <origin xyz="0.0082368 0.000680 0.017117" rpy="0 0 0" />
+      <mass value="2.394" />
+      <inertia ixx="0.00633" ixy="-4.95E-05" ixz="-0.000761" iyy="0.00733" iyz="-6.65E-05" izz="0.00726" />
+    </inertial>
+  </link>
+  <joint name="joint3" type="revolute">
+    <origin xyz="0 0 0.44" rpy="0 0 0" />
+    <parent link="link2" />
+    <child link="link3" />
+    <axis xyz="0 -1 0" />
+    <limit effort="16" lower="-2.4" upper="4.8" velocity="5.72" />
+  </joint>
+  <link name="link4">
+    <inertial>
+      <origin xyz="0.2401 0.00402 -0.000248" rpy="0 0 0" />
+      <mass value="2.891" />
+      <inertia ixx="0.00482" ixy="-0.000244" ixz="6.34E-06" iyy="0.0267" iyz="4.23E-06" izz="0.0271" />
+    </inertial>
+  </link>
+  <joint name="joint4" type="revolute">
+    <origin xyz="0 0 0.035" rpy="0 0 0" />
+    <parent link="link3" />
+    <child link="link4" />
+    <axis xyz="-1 0 0" />
+    <limit effort="16" lower="-3.3" upper="3.3" velocity="7.6" />
+  </joint>
+  <link name="link5">
+    <inertial>
+      <origin xyz="0.0156 0.00308 -0.000589" rpy="0 0 0" />
+      <mass value="0.432" />
+      <inertia ixx="0.000295" ixy="2.52E-05" ixz="-6.16E-08" iyy="0.000552" iyz="6.24E-09" izz="0.000529" />
+    </inertial>
+  </link>
+  <joint name="joint5" type="revolute">
+    <origin xyz="0.42 0 0" rpy="0 0 0" />
+    <parent link="link4" />
+    <child link="link5" />
+    <axis xyz="0 -1 0" />
+    <limit effort="16" lower="-2.1" upper="2.1" velocity="7.6" />
+  </joint>
+  <link name="link6">
+    <inertial>
+      <origin xyz="-0.00648 0 -0.000656" rpy="0 0 0" />
+      <mass value="0.0204" />
+      <inertia ixx="1.003E-05" ixy="0" ixz="5.64E-09" iyy="5.17E-06" iyz="0" izz="5.21E-06" />
+    </inertial>
+  </link>
+  <joint name="joint6" type="revolute">
+    <origin xyz="0.08 0 0" rpy="3.1415926 -1.57079632 0" />
+    <parent link="link5" />
+    <child link="link6" />
+    <axis xyz="0 0 -1" />
+    <limit effort="16" lower="-6.2" upper="6.2" velocity="13.96" />
+  </joint>
+</robot>`;
+
+        // Global state
+        let robot = null;
+        let joints = [];
+
+        const DEG2RAD = Math.PI / 180;
+        const RAD2DEG = 180 / Math.PI;
+
+        // Initialize WASM
+        async function initialize() {
+            try {
+                await init();
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = 'WASM loaded. Click "Load Fanuc LR Mate 200iD/7L" to start.';
+
+                console.log('trajx-wasm initialized');
+                console.log('Available DH robots:', listDhDatabase());
+            } catch (err) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Error: ${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // Load Fanuc robot
+        window.loadFanucRobot = function() {
+            loadRobotFromUrdf(FANUC_URDF, 'Fanuc_LR_Mate_200iD_7L (embedded)');
+        };
+
+        // Load URDF from file
+        window.loadUrdfFile = async function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const urdfContent = await file.text();
+                loadRobotFromUrdf(urdfContent, file.name);
+            } catch (err) {
+                document.getElementById('urdf-output').textContent = `Error loading file: ${err.message}`;
+            }
+        };
+
+        // Load robot from URDF content
+        function loadRobotFromUrdf(urdfContent, filename) {
+            const output = document.getElementById('urdf-output');
+
+            try {
+                robot = createRobot(urdfContent);
+                joints = new Array(robot.dof).fill(0);
+
+                // Set ready pose for 6-DOF robots
+                if (robot.dof === 6) {
+                    joints = [0, 0.5, -0.5, 0, 0.5, 0];
+                }
+
+                // Update status
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent =
+                    `Loaded: ${robot.name} (${robot.dof} DOF) | Analytical IK: ${robot.supportsAnalyticalIk() ? 'YES' : 'NO'}`;
+
+                // Show DH status
+                updateDhStatus();
+
+                // Build output info
+                let info = `Robot: ${robot.name}\n`;
+                info += `DOF: ${robot.dof}\n`;
+                info += `Source: ${filename}\n\n`;
+
+                // Joint names
+                info += `Joint names: ${robot.jointNames().join(', ')}\n`;
+                info += `Link names: ${robot.linkNames().join(', ')}\n\n`;
+
+                // Show joint limits
+                const limits = robot.getJointLimits();
+                info += `Joint Limits:\n`;
+                for (let i = 0; i < robot.dof; i++) {
+                    const lower = limits.lower[i] * RAD2DEG;
+                    const upper = limits.upper[i] * RAD2DEG;
+                    info += `  J${i+1}: [${lower.toFixed(1)}, ${upper.toFixed(1)}]\n`;
+                }
+
+                // Kinematics info
+                info += `\nKinematics:\n`;
+                info += `  Analytical IK: ${robot.supportsAnalyticalIk() ? 'Supported' : 'Not available'}\n`;
+                info += `  DH Parameters: ${robot.hasDhParams() ? 'Loaded' : 'Not loaded'}\n`;
+                info += `  Uses DH for FK: ${robot.usesDhForFk() ? 'Yes' : 'No (URDF)'}`;
+
+                output.textContent = info;
+
+                // Create joint sliders
+                createJointSliders();
+
+                // Initial FK update
+                updateFK();
+
+            } catch (err) {
+                output.textContent = `Error creating robot: ${err.message}`;
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Error: ${err.message}`;
+            }
+        }
+
+        // Update DH status indicator
+        function updateDhStatus() {
+            const statusDiv = document.getElementById('dhStatus');
+            const indicator = document.getElementById('dhIndicator');
+            const text = document.getElementById('dhStatusText');
+
+            statusDiv.style.display = 'flex';
+
+            if (robot.hasDhParams()) {
+                indicator.className = 'dh-indicator active';
+                text.textContent = 'DH parameters loaded - Analytical IK available';
+            } else {
+                indicator.className = 'dh-indicator inactive';
+                text.textContent = 'No DH parameters - Using numerical IK';
+            }
+        }
+
+        // Create joint sliders
+        function createJointSliders() {
+            const container = document.getElementById('joint-sliders');
+            container.innerHTML = '';
+
+            const limits = robot.getJointLimits();
+
+            for (let i = 0; i < robot.dof; i++) {
+                const lower = limits.lower[i];
+                const upper = limits.upper[i];
+
+                const div = document.createElement('div');
+                div.className = 'slider-group';
+                div.innerHTML = `
+                    <label>J${i + 1}</label>
+                    <input type="range" id="joint-${i}"
+                           min="${lower}" max="${upper}" step="0.01"
+                           value="${joints[i]}"
+                           oninput="window.updateJoint(${i}, this.value)">
+                    <span id="joint-val-${i}">${(joints[i] * RAD2DEG).toFixed(1)}</span>
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        // Update joint value
+        window.updateJoint = function(index, value) {
+            joints[index] = parseFloat(value);
+            document.getElementById(`joint-val-${index}`).textContent =
+                (joints[index] * RAD2DEG).toFixed(1);
+            updateFK();
+        };
+
+        // Update FK display
+        function updateFK() {
+            if (!robot) return;
+
+            try {
+                const pose = robot.forwardKinematics(joints);
+                const pos = pose.position;
+                const quat = pose.orientation;
+
+                // Position in mm
+                document.getElementById('pose-x').textContent = (pos.x * 1000).toFixed(2);
+                document.getElementById('pose-y').textContent = (pos.y * 1000).toFixed(2);
+                document.getElementById('pose-z').textContent = (pos.z * 1000).toFixed(2);
+
+                // Convert quaternion to Euler
+                const euler = quaternionToEuler(quat);
+                document.getElementById('pose-roll').textContent = (euler.roll * RAD2DEG).toFixed(2);
+                document.getElementById('pose-pitch').textContent = (euler.pitch * RAD2DEG).toFixed(2);
+                document.getElementById('pose-yaw').textContent = (euler.yaw * RAD2DEG).toFixed(2);
+
+                // Quaternion display
+                document.getElementById('pose-quat').textContent =
+                    `[${quat.w.toFixed(4)}, ${quat.x.toFixed(4)}, ${quat.y.toFixed(4)}, ${quat.z.toFixed(4)}]`;
+
+            } catch (err) {
+                console.error('FK error:', err);
+            }
+        }
+
+        // Quaternion to Euler conversion
+        function quaternionToEuler(q) {
+            const sinr_cosp = 2 * (q.w * q.x + q.y * q.z);
+            const cosr_cosp = 1 - 2 * (q.x * q.x + q.y * q.y);
+            const roll = Math.atan2(sinr_cosp, cosr_cosp);
+
+            const sinp = 2 * (q.w * q.y - q.z * q.x);
+            let pitch;
+            if (Math.abs(sinp) >= 1)
+                pitch = Math.sign(sinp) * Math.PI / 2;
+            else
+                pitch = Math.asin(sinp);
+
+            const siny_cosp = 2 * (q.w * q.z + q.x * q.y);
+            const cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+            const yaw = Math.atan2(siny_cosp, cosy_cosp);
+
+            return { roll, pitch, yaw };
+        }
+
+        // Move in Cartesian space
+        window.moveCartesian = function(axis, direction) {
+            if (!robot) {
+                alert('Please load a robot first');
+                return;
+            }
+
+            const output = document.getElementById('ik-output');
+            const stepMm = parseFloat(document.getElementById('stepSize').value);
+            const step = stepMm / 1000; // Convert to meters
+
+            try {
+                // Get current pose
+                const currentPose = robot.forwardKinematics(joints);
+                const pos = currentPose.position;
+                const ori = currentPose.orientation;
+
+                // Calculate new position
+                let newX = pos.x, newY = pos.y, newZ = pos.z;
+                if (axis === 'x') newX += step * direction;
+                if (axis === 'y') newY += step * direction;
+                if (axis === 'z') newZ += step * direction;
+
+                const targetPose = new Pose(
+                    new Position(newX, newY, newZ),
+                    new Quaternion(ori.x, ori.y, ori.z, ori.w)
+                );
+
+                const prevJoints = [...joints];
+
+                // Solve IK using current joints as seed
+                const ikResult = robot.inverseKinematics(targetPose, joints);
+
+                if (ikResult.success) {
+                    // Update joints
+                    joints = [...ikResult.solution];
+
+                    // Update sliders
+                    for (let i = 0; i < joints.length; i++) {
+                        document.getElementById(`joint-${i}`).value = joints[i];
+                        document.getElementById(`joint-val-${i}`).textContent =
+                            (joints[i] * RAD2DEG).toFixed(1);
+                    }
+
+                    // Update FK display
+                    updateFK();
+
+                    // Verify FK matches target
+                    const verifyPose = robot.forwardKinematics(joints);
+                    const posError = Math.sqrt(
+                        Math.pow(verifyPose.position.x - targetPose.position.x, 2) +
+                        Math.pow(verifyPose.position.y - targetPose.position.y, 2) +
+                        Math.pow(verifyPose.position.z - targetPose.position.z, 2)
+                    ) * 1000;
+
+                    // Check smoothness (joint jump)
+                    let maxJointJump = 0;
+                    for (let i = 0; i < joints.length; i++) {
+                        maxJointJump = Math.max(maxJointJump, Math.abs(joints[i] - prevJoints[i]));
+                    }
+
+                    output.textContent = `Moved ${axis.toUpperCase()} ${direction > 0 ? '+' : '-'}${stepMm}mm\n`;
+                    output.textContent += `${'='.repeat(40)}\n\n`;
+                    output.textContent += `IK Result:\n`;
+                    output.textContent += `  Method: ${ikResult.isAnalytical ? 'ANALYTICAL' : 'NUMERICAL'}\n`;
+                    output.textContent += `  IK Error: ${(ikResult.positionError * 1000).toFixed(4)} mm\n\n`;
+                    output.textContent += `FK Verification:\n`;
+                    output.textContent += `  Target:   (${(newX*1000).toFixed(3)}, ${(newY*1000).toFixed(3)}, ${(newZ*1000).toFixed(3)}) mm\n`;
+                    output.textContent += `  FK Result:(${(verifyPose.position.x*1000).toFixed(3)}, ${(verifyPose.position.y*1000).toFixed(3)}, ${(verifyPose.position.z*1000).toFixed(3)}) mm\n`;
+                    output.textContent += `  Error: ${posError.toFixed(4)} mm ${posError < 0.1 ? '  OK' : '  LARGE!'}\n\n`;
+                    output.textContent += `Smoothness Check:\n`;
+                    output.textContent += `  Max joint jump: ${(maxJointJump * RAD2DEG).toFixed(2)} deg\n`;
+                    output.textContent += `  ${maxJointJump * RAD2DEG < 30 ? '  Smooth motion' : '  WARNING: Large jump detected!'}`;
+                } else {
+                    output.textContent = `IK Failed!\n`;
+                    output.textContent += `${'='.repeat(40)}\n\n`;
+                    output.textContent += `Target: (${(newX*1000).toFixed(2)}, ${(newY*1000).toFixed(2)}, ${(newZ*1000).toFixed(2)}) mm\n`;
+                    output.textContent += `Error: ${ikResult.errorMessage}\n\n`;
+                    output.textContent += `The target pose may be outside the robot's workspace.`;
+                }
+
+            } catch (err) {
+                output.textContent = `Error: ${err.message}`;
+            }
+        };
+
+        // Reset joints to zero
+        window.resetJoints = function() {
+            if (!robot) return;
+            joints = new Array(robot.dof).fill(0);
+            for (let i = 0; i < joints.length; i++) {
+                document.getElementById(`joint-${i}`).value = 0;
+                document.getElementById(`joint-val-${i}`).textContent = '0.0';
+            }
+            updateFK();
+        };
+
+        // Set ready pose
+        window.setReadyPose = function() {
+            if (!robot || robot.dof !== 6) return;
+            joints = [0, 0.5, -0.5, 0, 0.5, 0];
+            for (let i = 0; i < joints.length; i++) {
+                document.getElementById(`joint-${i}`).value = joints[i];
+                document.getElementById(`joint-val-${i}`).textContent =
+                    (joints[i] * RAD2DEG).toFixed(1);
+            }
+            updateFK();
+        };
+
+        // Random joint configuration
+        window.randomJoints = function() {
+            if (!robot) return;
+            const limits = robot.getJointLimits();
+            for (let i = 0; i < robot.dof; i++) {
+                const lower = limits.lower[i];
+                const upper = limits.upper[i];
+                // Use 80% of range to avoid limits
+                const range = (upper - lower) * 0.8;
+                const mid = (upper + lower) / 2;
+                joints[i] = mid + (Math.random() - 0.5) * range;
+                document.getElementById(`joint-${i}`).value = joints[i];
+                document.getElementById(`joint-val-${i}`).textContent =
+                    (joints[i] * RAD2DEG).toFixed(1);
+            }
+            updateFK();
+        };
+
+        // Run IK/FK verification
+        window.runVerification = function() {
+            if (!robot) {
+                alert('Please load a robot first');
+                return;
+            }
+
+            const tbody = document.getElementById('verification-body');
+            const output = document.getElementById('verification-output');
+            tbody.innerHTML = '';
+
+            const tests = [];
+            const tolerance = 0.001; // 1mm
+
+            // Test 1: Current pose round-trip
+            try {
+                const originalJoints = [...joints];
+                const pose = robot.forwardKinematics(originalJoints);
+                const ikResult = robot.inverseKinematics(pose, originalJoints);
+
+                if (ikResult.success) {
+                    const verifyPose = robot.forwardKinematics(ikResult.solution);
+                    const posError = Math.sqrt(
+                        Math.pow(verifyPose.position.x - pose.position.x, 2) +
+                        Math.pow(verifyPose.position.y - pose.position.y, 2) +
+                        Math.pow(verifyPose.position.z - pose.position.z, 2)
+                    );
+
+                    tests.push({
+                        name: 'Current Pose Round-trip',
+                        expected: `< 1mm`,
+                        actual: `${(posError*1000).toFixed(4)} mm`,
+                        error: `${(posError*1000).toFixed(4)} mm`,
+                        pass: posError < tolerance
+                    });
+                } else {
+                    tests.push({
+                        name: 'Current Pose Round-trip',
+                        expected: 'IK Success',
+                        actual: 'IK Failed',
+                        error: ikResult.errorMessage,
+                        pass: false
+                    });
+                }
+            } catch (err) {
+                tests.push({
+                    name: 'Current Pose Round-trip',
+                    expected: 'No error',
+                    actual: 'Exception',
+                    error: err.message,
+                    pass: false
+                });
+            }
+
+            // Test 2: Home position
+            try {
+                const homeJoints = new Array(robot.dof).fill(0);
+                const homePose = robot.forwardKinematics(homeJoints);
+                const ikResult = robot.inverseKinematics(homePose, homeJoints);
+
+                if (ikResult.success) {
+                    const posError = ikResult.positionError;
+                    tests.push({
+                        name: 'Home Position IK',
+                        expected: `< 1mm`,
+                        actual: `${(posError*1000).toFixed(4)} mm`,
+                        error: `${(posError*1000).toFixed(4)} mm`,
+                        pass: posError < tolerance
+                    });
+                } else {
+                    tests.push({
+                        name: 'Home Position IK',
+                        expected: 'IK Success',
+                        actual: 'IK Failed',
+                        error: ikResult.errorMessage,
+                        pass: false
+                    });
+                }
+            } catch (err) {
+                tests.push({
+                    name: 'Home Position IK',
+                    expected: 'No error',
+                    actual: 'Exception',
+                    error: err.message,
+                    pass: false
+                });
+            }
+
+            // Test 3-7: Random configurations
+            for (let t = 0; t < 5; t++) {
+                try {
+                    const limits = robot.getJointLimits();
+                    const randJoints = [];
+                    for (let i = 0; i < robot.dof; i++) {
+                        const range = limits.upper[i] - limits.lower[i];
+                        randJoints.push(limits.lower[i] + Math.random() * range * 0.8 + range * 0.1);
+                    }
+
+                    const pose = robot.forwardKinematics(randJoints);
+                    const ikResult = robot.inverseKinematics(pose, randJoints);
+
+                    if (ikResult.success) {
+                        const verifyPose = robot.forwardKinematics(ikResult.solution);
+                        const posError = Math.sqrt(
+                            Math.pow(verifyPose.position.x - pose.position.x, 2) +
+                            Math.pow(verifyPose.position.y - pose.position.y, 2) +
+                            Math.pow(verifyPose.position.z - pose.position.z, 2)
+                        );
+
+                        tests.push({
+                            name: `Random Config ${t+1}`,
+                            expected: `< 1mm`,
+                            actual: `${(posError*1000).toFixed(4)} mm`,
+                            error: `${(posError*1000).toFixed(4)} mm`,
+                            pass: posError < tolerance
+                        });
+                    } else {
+                        tests.push({
+                            name: `Random Config ${t+1}`,
+                            expected: 'IK Success',
+                            actual: 'IK Failed',
+                            error: ikResult.errorMessage,
+                            pass: false
+                        });
+                    }
+                } catch (err) {
+                    tests.push({
+                        name: `Random Config ${t+1}`,
+                        expected: 'No error',
+                        actual: 'Exception',
+                        error: err.message,
+                        pass: false
+                    });
+                }
+            }
+
+            // Render results
+            for (const test of tests) {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${test.name}</td>
+                    <td>${test.expected}</td>
+                    <td>${test.actual}</td>
+                    <td>${test.error}</td>
+                    <td class="${test.pass ? 'pass' : 'fail'}">${test.pass ? ' PASS' : ' FAIL'}</td>
+                `;
+                tbody.appendChild(row);
+            }
+
+            const passCount = tests.filter(t => t.pass).length;
+            output.textContent = `Verification Complete: ${passCount}/${tests.length} tests passed\n`;
+            output.textContent += `IK Method: ${robot.supportsAnalyticalIk() ? 'Analytical' : 'Numerical'}`;
+        };
+
+        // Test all IK solutions
+        window.runMultiSolutionTest = function() {
+            if (!robot) {
+                alert('Please load a robot first');
+                return;
+            }
+
+            const output = document.getElementById('verification-output');
+
+            try {
+                const pose = robot.forwardKinematics(joints);
+                const result = robot.inverseKinematicsAll(pose, joints);
+
+                if (result.success) {
+                    let text = `Multi-Solution IK Test\n`;
+                    text += `${'='.repeat(40)}\n\n`;
+                    text += `Target: (${(pose.position.x*1000).toFixed(2)}, ${(pose.position.y*1000).toFixed(2)}, ${(pose.position.z*1000).toFixed(2)}) mm\n`;
+                    text += `Found: ${result.solutionCount} solution(s)\n`;
+                    text += `Method: ${result.isAnalytical ? 'ANALYTICAL' : 'NUMERICAL'}\n\n`;
+
+                    for (let i = 0; i < result.solutionCount; i++) {
+                        const sol = result.getSolution(i);
+                        const err = result.getPositionError(i);
+
+                        // Verify with FK
+                        const verifyPose = robot.forwardKinematics(sol);
+                        const fkError = Math.sqrt(
+                            Math.pow(verifyPose.position.x - pose.position.x, 2) +
+                            Math.pow(verifyPose.position.y - pose.position.y, 2) +
+                            Math.pow(verifyPose.position.z - pose.position.z, 2)
+                        );
+
+                        text += `Solution ${i+1}:\n`;
+                        text += `  Joints: [${sol.map(v => (v * RAD2DEG).toFixed(1)).join(', ')}]\n`;
+                        text += `  IK Error: ${(err * 1000).toFixed(4)} mm\n`;
+                        text += `  FK Verify: ${(fkError * 1000).toFixed(4)} mm ${fkError < 0.001 ? '' : ''}\n\n`;
+                    }
+
+                    output.textContent = text;
+                } else {
+                    output.textContent = `Multi-IK Failed: ${result.errorMessage}`;
+                }
+            } catch (err) {
+                output.textContent = `Error: ${err.message}`;
+            }
+        };
+
+        // Test link transforms (URDF coordinate verification)
+        window.runLinkTransformsTest = function() {
+            if (!robot) {
+                alert('Please load a robot first');
+                return;
+            }
+
+            const output = document.getElementById('verification-output');
+
+            try {
+                const transforms = robot.getLinkTransforms(joints);
+                const linkNames = robot.linkNames();
+
+                let text = `Link Transforms (URDF Coordinates)\n`;
+                text += `${'='.repeat(40)}\n\n`;
+                text += `IMPORTANT: These transforms are ALWAYS in URDF coordinate system,\n`;
+                text += `regardless of whether DH parameters are used for FK/IK.\n`;
+                text += `This ensures correct mesh positioning for visualization.\n\n`;
+                text += `DH for FK: ${robot.usesDhForFk() ? 'YES' : 'NO'}\n`;
+                text += `DH Loaded: ${robot.hasDhParams() ? 'YES' : 'NO'}\n\n`;
+
+                for (const name of linkNames) {
+                    if (transforms[name]) {
+                        const t = transforms[name];
+                        text += `${name}:\n`;
+                        text += `  Pos: (${(t.position.x*1000).toFixed(2)}, ${(t.position.y*1000).toFixed(2)}, ${(t.position.z*1000).toFixed(2)}) mm\n`;
+                    }
+                }
+
+                // Compare with FK chain
+                text += `\nFK Chain Comparison:\n`;
+                const fkChain = robot.forwardKinematicsChain(joints);
+                for (let i = 0; i < Math.min(fkChain.length, linkNames.length); i++) {
+                    const p = fkChain[i].position;
+                    const linkTransform = transforms[linkNames[i]];
+                    if (linkTransform) {
+                        const diff = Math.sqrt(
+                            Math.pow(p.x - linkTransform.position.x, 2) +
+                            Math.pow(p.y - linkTransform.position.y, 2) +
+                            Math.pow(p.z - linkTransform.position.z, 2)
+                        ) * 1000;
+                        text += `  ${linkNames[i]}: diff = ${diff.toFixed(4)} mm ${diff < 0.01 ? '' : ''}\n`;
+                    }
+                }
+
+                output.textContent = text;
+            } catch (err) {
+                output.textContent = `Error: ${err.message}`;
+            }
+        };
+
+        // Start initialization
+        initialize();
+    </script>
+</body>
+</html>

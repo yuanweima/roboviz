@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Motion API + Cable Integration Demo</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        h1 { color: #333; }
+        .test-result { padding: 10px; margin: 5px 0; border-radius: 4px; }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        .info { background: #cce5ff; color: #004085; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; font-size: 14px; }
+        button:hover { background: #0056b3; }
+        #log { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; font-family: 'Monaco', 'Consolas', monospace; font-size: 12px; max-height: 500px; overflow-y: auto; }
+        .log-time { color: #569cd6; }
+        .log-pass { color: #4ec9b0; }
+        .log-fail { color: #f14c4c; }
+        .log-info { color: #dcdcaa; }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+        h2 { margin-top: 0; color: #555; }
+    </style>
+</head>
+<body>
+    <h1>Motion API + Cable Integration Demo</h1>
+    <p>Testing cable-aware motion planning through the Motion fluent API.</p>
+
+    <div class="section">
+        <h2>Test Controls</h2>
+        <button onclick="runAllTests()">Run All Tests</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div class="section">
+        <h2>Test Log</h2>
+        <div id="log"></div>
+    </div>
+
+    <script type="module">
+        import init, * as wasm from '../trajx_wasm.js';
+
+        let robot = null;
+        let testsPassed = 0;
+        let testsFailed = 0;
+
+        function log(msg, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const colorClass = type === 'pass' ? 'log-pass' : type === 'fail' ? 'log-fail' : 'log-info';
+            logDiv.innerHTML += `<span class="log-time">[${time}]</span> <span class="${colorClass}">${msg}</span>\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function assert(condition, message) {
+            if (condition) {
+                log(`✓ ${message}`, 'pass');
+                testsPassed++;
+                return true;
+            } else {
+                log(`✗ ${message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        // Test URDF - same as motion-centric-demo
+        const TEST_URDF = `<?xml version="1.0"?>
+<robot name="test_robot">
+  <link name="base_link"/>
+  <link name="link1"/><link name="link2"/><link name="link3"/>
+  <link name="link4"/><link name="link5"/><link name="link6"/>
+  <link name="tool0"/>
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/><child link="link1"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="100" velocity="2"/>
+  </joint>
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/><child link="link2"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" effort="100" velocity="2"/>
+  </joint>
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/><child link="link3"/>
+    <origin xyz="0 0 0.3" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="2.5" effort="100" velocity="2"/>
+  </joint>
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/><child link="link4"/>
+    <origin xyz="0 0.1 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="100" velocity="3"/>
+  </joint>
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/><child link="link5"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" effort="100" velocity="3"/>
+  </joint>
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/><child link="link6"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="100" velocity="3"/>
+  </joint>
+  <joint name="joint_tool0" type="fixed">
+    <parent link="link6"/><child link="tool0"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+  </joint>
+</robot>`;
+
+        async function initWasm() {
+            log('Initializing WASM...', 'info');
+            await init();
+            log('WASM initialized', 'pass');
+
+            // Create robot using createRobot helper
+            robot = wasm.createRobot(TEST_URDF);
+            robot.setJointPositions([0, 0, 0, 0, 0, 0]);
+            log(`Robot created: ${robot.name} (${robot.dof} DOF)`, 'pass');
+        }
+
+        // Test 1: Basic Motion without cable
+        function test1_BasicMotion() {
+            log('\n=== Test 1: Basic Motion (no cable) ===', 'info');
+            try {
+                const goal = [0.5, 0.3, -0.2, 0, 0.3, 0.5];
+                const result = wasm.WasmMotion.to(goal).run(robot);
+
+                assert(result.executed === true, 'Motion executed');
+                assert(result.numPoints > 0, `Has ${result.numPoints} trajectory points`);
+                assert(result.hasCableTracking === false, 'Cable tracking not enabled');
+                assert(result.cableTwist === undefined, 'No cable twist value');
+
+                log(`Path length: ${result.pathLength.toFixed(3)}`, 'info');
+                return true;
+            } catch (e) {
+                log(`Error: ${e.message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        // Test 2: Motion with cableAware()
+        function test2_MotionWithCableAware() {
+            log('\n=== Test 2: Motion with cableAware() ===', 'info');
+            try {
+                const goal = [0.5, 0.3, -0.2, 0, 0.3, 0.5];
+                const result = wasm.WasmMotion.to(goal)
+                    .cableAware()
+                    .run(robot);
+
+                assert(result.executed === true, 'Motion executed');
+                assert(result.hasCableTracking === true, 'Cable tracking enabled');
+                assert(result.cableTwist !== undefined, `Cable twist: ${result.cableTwist?.toFixed(3)} rad`);
+                assert(result.cableMaxTwist !== undefined, `Max twist: ${result.cableMaxTwist?.toFixed(3)} rad`);
+                assert(typeof result.cableWarning === 'boolean', `Warning: ${result.cableWarning}`);
+                assert(typeof result.cableExceeded === 'boolean', `Exceeded: ${result.cableExceeded}`);
+
+                return true;
+            } catch (e) {
+                log(`Error: ${e.message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        // Test 3: Motion with custom CableConfig
+        function test3_MotionWithCustomConfig() {
+            log('\n=== Test 3: Motion with custom CableConfig ===', 'info');
+            try {
+                const goal = [1.0, 0.5, -0.5, 0.2, 0.5, 1.0];
+                const config = new wasm.CableConfig()
+                    .withMaxTotalTwist(2 * Math.PI)  // 360 degrees
+                    .withWarningThreshold(0.5);      // Warn at 50%
+
+                const result = wasm.WasmMotion.to(goal)
+                    .cableAwareWith(config)
+                    .run(robot);
+
+                assert(result.hasCableTracking === true, 'Cable tracking enabled with custom config');
+                log(`Final twist: ${(result.cableTwist * 180 / Math.PI).toFixed(1)}°`, 'info');
+                log(`Max twist: ${(result.cableMaxTwist * 180 / Math.PI).toFixed(1)}°`, 'info');
+
+                return true;
+            } catch (e) {
+                log(`Error: ${e.message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        // Test 4: Motion with initial cable twist
+        function test4_MotionWithInitialTwist() {
+            log('\n=== Test 4: Motion with initial twist ===', 'info');
+            try {
+                const initialTwist = Math.PI; // 180 degrees already accumulated
+                const goal = [0.5, 0.3, -0.2, 0, 0.3, 0.5];
+
+                const result = wasm.WasmMotion.to(goal)
+                    .cableAware()
+                    .withCableTwist(initialTwist)
+                    .run(robot);
+
+                assert(result.hasCableTracking === true, 'Cable tracking enabled');
+                assert(result.cableTwist !== undefined, 'Cable twist computed');
+
+                log(`Initial twist: ${(initialTwist * 180 / Math.PI).toFixed(1)}°`, 'info');
+                log(`Final twist: ${(result.cableTwist * 180 / Math.PI).toFixed(1)}°`, 'info');
+
+                return true;
+            } catch (e) {
+                log(`Error: ${e.message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        // Test 5: Sequence with cableAware()
+        function test5_SequenceWithCableAware() {
+            log('\n=== Test 5: Sequence with cableAware() ===', 'info');
+            try {
+                const goal1 = [0.3, 0.2, -0.1, 0, 0.1, 0.3];
+                const goal2 = [0.6, 0.4, -0.3, 0.1, 0.2, 0.6];
+                const goal3 = [0.2, 0.1, 0, 0, 0.1, 0.2];
+
+                const result = wasm.WasmSequence.start(wasm.WasmMotion.to(goal1))
+                    .then(wasm.WasmMotion.to(goal2))
+                    .then(wasm.WasmMotion.to(goal3))
+                    .cableAware()
+                    .run(robot);
+
+                assert(result.executed === true, 'Sequence executed');
+                assert(result.hasCableTracking === true, 'Cable tracking enabled for sequence');
+                assert(result.cableTwist !== undefined, 'Accumulated twist tracked');
+
+                log(`Final accumulated twist: ${(result.cableTwist * 180 / Math.PI).toFixed(1)}°`, 'info');
+                log(`Max twist during sequence: ${(result.cableMaxTwist * 180 / Math.PI).toFixed(1)}°`, 'info');
+                log(`Warning zone reached: ${result.cableWarning}`, 'info');
+
+                return true;
+            } catch (e) {
+                log(`Error: ${e.message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        // Test 6: Chained methods
+        function test6_ChainedMethods() {
+            log('\n=== Test 6: Chained motion methods with cable ===', 'info');
+            try {
+                const goal = [0.8, 0.5, -0.4, 0.1, 0.4, 0.8];
+
+                const result = wasm.WasmMotion.to(goal)
+                    .cableAware()
+                    .fast()
+                    .smooth()
+                    .run(robot);
+
+                assert(result.executed === true, 'Chained motion executed');
+                assert(result.hasCableTracking === true, 'Cable tracking works with other methods');
+                assert(result.trajectoryDuration > 0, `Duration: ${result.trajectoryDuration.toFixed(2)}s`);
+
+                return true;
+            } catch (e) {
+                log(`Error: ${e.message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        // Test 7: CableTrack mode (track only, no constraint)
+        function test7_CableTrackMode() {
+            log('\n=== Test 7: CableTrack mode ===', 'info');
+            try {
+                const goal = [0.5, 0.3, -0.2, 0, 0.3, 0.5];
+
+                const result = wasm.WasmMotion.to(goal)
+                    .cableTrack()
+                    .run(robot);
+
+                assert(result.executed === true, 'Motion executed');
+                assert(result.hasCableTracking === true, 'Cable tracking in track mode');
+
+                log(`Twist tracked: ${(result.cableTwist * 180 / Math.PI).toFixed(1)}°`, 'info');
+
+                return true;
+            } catch (e) {
+                log(`Error: ${e.message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        // Test 8: Multiple motions tracking accumulated twist
+        function test8_MultipleMotionsAccumulated() {
+            log('\n=== Test 8: Multiple motions with accumulated twist ===', 'info');
+            try {
+                let currentTwist = 0;
+                const goals = [
+                    [0.3, 0.2, -0.1, 0, 0.1, 0.3],
+                    [0.6, 0.4, -0.3, 0.2, 0.3, 0.6],
+                    [0.1, 0.1, 0, 0, 0.1, 0.1],
+                ];
+
+                for (let i = 0; i < goals.length; i++) {
+                    const result = wasm.WasmMotion.to(goals[i])
+                        .cableAware()
+                        .withCableTwist(currentTwist)
+                        .run(robot);
+
+                    log(`Motion ${i+1}: twist ${(currentTwist * 180 / Math.PI).toFixed(1)}° -> ${(result.cableTwist * 180 / Math.PI).toFixed(1)}°`, 'info');
+                    currentTwist = result.cableTwist;
+                }
+
+                assert(true, `Final accumulated twist: ${(currentTwist * 180 / Math.PI).toFixed(1)}°`);
+
+                return true;
+            } catch (e) {
+                log(`Error: ${e.message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        // Test 9: Plan (without execute)
+        function test9_PlanWithCable() {
+            log('\n=== Test 9: Plan with cable (no execute) ===', 'info');
+            try {
+                const goal = [0.5, 0.3, -0.2, 0, 0.3, 0.5];
+
+                const result = wasm.WasmMotion.to(goal)
+                    .cableAware()
+                    .plan(robot);
+
+                assert(result.executed === false, 'Motion planned but not executed');
+                assert(result.hasCableTracking === true, 'Cable tracking in plan mode');
+                assert(result.cableTwist !== undefined, 'Cable twist computed during planning');
+
+                return true;
+            } catch (e) {
+                log(`Error: ${e.message}`, 'fail');
+                testsFailed++;
+                return false;
+            }
+        }
+
+        async function runAllTests() {
+            testsPassed = 0;
+            testsFailed = 0;
+
+            try {
+                await initWasm();
+
+                test1_BasicMotion();
+                test2_MotionWithCableAware();
+                test3_MotionWithCustomConfig();
+                test4_MotionWithInitialTwist();
+                test5_SequenceWithCableAware();
+                test6_ChainedMethods();
+                test7_CableTrackMode();
+                test8_MultipleMotionsAccumulated();
+                test9_PlanWithCable();
+
+                log('\n=== Summary ===', 'info');
+                log(`Passed: ${testsPassed}`, 'pass');
+                if (testsFailed > 0) {
+                    log(`Failed: ${testsFailed}`, 'fail');
+                }
+            } catch (e) {
+                log(`Fatal error: ${e.message}`, 'fail');
+                console.error(e);
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // Export to window for button access
+        window.runAllTests = runAllTests;
+        window.clearLog = clearLog;
+    </script>
+</body>
+</html>

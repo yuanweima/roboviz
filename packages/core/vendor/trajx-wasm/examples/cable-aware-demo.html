@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trajx WASM - Cable-Aware Motion Planning Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; border-bottom: 2px solid #e74c3c; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .full-width { grid-column: 1 / -1; }
+        button {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover { background: #c0392b; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        button.success { background: #27ae60; }
+        button.warning { background: #f39c12; }
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .log .success { color: #4ec9b0; }
+        .log .error { color: #f48771; }
+        .log .info { color: #9cdcfe; }
+        .log .warn { color: #dcdcaa; }
+        .log .twist { color: #ce9178; }
+        .status {
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        .status.loading { background: #fff3cd; color: #856404; }
+        .status.ready { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .test-group {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .test-group h3 { margin-top: 0; color: #495057; }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .code {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-size: 12px;
+        }
+        .code .keyword { color: #66d9ef; }
+        .code .string { color: #a6e22e; }
+        .code .number { color: #ae81ff; }
+        .code .comment { color: #75715e; }
+        .twist-gauge {
+            width: 100%;
+            height: 30px;
+            background: #ecf0f1;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 10px 0;
+            position: relative;
+        }
+        .twist-gauge .fill {
+            height: 100%;
+            transition: width 0.3s, background 0.3s;
+            border-radius: 15px;
+        }
+        .twist-gauge .label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .twist-gauge.safe .fill { background: #27ae60; }
+        .twist-gauge.warning .fill { background: #f39c12; }
+        .twist-gauge.danger .fill { background: #e74c3c; }
+    </style>
+</head>
+<body>
+    <h1>Trajx WASM - Cable-Aware Motion Planning Demo</h1>
+    <p>This demo showcases cable-aware motion planning that tracks and constrains cable twist during robot motion.</p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <!-- Twist Gauge -->
+    <div class="section full-width" style="margin-bottom: 20px;">
+        <h2>Cable Twist Status</h2>
+        <div id="twistGauge" class="twist-gauge safe">
+            <div class="fill" style="width: 0%"></div>
+            <div class="label">0.0° / 720.0°</div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 12px; color: #666;">
+            <span>-720° (CCW)</span>
+            <span>0° (Neutral)</span>
+            <span>+720° (CW)</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Log Panel -->
+        <div class="section full-width">
+            <h2>Console Log</h2>
+            <button onclick="clearLog()">Clear Log</button>
+            <button onclick="runAllCableTests()" id="runAllBtn" disabled>Run All Cable Tests</button>
+            <div id="log" class="log"></div>
+        </div>
+
+        <!-- Cable Config Tests -->
+        <div class="section">
+            <h2>CableConfig API</h2>
+
+            <div class="test-group">
+                <h3>1. Cable Configuration</h3>
+                <div class="code">
+<span class="comment">// Create cable config with builder pattern</span>
+<span class="keyword">const</span> config = <span class="keyword">new</span> CableConfig()
+    .withMaxTotalTwist(<span class="number">4</span> * Math.PI)
+    .withWarningThreshold(<span class="number">0.75</span>)
+    .withAutoUnwind(<span class="keyword">true</span>);
+                </div>
+                <button onclick="testCableConfig()" id="testConfigBtn" disabled>Test Cable Config</button>
+                <div id="configResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>2. Cable Presets</h3>
+                <div class="code">
+<span class="comment">// Use preset configurations</span>
+<span class="keyword">const</span> standard = cablePresetStandard();  <span class="comment">// 4π</span>
+<span class="keyword">const</span> heavy = cablePresetHeavyDuty();    <span class="comment">// 2π</span>
+<span class="keyword">const</span> light = cablePresetLight();        <span class="comment">// 8π</span>
+<span class="keyword">const</span> precision = cablePresetPrecision();<span class="comment">// 2π + unwind</span>
+                </div>
+                <button onclick="testCablePresets()" id="testPresetsBtn" disabled>Test Presets</button>
+                <div id="presetsResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Cable Tracker Tests -->
+        <div class="section">
+            <h2>CableTracker API</h2>
+
+            <div class="test-group">
+                <h3>3. Twist Tracking</h3>
+                <div class="code">
+<span class="comment">// Create tracker and update twist</span>
+<span class="keyword">const</span> tracker = <span class="keyword">new</span> CableTracker(config);
+tracker.updateTwist(Math.PI);
+console.log(tracker.currentTwist);
+console.log(tracker.remainingBudget);
+                </div>
+                <button onclick="testCableTracker()" id="testTrackerBtn" disabled>Test Tracker</button>
+                <div id="trackerResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>4. Path Analysis</h3>
+                <div class="code">
+<span class="comment">// Analyze path for twist</span>
+<span class="keyword">const</span> analysis = tracker.analyzePath(
+    pathFlat, dof, fkCallback
+);
+console.log(analysis.finalTwist);
+console.log(analysis.twistProfile);
+                </div>
+                <button onclick="testPathAnalysis()" id="testAnalysisBtn" disabled>Test Path Analysis</button>
+                <div id="analysisResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Planning Tests -->
+        <div class="section">
+            <h2>CableAwarePlanner API</h2>
+
+            <div class="test-group">
+                <h3>5. Cable-Aware Planning</h3>
+                <div class="code">
+<span class="comment">// Plan with cable constraints</span>
+<span class="keyword">const</span> planner = <span class="keyword">new</span> CableAwarePlanner(
+    jointLimits, cableConfig
+);
+<span class="keyword">const</span> result = planner.plan(
+    start, goal, currentTwist, fkCallback
+);
+                </div>
+                <button onclick="testCablePlanning()" id="testPlanningBtn" disabled>Test Planning</button>
+                <div id="planningResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>6. Planning with Collision Check</h3>
+                <div class="code">
+<span class="comment">// Plan with collision checking</span>
+<span class="keyword">const</span> result = planner.planWithCollisionCheck(
+    start, goal, currentTwist,
+    collisionChecker, fkCallback
+);
+                </div>
+                <button onclick="testCablePlanningWithCollision()" id="testCollisionBtn" disabled>Test with Collision</button>
+                <div id="collisionResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Warning Zone Test -->
+        <div class="section">
+            <h2>Twist Limit Scenarios</h2>
+
+            <div class="test-group">
+                <h3>7. Warning Zone Detection</h3>
+                <div class="code">
+<span class="comment">// Test warning zone (75% of limit)</span>
+config.isTwistWarning(twist);
+tracker.isInWarningZone();
+                </div>
+                <button onclick="testWarningZone()" id="testWarningBtn" disabled>Test Warning Zone</button>
+                <div id="warningResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>8. Twist Budget Exhaustion</h3>
+                <div class="code">
+<span class="comment">// Simulate multiple motions</span>
+<span class="keyword">for</span> (motion of motions) {
+    <span class="keyword">if</span> (!tracker.isWithinLimits()) {
+        console.log(<span class="string">"Cable limit reached!"</span>);
+        <span class="keyword">break</span>;
+    }
+}
+                </div>
+                <button onclick="testBudgetExhaustion()" id="testBudgetBtn" disabled>Test Budget Exhaustion</button>
+                <div id="budgetResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Integration Test -->
+        <div class="section full-width">
+            <h2>Integration: Multi-Segment Cable Tracking</h2>
+            <div class="code">
+<span class="comment">// Track cable across multiple motion segments</span>
+<span class="keyword">const</span> tracker = <span class="keyword">new</span> CableTracker(cablePresetStandard());
+
+<span class="keyword">for</span> (<span class="keyword">const</span> segment of segments) {
+    <span class="keyword">const</span> result = planner.plan(segment.start, segment.goal, tracker.currentTwist, fk);
+
+    <span class="keyword">if</span> (result.success) {
+        tracker.updateTwist(result.finalTwist - tracker.currentTwist);
+        console.log(<span class="string">`Segment done. Twist: ${tracker.currentTwist}rad`</span>);
+    }
+
+    <span class="keyword">if</span> (tracker.isInWarningZone()) {
+        console.warn(<span class="string">"Approaching cable limit!"</span>);
+    }
+}
+            </div>
+            <button onclick="testMultiSegment()" id="testMultiSegBtn" disabled>Run Multi-Segment Test</button>
+            <div id="multiSegResult" class="result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, * as wasm from '../trajx_wasm.js';
+
+        window.wasm = wasm;
+
+        // Test URDF
+        const TEST_URDF = `<?xml version="1.0"?>
+<robot name="test_robot">
+  <link name="base_link"/>
+  <link name="link1"/><link name="link2"/><link name="link3"/>
+  <link name="link4"/><link name="link5"/><link name="link6"/>
+  <link name="tool0"/>
+
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/><child link="link1"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="2.0" effort="100"/>
+  </joint>
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/><child link="link2"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" velocity="2.0" effort="100"/>
+  </joint>
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/><child link="link3"/>
+    <origin xyz="0 0 0.3" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="2.5" velocity="2.0" effort="100"/>
+  </joint>
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/><child link="link4"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="3.0" effort="50"/>
+  </joint>
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/><child link="link5"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" velocity="3.0" effort="50"/>
+  </joint>
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/><child link="link6"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="3.0" effort="50"/>
+  </joint>
+  <joint name="tool_joint" type="fixed">
+    <parent link="link6"/><child link="tool0"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+  </joint>
+</robot>`;
+
+        window.TEST_URDF = TEST_URDF;
+        window.robot = null;
+        window.jointLimits = null;
+        window.cableConfig = null;
+        window.tracker = null;
+
+        // Logging
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logEl.innerHTML += `<span class="${type}">[${timestamp}] ${message}</span>\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+        window.log = log;
+
+        window.clearLog = function() {
+            document.getElementById('log').innerHTML = '';
+        };
+
+        function showResult(elementId, content, success = true) {
+            const el = document.getElementById(elementId);
+            el.style.display = 'block';
+            el.style.background = success ? '#d4edda' : '#f8d7da';
+            el.textContent = typeof content === 'object' ? JSON.stringify(content, null, 2) : content;
+        }
+        window.showResult = showResult;
+
+        function updateTwistGauge(twist, maxTwist) {
+            const gauge = document.getElementById('twistGauge');
+            const fill = gauge.querySelector('.fill');
+            const label = gauge.querySelector('.label');
+
+            const absMax = maxTwist;
+            const percentage = Math.min(100, Math.abs(twist) / absMax * 100);
+            const twistDeg = (twist * 180 / Math.PI).toFixed(1);
+            const maxDeg = (maxTwist * 180 / Math.PI).toFixed(0);
+
+            fill.style.width = percentage + '%';
+            label.textContent = `${twistDeg}° / ±${maxDeg}°`;
+
+            gauge.className = 'twist-gauge';
+            if (percentage >= 100) {
+                gauge.classList.add('danger');
+            } else if (percentage >= 75) {
+                gauge.classList.add('warning');
+            } else {
+                gauge.classList.add('safe');
+            }
+        }
+        window.updateTwistGauge = updateTwistGauge;
+
+        function enableButtons() {
+            document.querySelectorAll('button[disabled]').forEach(btn => btn.disabled = false);
+        }
+
+        // FK Callback for twist computation
+        function createFkCallback(robot) {
+            return (joints) => {
+                robot.setJointPositions(Array.from(joints));
+                const pose = robot.forwardKinematics(Array.from(joints));
+                // Return [x, y, z, qx, qy, qz, qw]
+                return new Float64Array([
+                    pose.position.x, pose.position.y, pose.position.z,
+                    pose.quaternion.x, pose.quaternion.y, pose.quaternion.z, pose.quaternion.w
+                ]);
+            };
+        }
+
+        // Collision checker (always valid for demo)
+        function alwaysValidChecker(joints) {
+            return true;
+        }
+
+        // Initialize
+        async function initialize() {
+            try {
+                await init();
+                const version = wasm.version();
+
+                // Create robot
+                window.robot = wasm.createRobot(TEST_URDF);
+                window.robot.setJointPositions([0, 0, 0, 0, 0, 0]);
+
+                // Create joint limits
+                window.jointLimits = new wasm.JointLimits(
+                    [-3.14159, -2.0, -2.5, -3.14159, -2.0, -3.14159],
+                    [3.14159, 2.0, 2.5, 3.14159, 2.0, 3.14159]
+                );
+
+                // Create cable config (note: wasm objects are moved, so create fresh ones when needed)
+                window.cableConfig = wasm.cablePresetStandard();
+                const maxTwist = window.cableConfig.maxTotalTwist;
+
+                // Create tracker with a fresh config (since wasm takes ownership)
+                window.tracker = new wasm.CableTracker(wasm.cablePresetStandard());
+
+                // Update gauge
+                updateTwistGauge(0, maxTwist);
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent =
+                    `WASM Ready! Version: ${version} | Robot: ${robot.name} (${robot.dof} DOF) | Cable: 4π limit`;
+
+                log(`WASM loaded. Version: ${version}`, 'success');
+                log(`Robot created: ${robot.name} with ${robot.dof} DOF`, 'success');
+                log(`Cable config: max twist = ${(maxTwist * 180 / Math.PI).toFixed(0)}°`, 'info');
+
+                enableButtons();
+            } catch (error) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Failed: ${error.message}`;
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test: Cable Config
+        window.testCableConfig = function() {
+            log('--- Testing Cable Configuration ---', 'info');
+            try {
+                const config = new wasm.CableConfig()
+                    .withMaxTotalTwist(4 * Math.PI)
+                    .withMaxTwistRate(Math.PI)
+                    .withWarningThreshold(0.75)
+                    .withAutoUnwind(true);
+
+                log(`Max total twist: ${(config.maxTotalTwist * 180 / Math.PI).toFixed(0)}°`, 'twist');
+                log(`Max twist rate: ${(config.maxTwistRate * 180 / Math.PI).toFixed(0)}°/m`, 'info');
+                log(`Warning threshold: ${(config.warningThreshold * 100).toFixed(0)}%`, 'info');
+                log(`Auto-unwind enabled: ${config.autoUnwindEnabled}`, 'info');
+
+                // Test validity checks
+                log(`Is 180° valid? ${config.isTwistValid(Math.PI)}`, 'info');
+                log(`Is 900° valid? ${config.isTwistValid(5 * Math.PI)}`, 'info');
+                log(`Is 600° warning? ${config.isTwistWarning(10 * Math.PI / 3)}`, 'warn');
+
+                showResult('configResult', {
+                    maxTotalTwist: `${(config.maxTotalTwist * 180 / Math.PI).toFixed(0)}°`,
+                    warningThreshold: `${(config.warningThreshold * 100).toFixed(0)}%`,
+                    autoUnwind: config.autoUnwindEnabled
+                });
+
+                log('Cable config test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('configResult', error.message, false);
+            }
+        };
+
+        // Test: Cable Presets
+        window.testCablePresets = function() {
+            log('--- Testing Cable Presets ---', 'info');
+            try {
+                const standard = wasm.cablePresetStandard();
+                const heavy = wasm.cablePresetHeavyDuty();
+                const light = wasm.cablePresetLight();
+                const precision = wasm.cablePresetPrecision();
+
+                log(`Standard: ${(standard.maxTotalTwist * 180 / Math.PI).toFixed(0)}° (2 rotations)`, 'twist');
+                log(`Heavy-duty: ${(heavy.maxTotalTwist * 180 / Math.PI).toFixed(0)}° (1 rotation)`, 'twist');
+                log(`Light: ${(light.maxTotalTwist * 180 / Math.PI).toFixed(0)}° (4 rotations)`, 'twist');
+                log(`Precision: ${(precision.maxTotalTwist * 180 / Math.PI).toFixed(0)}°, auto-unwind: ${precision.autoUnwindEnabled}`, 'twist');
+
+                showResult('presetsResult', {
+                    standard: `${(standard.maxTotalTwist * 180 / Math.PI).toFixed(0)}°`,
+                    heavyDuty: `${(heavy.maxTotalTwist * 180 / Math.PI).toFixed(0)}°`,
+                    light: `${(light.maxTotalTwist * 180 / Math.PI).toFixed(0)}°`,
+                    precision: `${(precision.maxTotalTwist * 180 / Math.PI).toFixed(0)}° + unwind`
+                });
+
+                log('Cable presets test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('presetsResult', error.message, false);
+            }
+        };
+
+        // Test: Cable Tracker
+        window.testCableTracker = function() {
+            log('--- Testing Cable Tracker ---', 'info');
+            try {
+                // Get max twist value before creating tracker (WASM ownership transfer)
+                const maxTwist = wasm.cablePresetStandard().maxTotalTwist;
+                const tracker = new wasm.CableTracker(wasm.cablePresetStandard());
+
+                log(`Initial twist: ${(tracker.currentTwist * 180 / Math.PI).toFixed(1)}°`, 'twist');
+                log(`Within limits: ${tracker.isWithinLimits()}`, 'info');
+                log(`Remaining budget: ${(tracker.remainingBudget * 180 / Math.PI).toFixed(1)}°`, 'info');
+
+                // Simulate twist updates
+                tracker.updateTwist(Math.PI);
+                log(`After +180°: ${(tracker.currentTwist * 180 / Math.PI).toFixed(1)}°`, 'twist');
+                updateTwistGauge(tracker.currentTwist, maxTwist);
+
+                tracker.updateTwist(Math.PI);
+                log(`After +180°: ${(tracker.currentTwist * 180 / Math.PI).toFixed(1)}°`, 'twist');
+                log(`Remaining: ${(tracker.remainingBudget * 180 / Math.PI).toFixed(1)}°`, 'info');
+                log(`In warning zone: ${tracker.isInWarningZone()}`, tracker.isInWarningZone() ? 'warn' : 'info');
+                updateTwistGauge(tracker.currentTwist, maxTwist);
+
+                tracker.resetTwist();
+                log(`After reset: ${(tracker.currentTwist * 180 / Math.PI).toFixed(1)}°`, 'twist');
+                updateTwistGauge(0, maxTwist);
+
+                showResult('trackerResult', {
+                    tested: true,
+                    updateWorks: true,
+                    resetWorks: tracker.currentTwist === 0
+                });
+
+                log('Cable tracker test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('trackerResult', error.message, false);
+            }
+        };
+
+        // Test: Path Analysis
+        window.testPathAnalysis = function() {
+            log('--- Testing Path Analysis ---', 'info');
+            try {
+                // Get max twist value before creating tracker (WASM ownership transfer)
+                const maxTwist = wasm.cablePresetStandard().maxTotalTwist;
+                const tracker = new wasm.CableTracker(wasm.cablePresetStandard());
+                const fkCallback = createFkCallback(robot);
+
+                // Create a simple path
+                const dof = 6;
+                const pathFlat = [
+                    0, 0, 0, 0, 0, 0,           // Start
+                    0.5, 0.2, -0.2, 0, 0.2, 0.5,  // Mid
+                    1.0, 0.4, -0.4, 0, 0.4, 1.0   // End
+                ];
+
+                const analysis = tracker.analyzePath(pathFlat, dof, fkCallback);
+
+                log(`Waypoint count: ${analysis.waypointCount}`, 'info');
+                log(`Final twist: ${(analysis.finalTwist * 180 / Math.PI).toFixed(2)}°`, 'twist');
+                log(`Max twist: ${(analysis.maxTwist * 180 / Math.PI).toFixed(2)}°`, 'twist');
+                log(`Min twist: ${(analysis.minTwist * 180 / Math.PI).toFixed(2)}°`, 'twist');
+                log(`Twist range: ${(analysis.twistRange * 180 / Math.PI).toFixed(2)}°`, 'info');
+                log(`Exceeds limit: ${analysis.exceedsLimit}`, analysis.exceedsLimit ? 'error' : 'info');
+                log(`In warning zone: ${analysis.inWarningZone}`, analysis.inWarningZone ? 'warn' : 'info');
+
+                // Update tracker
+                tracker.updateTwist(analysis.finalTwist);
+                updateTwistGauge(tracker.currentTwist, maxTwist);
+
+                showResult('analysisResult', {
+                    waypointCount: analysis.waypointCount,
+                    finalTwist: `${(analysis.finalTwist * 180 / Math.PI).toFixed(2)}°`,
+                    twistRange: `${(analysis.twistRange * 180 / Math.PI).toFixed(2)}°`,
+                    exceedsLimit: analysis.exceedsLimit
+                });
+
+                log('Path analysis test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('analysisResult', error.message, false);
+            }
+        };
+
+        // Test: Cable Planning
+        window.testCablePlanning = function() {
+            log('--- Testing Cable-Aware Planning ---', 'info');
+            try {
+                // Get max twist value before creating planner (WASM ownership transfer)
+                const maxTwist = wasm.cablePresetStandard().maxTotalTwist;
+                const birrtConfig = new wasm.CableBiRRTConfig()
+                    .withMaxIterations(3000)
+                    .withMaxExtension(0.3);
+
+                // Create fresh JointLimits for this planner (WASM ownership transfer)
+                const limits = new wasm.JointLimits(
+                    [-3.14159, -2.0, -2.5, -3.14159, -2.0, -3.14159],
+                    [3.14159, 2.0, 2.5, 3.14159, 2.0, 3.14159]
+                );
+                const planner = new wasm.CableAwarePlanner(limits, wasm.cablePresetStandard(), birrtConfig);
+                const fkCallback = createFkCallback(robot);
+
+                const start = [0, 0, 0, 0, 0, 0];
+                const goal = [1.0, 0.5, -0.5, 0.2, 0.5, 1.0];
+
+                log(`Planning from ${start} to ${goal}...`, 'info');
+                const result = planner.plan(start, goal, 0, fkCallback);
+
+                if (result.success) {
+                    log(`Planning succeeded!`, 'success');
+                    log(`Waypoints: ${result.waypointCount}`, 'info');
+                    log(`Final twist: ${(result.finalTwist * 180 / Math.PI).toFixed(2)}°`, 'twist');
+                    log(`Max twist: ${(result.maxTwist * 180 / Math.PI).toFixed(2)}°`, 'twist');
+                    log(`Planning time: ${result.planningTimeMs.toFixed(1)}ms`, 'info');
+                    log(`Nodes explored: ${result.nodesExplored}`, 'info');
+                    log(`Has warning: ${result.hasWarning}`, result.hasWarning ? 'warn' : 'info');
+
+                    updateTwistGauge(result.finalTwist, maxTwist);
+
+                    showResult('planningResult', {
+                        success: true,
+                        waypoints: result.waypointCount,
+                        finalTwist: `${(result.finalTwist * 180 / Math.PI).toFixed(2)}°`,
+                        planningTimeMs: result.planningTimeMs.toFixed(1)
+                    });
+                } else {
+                    log(`Planning failed: ${result.error}`, 'error');
+                    showResult('planningResult', { success: false, error: result.error }, false);
+                }
+
+                log('Cable planning test completed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('planningResult', error.message, false);
+            }
+        };
+
+        // Test: Planning with Collision
+        window.testCablePlanningWithCollision = function() {
+            log('--- Testing Cable Planning with Collision Check ---', 'info');
+            try {
+                // Get max twist value before creating planner (WASM ownership transfer)
+                const maxTwist = wasm.cablePresetStandard().maxTotalTwist;
+                const birrtConfig = new wasm.CableBiRRTConfig()
+                    .withMaxIterations(3000)
+                    .withMaxExtension(0.3);
+
+                // Create fresh JointLimits for this planner (WASM ownership transfer)
+                const limits = new wasm.JointLimits(
+                    [-3.14159, -2.0, -2.5, -3.14159, -2.0, -3.14159],
+                    [3.14159, 2.0, 2.5, 3.14159, 2.0, 3.14159]
+                );
+                const planner = new wasm.CableAwarePlanner(limits, wasm.cablePresetStandard(), birrtConfig);
+                const fkCallback = createFkCallback(robot);
+
+                const start = [0, 0, 0, 0, 0, 0];
+                const goal = [1.5, 0.3, -0.8, 0.1, 0.3, 1.5];
+
+                log(`Planning with collision check...`, 'info');
+                const result = planner.planWithCollisionCheck(
+                    start, goal, 0,
+                    alwaysValidChecker, fkCallback
+                );
+
+                if (result.success) {
+                    log(`Planning with collision check succeeded!`, 'success');
+                    log(`Waypoints: ${result.waypointCount}`, 'info');
+                    log(`Final twist: ${(result.finalTwist * 180 / Math.PI).toFixed(2)}°`, 'twist');
+                    log(`Path length: ${result.pathLength.toFixed(4)} rad`, 'info');
+                    log(`Homotopy class: ${result.homotopyClass}`, 'info');
+
+                    updateTwistGauge(result.finalTwist, maxTwist);
+
+                    showResult('collisionResult', {
+                        success: true,
+                        waypoints: result.waypointCount,
+                        finalTwist: `${(result.finalTwist * 180 / Math.PI).toFixed(2)}°`,
+                        pathLength: result.pathLength.toFixed(4)
+                    });
+                } else {
+                    log(`Planning failed: ${result.error}`, 'error');
+                    showResult('collisionResult', { success: false, error: result.error }, false);
+                }
+
+                log('Collision check planning test completed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('collisionResult', error.message, false);
+            }
+        };
+
+        // Test: Warning Zone
+        window.testWarningZone = function() {
+            log('--- Testing Warning Zone Detection ---', 'info');
+            try {
+                // Create config for reading values (will be moved when passed to tracker)
+                const configForReading = new wasm.CableConfig()
+                    .withMaxTotalTwist(4 * Math.PI)
+                    .withWarningThreshold(0.75);
+                const maxTwist = configForReading.maxTotalTwist;
+                const maxDeg = maxTwist * 180 / Math.PI;
+                const warnDeg = maxDeg * 0.75;
+
+                // Create fresh config for tracker
+                const tracker = new wasm.CableTracker(
+                    new wasm.CableConfig()
+                        .withMaxTotalTwist(4 * Math.PI)
+                        .withWarningThreshold(0.75)
+                );
+
+                // Create another config for validity checks
+                const configForChecks = new wasm.CableConfig()
+                    .withMaxTotalTwist(4 * Math.PI)
+                    .withWarningThreshold(0.75);
+
+                log(`Max twist: ${maxDeg.toFixed(0)}°`, 'info');
+                log(`Warning threshold: ${warnDeg.toFixed(0)}° (75%)`, 'info');
+
+                // Test different twist values
+                const testAngles = [0, 200, 400, 540, 600, 700, 800];
+                for (const deg of testAngles) {
+                    const rad = deg * Math.PI / 180;
+                    const isValid = configForChecks.isTwistValid(rad);
+                    const isWarning = configForChecks.isTwistWarning(rad);
+
+                    let status = 'safe';
+                    if (!isValid) status = 'OVER LIMIT';
+                    else if (isWarning) status = 'WARNING';
+
+                    log(`  ${deg}°: ${status}`, isWarning ? 'warn' : (isValid ? 'info' : 'error'));
+                }
+
+                // Update gauge to warning zone
+                updateTwistGauge(540 * Math.PI / 180, maxTwist);
+
+                showResult('warningResult', {
+                    maxTwist: `${maxDeg.toFixed(0)}°`,
+                    warningAt: `${warnDeg.toFixed(0)}°`,
+                    tested: true
+                });
+
+                log('Warning zone test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('warningResult', error.message, false);
+            }
+        };
+
+        // Test: Budget Exhaustion
+        window.testBudgetExhaustion = function() {
+            log('--- Testing Twist Budget Exhaustion ---', 'info');
+            try {
+                // Get max twist value before creating tracker (WASM ownership transfer)
+                const maxTwist = wasm.cablePresetHeavyDuty().maxTotalTwist; // 2π = 360°
+                const maxDeg = maxTwist * 180 / Math.PI;
+                const tracker = new wasm.CableTracker(wasm.cablePresetHeavyDuty());
+
+                log(`Using heavy-duty cable: ${maxDeg.toFixed(0)}° limit`, 'info');
+                log(`Starting budget: ${(tracker.remainingBudget * 180 / Math.PI).toFixed(0)}°`, 'info');
+
+                // Simulate multiple 90° rotations
+                const rotations = [90, 90, 90, 90, 90]; // 450° total
+                let motionCount = 0;
+
+                for (const deg of rotations) {
+                    const rad = deg * Math.PI / 180;
+
+                    // Check before motion
+                    if (!tracker.isWithinLimits()) {
+                        log(`Motion ${motionCount + 1} blocked: cable limit exceeded!`, 'error');
+                        break;
+                    }
+
+                    // Check if this motion would exceed
+                    if (tracker.currentTwist + rad > maxTwist) {
+                        log(`Motion ${motionCount + 1} would exceed limit, stopping!`, 'warn');
+                        break;
+                    }
+
+                    // Execute motion
+                    tracker.updateTwist(rad);
+                    motionCount++;
+
+                    const currentDeg = tracker.currentTwist * 180 / Math.PI;
+                    const remainingDeg = tracker.remainingBudget * 180 / Math.PI;
+
+                    log(`Motion ${motionCount}: +${deg}° → Total: ${currentDeg.toFixed(0)}°, Remaining: ${remainingDeg.toFixed(0)}°`,
+                        tracker.isInWarningZone() ? 'warn' : 'twist');
+
+                    updateTwistGauge(tracker.currentTwist, maxTwist);
+                }
+
+                log(`Completed ${motionCount} of ${rotations.length} motions before limit`, 'info');
+
+                showResult('budgetResult', {
+                    maxLimit: `${maxDeg.toFixed(0)}°`,
+                    motionsCompleted: motionCount,
+                    motionsPlanned: rotations.length,
+                    finalTwist: `${(tracker.currentTwist * 180 / Math.PI).toFixed(0)}°`,
+                    budgetExhausted: !tracker.isWithinLimits() || tracker.remainingBudget < Math.PI / 2
+                });
+
+                log('Budget exhaustion test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('budgetResult', error.message, false);
+            }
+        };
+
+        // Test: Multi-Segment
+        window.testMultiSegment = function() {
+            log('--- Testing Multi-Segment Cable Tracking ---', 'info');
+            try {
+                // Get max twist value before creating planner/tracker (WASM ownership transfer)
+                const maxTwist = wasm.cablePresetStandard().maxTotalTwist;
+                const birrtConfig = new wasm.CableBiRRTConfig()
+                    .withMaxIterations(2000)
+                    .withMaxExtension(0.3);
+
+                // Create fresh JointLimits for this planner (WASM ownership transfer)
+                const limits = new wasm.JointLimits(
+                    [-3.14159, -2.0, -2.5, -3.14159, -2.0, -3.14159],
+                    [3.14159, 2.0, 2.5, 3.14159, 2.0, 3.14159]
+                );
+                const planner = new wasm.CableAwarePlanner(limits, wasm.cablePresetStandard(), birrtConfig);
+                const tracker = new wasm.CableTracker(wasm.cablePresetStandard());
+                const fkCallback = createFkCallback(robot);
+
+                // Define motion segments (pick and place style)
+                const segments = [
+                    { name: "Approach", start: [0, 0, 0, 0, 0, 0], goal: [0.5, 0.3, -0.3, 0, 0.3, 0.5] },
+                    { name: "Pick", start: [0.5, 0.3, -0.3, 0, 0.3, 0.5], goal: [0.5, 0.3, -0.5, 0, 0.5, 0.5] },
+                    { name: "Retreat", start: [0.5, 0.3, -0.5, 0, 0.5, 0.5], goal: [0.5, 0.3, -0.3, 0, 0.3, 0.5] },
+                    { name: "Transit", start: [0.5, 0.3, -0.3, 0, 0.3, 0.5], goal: [-0.5, 0.3, -0.3, 0, 0.3, -0.5] },
+                    { name: "Place", start: [-0.5, 0.3, -0.3, 0, 0.3, -0.5], goal: [-0.5, 0.3, -0.5, 0, 0.5, -0.5] },
+                ];
+
+                log(`Planning ${segments.length} motion segments...`, 'info');
+                log(`Max twist budget: ${(maxTwist * 180 / Math.PI).toFixed(0)}°`, 'info');
+                log('', 'info');
+
+                let successCount = 0;
+                for (let i = 0; i < segments.length; i++) {
+                    const seg = segments[i];
+                    log(`Segment ${i + 1}: ${seg.name}`, 'info');
+
+                    const result = planner.plan(seg.start, seg.goal, tracker.currentTwist, fkCallback);
+
+                    if (result.success) {
+                        successCount++;
+                        const twistDelta = result.finalTwist - tracker.currentTwist;
+                        tracker.updateTwist(twistDelta);
+
+                        log(`  ✓ Success: ${result.waypointCount} waypoints`, 'success');
+                        log(`  Twist delta: ${(twistDelta * 180 / Math.PI).toFixed(1)}°`, 'twist');
+                        log(`  Accumulated: ${(tracker.currentTwist * 180 / Math.PI).toFixed(1)}°`, 'twist');
+                        log(`  Remaining: ${(tracker.remainingBudget * 180 / Math.PI).toFixed(1)}°`, 'info');
+
+                        if (tracker.isInWarningZone()) {
+                            log(`  ⚠ Warning: Approaching cable limit!`, 'warn');
+                        }
+
+                        updateTwistGauge(tracker.currentTwist, maxTwist);
+                    } else {
+                        log(`  ✗ Failed: ${result.error}`, 'error');
+                    }
+                    log('', 'info');
+                }
+
+                log(`Completed ${successCount}/${segments.length} segments`, 'success');
+                log(`Final twist: ${(tracker.currentTwist * 180 / Math.PI).toFixed(1)}°`, 'twist');
+
+                showResult('multiSegResult', {
+                    segmentsPlanned: segments.length,
+                    segmentsSuccessful: successCount,
+                    finalTwist: `${(tracker.currentTwist * 180 / Math.PI).toFixed(1)}°`,
+                    remainingBudget: `${(tracker.remainingBudget * 180 / Math.PI).toFixed(1)}°`,
+                    withinLimits: tracker.isWithinLimits()
+                });
+
+                log('Multi-segment test completed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('multiSegResult', error.message, false);
+            }
+        };
+
+        // Run all tests
+        window.runAllCableTests = async function() {
+            log('========== RUNNING ALL CABLE TESTS ==========', 'info');
+
+            const tests = [
+                testCableConfig,
+                testCablePresets,
+                testCableTracker,
+                testPathAnalysis,
+                testCablePlanning,
+                testCablePlanningWithCollision,
+                testWarningZone,
+                testBudgetExhaustion,
+                testMultiSegment
+            ];
+
+            for (const test of tests) {
+                try {
+                    test();
+                    log('', 'info');
+                    await new Promise(r => setTimeout(r, 100)); // Small delay for UI
+                } catch (e) {
+                    log(`Test failed: ${e.message}`, 'error');
+                }
+            }
+
+            log('========== ALL CABLE TESTS COMPLETED ==========', 'success');
+        };
+
+        initialize();
+    </script>
+</body>
+</html>

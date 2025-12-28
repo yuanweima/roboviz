@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collision Detection Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        h2 { color: #00d9ff; margin-top: 0; font-size: 18px; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #0f3460;
+        }
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.loading { background: #e6a23c22; color: #e6a23c; border: 1px solid #e6a23c44; }
+        .status.ready { background: #67c23a22; color: #67c23a; border: 1px solid #67c23a44; }
+        .status.error { background: #f56c6c22; color: #f56c6c; border: 1px solid #f56c6c44; }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        button.secondary {
+            background: #0f3460;
+            border: 1px solid #00d9ff;
+        }
+        button.danger {
+            background: linear-gradient(135deg, #f56c6c 0%, #c45050 100%);
+        }
+        button.success {
+            background: linear-gradient(135deg, #67c23a 0%, #4a9e2a 100%);
+        }
+
+        .output {
+            background: #0d1b2a;
+            color: #67c23a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #1e3a5f;
+        }
+
+        .obstacle-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+        .obstacle-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #0d1b2a;
+            border-radius: 6px;
+            margin: 5px 0;
+            border: 1px solid #1e3a5f;
+        }
+        .obstacle-item .name {
+            font-weight: 600;
+            color: #00d9ff;
+        }
+        .obstacle-item .type {
+            color: #888;
+            font-size: 12px;
+        }
+        .obstacle-item button {
+            padding: 5px 10px;
+            font-size: 12px;
+            margin: 0;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+        .input-group label {
+            display: flex;
+            flex-direction: column;
+            color: #aaa;
+            font-size: 12px;
+        }
+        .input-group input, .input-group select {
+            padding: 8px;
+            border: 1px solid #1e3a5f;
+            border-radius: 4px;
+            background: #0d1b2a;
+            color: #eee;
+            font-family: monospace;
+            width: 80px;
+        }
+        .input-group input.wide {
+            width: 150px;
+        }
+        .input-group select {
+            width: 120px;
+        }
+
+        .collision-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 10px 0;
+        }
+        .collision-indicator.clear {
+            background: #67c23a22;
+            color: #67c23a;
+            border: 1px solid #67c23a44;
+        }
+        .collision-indicator.collision {
+            background: #f56c6c22;
+            color: #f56c6c;
+            border: 1px solid #f56c6c44;
+        }
+        .collision-indicator .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .collision-indicator.clear .dot {
+            background: #67c23a;
+            box-shadow: 0 0 8px #67c23a;
+        }
+        .collision-indicator.collision .dot {
+            background: #f56c6c;
+            box-shadow: 0 0 8px #f56c6c;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        .tab {
+            padding: 8px 15px;
+            background: #0f3460;
+            border: 1px solid #1e3a5f;
+            border-radius: 6px 6px 0 0;
+            cursor: pointer;
+            color: #aaa;
+        }
+        .tab.active {
+            background: #16213e;
+            border-bottom-color: #16213e;
+            color: #00d9ff;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: #0d1b2a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #1e3a5f;
+        }
+        .stat-box .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #00d9ff;
+        }
+        .stat-box .label {
+            font-size: 11px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            padding: 8px;
+            background: #0d1b2a;
+            border-radius: 6px;
+        }
+        .slider-group label {
+            width: 80px;
+            font-weight: 500;
+            color: #aaa;
+        }
+        .slider-group input[type="range"] {
+            flex: 1;
+            margin: 0 10px;
+            accent-color: #00d9ff;
+        }
+        .slider-group span {
+            width: 80px;
+            text-align: right;
+            font-family: monospace;
+            color: #00d9ff;
+        }
+    </style>
+</head>
+<body>
+    <h1>Collision Detection Demo</h1>
+    <p class="subtitle">Demonstrates CollisionEnvironment, WasmCompositeObstacle, shape collision checking, and ACM management</p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="grid">
+        <!-- Environment Management -->
+        <div class="card">
+            <h2>1. Collision Environment</h2>
+            <p style="color: #888; font-size: 13px;">Add, remove, and manage obstacles</p>
+
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('simple')">Simple Shapes</div>
+                <div class="tab" onclick="switchTab('composite')">Composite</div>
+            </div>
+
+            <div id="tab-simple" class="tab-content active">
+                <div class="input-group">
+                    <label>
+                        ID
+                        <input type="text" id="obs-id" value="box1" class="wide">
+                    </label>
+                    <label>
+                        Type
+                        <select id="obs-type" onchange="updateShapeInputs()">
+                            <option value="box">Box</option>
+                            <option value="sphere">Sphere</option>
+                            <option value="cylinder">Cylinder</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div id="shape-params">
+                    <div class="input-group" id="box-params">
+                        <label>Half X <input type="number" id="box-hx" value="0.1" step="0.01"></label>
+                        <label>Half Y <input type="number" id="box-hy" value="0.1" step="0.01"></label>
+                        <label>Half Z <input type="number" id="box-hz" value="0.1" step="0.01"></label>
+                    </div>
+                    <div class="input-group" id="sphere-params" style="display:none;">
+                        <label>Radius <input type="number" id="sphere-r" value="0.1" step="0.01"></label>
+                    </div>
+                    <div class="input-group" id="cylinder-params" style="display:none;">
+                        <label>Radius <input type="number" id="cyl-r" value="0.05" step="0.01"></label>
+                        <label>Half Height <input type="number" id="cyl-hh" value="0.1" step="0.01"></label>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Pos X <input type="number" id="obs-px" value="0.5" step="0.1"></label>
+                    <label>Pos Y <input type="number" id="obs-py" value="0" step="0.1"></label>
+                    <label>Pos Z <input type="number" id="obs-pz" value="0.3" step="0.1"></label>
+                </div>
+
+                <button onclick="addObstacle()">Add Obstacle</button>
+                <button class="secondary" onclick="loadPresetScene()">Load Preset Scene</button>
+            </div>
+
+            <div id="tab-composite" class="tab-content">
+                <div class="input-group">
+                    <label>
+                        Composite ID
+                        <input type="text" id="comp-id" value="workpiece" class="wide">
+                    </label>
+                </div>
+                <button onclick="createCompositeObstacle()">Create L-Bracket</button>
+                <button class="secondary" onclick="createTableWithLegs()">Create Table</button>
+            </div>
+
+            <div class="obstacle-list" id="obstacle-list">
+                <p style="color: #888; text-align: center;">No obstacles yet</p>
+            </div>
+
+            <button class="danger" onclick="clearAllObstacles()">Clear All</button>
+        </div>
+
+        <!-- Shape Collision Checking -->
+        <div class="card">
+            <h2>2. Shape Collision Test</h2>
+            <p style="color: #888; font-size: 13px;">Check if a query shape collides with obstacles</p>
+
+            <div class="input-group">
+                <label>
+                    Query Shape
+                    <select id="query-type">
+                        <option value="sphere">Sphere</option>
+                        <option value="box">Box</option>
+                    </select>
+                </label>
+                <label>
+                    Size
+                    <input type="number" id="query-size" value="0.05" step="0.01">
+                </label>
+            </div>
+
+            <div class="slider-group">
+                <label>X</label>
+                <input type="range" id="query-x" min="-1" max="1" step="0.01" value="0" oninput="updateQueryPosition()">
+                <span id="query-x-val">0.00</span>
+            </div>
+            <div class="slider-group">
+                <label>Y</label>
+                <input type="range" id="query-y" min="-1" max="1" step="0.01" value="0" oninput="updateQueryPosition()">
+                <span id="query-y-val">0.00</span>
+            </div>
+            <div class="slider-group">
+                <label>Z</label>
+                <input type="range" id="query-z" min="0" max="1" step="0.01" value="0.3" oninput="updateQueryPosition()">
+                <span id="query-z-val">0.30</span>
+            </div>
+
+            <div id="collision-result" class="collision-indicator clear">
+                <div class="dot"></div>
+                <span>No Collision</span>
+            </div>
+
+            <button onclick="checkShapeCollision()">Check Collision</button>
+            <button class="secondary" onclick="animateCollisionScan()">Animate Scan</button>
+        </div>
+
+        <!-- ACM Management -->
+        <div class="card">
+            <h2>3. Allowed Collision Matrix (ACM)</h2>
+            <p style="color: #888; font-size: 13px;">Manage link-obstacle collision pairs to ignore</p>
+
+            <div class="input-group">
+                <label>
+                    Link Name
+                    <input type="text" id="acm-link" value="link1" class="wide">
+                </label>
+                <label>
+                    Obstacle ID
+                    <input type="text" id="acm-obstacle" value="table" class="wide">
+                </label>
+            </div>
+
+            <button onclick="ignorePair()">Ignore Pair</button>
+            <button class="secondary" onclick="unignorePair()">Unignore Pair</button>
+            <button onclick="ignoreLink()">Ignore Link</button>
+            <button onclick="ignoreObstacle()">Ignore Obstacle</button>
+
+            <div class="output" id="acm-output">ACM is empty - all collisions will be checked</div>
+        </div>
+
+        <!-- Composite Obstacle Demo -->
+        <div class="card">
+            <h2>4. Moving Composite Obstacle</h2>
+            <p style="color: #888; font-size: 13px;">Demonstrate composite obstacle pose updates</p>
+
+            <div class="slider-group">
+                <label>X Position</label>
+                <input type="range" id="comp-x" min="-1" max="1" step="0.01" value="0" oninput="updateCompositePose()">
+                <span id="comp-x-val">0.00</span>
+            </div>
+            <div class="slider-group">
+                <label>Y Position</label>
+                <input type="range" id="comp-y" min="-1" max="1" step="0.01" value="0" oninput="updateCompositePose()">
+                <span id="comp-y-val">0.00</span>
+            </div>
+            <div class="slider-group">
+                <label>Z Position</label>
+                <input type="range" id="comp-z" min="0" max="1" step="0.01" value="0.3" oninput="updateCompositePose()">
+                <span id="comp-z-val">0.30</span>
+            </div>
+            <div class="slider-group">
+                <label>Rotation (Z)</label>
+                <input type="range" id="comp-rot" min="0" max="360" step="1" value="0" oninput="updateCompositePose()">
+                <span id="comp-rot-val">0</span>
+            </div>
+
+            <button onclick="animateComposite()">Animate</button>
+            <button class="secondary" onclick="stopAnimation()">Stop</button>
+        </div>
+
+        <!-- Statistics -->
+        <div class="card full-width">
+            <h2>5. Environment Statistics</h2>
+
+            <div class="stats-grid">
+                <div class="stat-box">
+                    <div class="value" id="stat-simple">0</div>
+                    <div class="label">Simple Obstacles</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="stat-composite">0</div>
+                    <div class="label">Composite Obstacles</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="stat-total">0</div>
+                    <div class="label">Total Obstacles</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="stat-acm">0</div>
+                    <div class="label">ACM Entries</div>
+                </div>
+            </div>
+
+            <div class="output" id="env-output">Environment is empty. Add some obstacles to get started.</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, {
+            CollisionEnvironment,
+            WasmCompositeObstacle,
+            Pose,
+            Position,
+            Quaternion
+        } from '../trajx_wasm.js';
+
+        let env = null;
+        let animationId = null;
+
+        // Initialize WASM
+        async function initialize() {
+            try {
+                await init();
+
+                // Check if collision feature is available
+                if (typeof CollisionEnvironment === 'undefined') {
+                    throw new Error('Collision feature not enabled. Build with: wasm-pack build --features collision');
+                }
+
+                env = new CollisionEnvironment();
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = 'WASM loaded with collision support. Ready to add obstacles!';
+
+                updateStats();
+                console.log('trajx-wasm collision module initialized');
+            } catch (err) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Error: ${err.message}`;
+                console.error(err);
+            }
+        }
+
+        // Tab switching
+        window.switchTab = function(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelector(`.tab-content#tab-${tab}`).classList.add('active');
+            document.querySelector(`.tab:nth-child(${tab === 'simple' ? 1 : 2})`).classList.add('active');
+        };
+
+        // Update shape input visibility
+        window.updateShapeInputs = function() {
+            const type = document.getElementById('obs-type').value;
+            document.getElementById('box-params').style.display = type === 'box' ? 'flex' : 'none';
+            document.getElementById('sphere-params').style.display = type === 'sphere' ? 'flex' : 'none';
+            document.getElementById('cylinder-params').style.display = type === 'cylinder' ? 'flex' : 'none';
+        };
+
+        // Add obstacle
+        window.addObstacle = function() {
+            if (!env) return;
+
+            const id = document.getElementById('obs-id').value;
+            const type = document.getElementById('obs-type').value;
+            const px = parseFloat(document.getElementById('obs-px').value);
+            const py = parseFloat(document.getElementById('obs-py').value);
+            const pz = parseFloat(document.getElementById('obs-pz').value);
+
+            try {
+                const pose = new Pose(
+                    new Position(px, py, pz),
+                    new Quaternion(0, 0, 0, 1)
+                );
+
+                switch (type) {
+                    case 'box':
+                        const hx = parseFloat(document.getElementById('box-hx').value);
+                        const hy = parseFloat(document.getElementById('box-hy').value);
+                        const hz = parseFloat(document.getElementById('box-hz').value);
+                        env.addBox(id, [hx, hy, hz], pose);
+                        break;
+                    case 'sphere':
+                        const r = parseFloat(document.getElementById('sphere-r').value);
+                        env.addSphere(id, r, [px, py, pz]);
+                        break;
+                    case 'cylinder':
+                        const cr = parseFloat(document.getElementById('cyl-r').value);
+                        const chh = parseFloat(document.getElementById('cyl-hh').value);
+                        env.addCylinder(id, cr, chh, pose);
+                        break;
+                }
+
+                updateObstacleList();
+                updateStats();
+                logToOutput(`Added ${type} obstacle: ${id} at (${px.toFixed(2)}, ${py.toFixed(2)}, ${pz.toFixed(2)})`);
+            } catch (err) {
+                logToOutput(`Error: ${err.message}`, true);
+            }
+        };
+
+        // Load preset scene
+        window.loadPresetScene = function() {
+            if (!env) return;
+
+            try {
+                // Add table
+                const tablePose = new Pose(
+                    new Position(0.5, 0, 0.4),
+                    new Quaternion(0, 0, 0, 1)
+                );
+                env.addBox('table', [0.3, 0.2, 0.02], tablePose);
+
+                // Add some objects on the table
+                env.addSphere('ball', 0.05, [0.4, 0.1, 0.47]);
+
+                const cylinderPose = new Pose(
+                    new Position(0.6, -0.1, 0.5),
+                    new Quaternion(0, 0, 0, 1)
+                );
+                env.addCylinder('can', 0.03, 0.06, cylinderPose);
+
+                // Add wall behind
+                const wallPose = new Pose(
+                    new Position(0.9, 0, 0.5),
+                    new Quaternion(0, 0, 0, 1)
+                );
+                env.addBox('wall', [0.02, 0.5, 0.5], wallPose);
+
+                updateObstacleList();
+                updateStats();
+                logToOutput('Loaded preset scene: table, ball, can, wall');
+            } catch (err) {
+                logToOutput(`Error: ${err.message}`, true);
+            }
+        };
+
+        // Create composite obstacle (L-bracket)
+        window.createCompositeObstacle = function() {
+            if (!env) return;
+
+            const id = document.getElementById('comp-id').value;
+
+            try {
+                const composite = new WasmCompositeObstacle(id);
+
+                // Horizontal part
+                composite.addBoxPart('horizontal', [0.1, 0.02, 0.02], [0, 0, 0], [0, 0, 0, 1]);
+
+                // Vertical part
+                composite.addBoxPart('vertical', [0.02, 0.02, 0.1], [-0.08, 0, 0.08], [0, 0, 0, 1]);
+
+                env.addCompositeObstacle(composite);
+
+                updateObstacleList();
+                updateStats();
+                logToOutput(`Created L-bracket composite obstacle: ${id}`);
+            } catch (err) {
+                logToOutput(`Error: ${err.message}`, true);
+            }
+        };
+
+        // Create table with legs
+        window.createTableWithLegs = function() {
+            if (!env) return;
+
+            try {
+                const table = new WasmCompositeObstacle('table-composite');
+
+                // Table top
+                table.addBoxPart('top', [0.3, 0.2, 0.02], [0, 0, 0.5], [0, 0, 0, 1]);
+
+                // Four legs
+                const legHeight = 0.24;
+                const legRadius = 0.02;
+                table.addCylinderPart('leg1', legRadius, legHeight, [-0.25, -0.15, 0.25], [0, 0, 0, 1]);
+                table.addCylinderPart('leg2', legRadius, legHeight, [0.25, -0.15, 0.25], [0, 0, 0, 1]);
+                table.addCylinderPart('leg3', legRadius, legHeight, [-0.25, 0.15, 0.25], [0, 0, 0, 1]);
+                table.addCylinderPart('leg4', legRadius, legHeight, [0.25, 0.15, 0.25], [0, 0, 0, 1]);
+
+                env.addCompositeObstacle(table);
+
+                updateObstacleList();
+                updateStats();
+                logToOutput(`Created table with 4 legs as composite obstacle`);
+            } catch (err) {
+                logToOutput(`Error: ${err.message}`, true);
+            }
+        };
+
+        // Remove obstacle
+        window.removeObstacle = function(id) {
+            if (!env) return;
+
+            const removed = env.removeAnyObstacle(id);
+            if (removed) {
+                logToOutput(`Removed obstacle: ${id}`);
+            } else {
+                logToOutput(`Obstacle not found: ${id}`, true);
+            }
+            updateObstacleList();
+            updateStats();
+        };
+
+        // Clear all obstacles
+        window.clearAllObstacles = function() {
+            if (!env) return;
+
+            env.clear();
+            updateObstacleList();
+            updateStats();
+            logToOutput('Cleared all obstacles');
+        };
+
+        // Update obstacle list
+        function updateObstacleList() {
+            const list = document.getElementById('obstacle-list');
+            const simpleIds = env.obstacleIds();
+            const compositeIds = env.compositeObstacleIds();
+
+            if (simpleIds.length === 0 && compositeIds.length === 0) {
+                list.innerHTML = '<p style="color: #888; text-align: center;">No obstacles yet</p>';
+                return;
+            }
+
+            let html = '';
+
+            for (const id of simpleIds) {
+                html += `
+                    <div class="obstacle-item">
+                        <div>
+                            <span class="name">${id}</span>
+                            <span class="type">Simple</span>
+                        </div>
+                        <button class="danger" onclick="removeObstacle('${id}')">Remove</button>
+                    </div>
+                `;
+            }
+
+            for (const id of compositeIds) {
+                html += `
+                    <div class="obstacle-item">
+                        <div>
+                            <span class="name">${id}</span>
+                            <span class="type">Composite</span>
+                        </div>
+                        <button class="danger" onclick="removeObstacle('${id}')">Remove</button>
+                    </div>
+                `;
+            }
+
+            list.innerHTML = html;
+        }
+
+        // Update statistics
+        function updateStats() {
+            if (!env) return;
+
+            document.getElementById('stat-simple').textContent = env.numObstacles;
+            document.getElementById('stat-composite').textContent = env.numCompositeObstacles;
+            document.getElementById('stat-total').textContent = env.totalObstacles;
+            document.getElementById('stat-acm').textContent = env.getIgnoredLinks().length + env.getIgnoredObstacles().length;
+        }
+
+        // Check shape collision
+        window.updateQueryPosition = function() {
+            const x = parseFloat(document.getElementById('query-x').value);
+            const y = parseFloat(document.getElementById('query-y').value);
+            const z = parseFloat(document.getElementById('query-z').value);
+
+            document.getElementById('query-x-val').textContent = x.toFixed(2);
+            document.getElementById('query-y-val').textContent = y.toFixed(2);
+            document.getElementById('query-z-val').textContent = z.toFixed(2);
+
+            checkShapeCollision();
+        };
+
+        window.checkShapeCollision = function() {
+            if (!env) return;
+
+            const type = document.getElementById('query-type').value;
+            const size = parseFloat(document.getElementById('query-size').value);
+            const x = parseFloat(document.getElementById('query-x').value);
+            const y = parseFloat(document.getElementById('query-y').value);
+            const z = parseFloat(document.getElementById('query-z').value);
+
+            try {
+                const pose = new Pose(
+                    new Position(x, y, z),
+                    new Quaternion(0, 0, 0, 1)
+                );
+
+                let params;
+                if (type === 'sphere') {
+                    params = [size];
+                } else {
+                    params = [size, size, size];
+                }
+
+                const inCollision = env.checkShapeCollision(type, params, pose);
+
+                const indicator = document.getElementById('collision-result');
+                if (inCollision) {
+                    indicator.className = 'collision-indicator collision';
+                    indicator.innerHTML = '<div class="dot"></div><span>COLLISION DETECTED!</span>';
+                } else {
+                    indicator.className = 'collision-indicator clear';
+                    indicator.innerHTML = '<div class="dot"></div><span>No Collision</span>';
+                }
+            } catch (err) {
+                logToOutput(`Collision check error: ${err.message}`, true);
+            }
+        };
+
+        // Animate collision scan
+        window.animateCollisionScan = function() {
+            if (animationId) cancelAnimationFrame(animationId);
+
+            let angle = 0;
+            const radius = 0.5;
+
+            function animate() {
+                angle += 0.02;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius * 0.5;
+                const z = 0.3 + Math.sin(angle * 2) * 0.2;
+
+                document.getElementById('query-x').value = x;
+                document.getElementById('query-y').value = y;
+                document.getElementById('query-z').value = z;
+                document.getElementById('query-x-val').textContent = x.toFixed(2);
+                document.getElementById('query-y-val').textContent = y.toFixed(2);
+                document.getElementById('query-z-val').textContent = z.toFixed(2);
+
+                checkShapeCollision();
+
+                animationId = requestAnimationFrame(animate);
+            }
+
+            animate();
+        };
+
+        // ACM Management
+        window.ignorePair = function() {
+            if (!env) return;
+            const link = document.getElementById('acm-link').value;
+            const obstacle = document.getElementById('acm-obstacle').value;
+            env.ignoreLinkObstaclePair(link, obstacle);
+            updateAcmOutput();
+            logToOutput(`Ignoring collision between ${link} and ${obstacle}`);
+        };
+
+        window.unignorePair = function() {
+            if (!env) return;
+            const link = document.getElementById('acm-link').value;
+            const obstacle = document.getElementById('acm-obstacle').value;
+            env.unignoreLinkObstaclePair(link, obstacle);
+            updateAcmOutput();
+            logToOutput(`No longer ignoring collision between ${link} and ${obstacle}`);
+        };
+
+        window.ignoreLink = function() {
+            if (!env) return;
+            const link = document.getElementById('acm-link').value;
+            env.ignoreLink(link);
+            updateAcmOutput();
+            updateStats();
+            logToOutput(`Ignoring all collisions for link: ${link}`);
+        };
+
+        window.ignoreObstacle = function() {
+            if (!env) return;
+            const obstacle = document.getElementById('acm-obstacle').value;
+            env.ignoreObstacle(obstacle);
+            updateAcmOutput();
+            updateStats();
+            logToOutput(`Ignoring all collisions for obstacle: ${obstacle}`);
+        };
+
+        function updateAcmOutput() {
+            const output = document.getElementById('acm-output');
+            const ignoredLinks = env.getIgnoredLinks();
+            const ignoredObstacles = env.getIgnoredObstacles();
+
+            let text = 'Allowed Collision Matrix Status:\n';
+            text += '================================\n\n';
+
+            if (ignoredLinks.length > 0) {
+                text += `Ignored Links: ${ignoredLinks.join(', ')}\n`;
+            }
+            if (ignoredObstacles.length > 0) {
+                text += `Ignored Obstacles: ${ignoredObstacles.join(', ')}\n`;
+            }
+            if (ignoredLinks.length === 0 && ignoredObstacles.length === 0) {
+                text += 'No entries - all collisions will be checked\n';
+            }
+
+            output.textContent = text;
+        }
+
+        // Composite obstacle pose update
+        window.updateCompositePose = function() {
+            if (!env) return;
+
+            const x = parseFloat(document.getElementById('comp-x').value);
+            const y = parseFloat(document.getElementById('comp-y').value);
+            const z = parseFloat(document.getElementById('comp-z').value);
+            const rot = parseFloat(document.getElementById('comp-rot').value) * Math.PI / 180;
+
+            document.getElementById('comp-x-val').textContent = x.toFixed(2);
+            document.getElementById('comp-y-val').textContent = y.toFixed(2);
+            document.getElementById('comp-z-val').textContent = z.toFixed(2);
+            document.getElementById('comp-rot-val').textContent = Math.round(rot * 180 / Math.PI) + '°';
+
+            // Calculate quaternion from Z rotation
+            const qw = Math.cos(rot / 2);
+            const qz = Math.sin(rot / 2);
+
+            const compositeIds = env.compositeObstacleIds();
+            if (compositeIds.length === 0) return;
+
+            try {
+                const pose = new Pose(
+                    new Position(x, y, z),
+                    new Quaternion(0, 0, qz, qw)
+                );
+                env.updateCompositeObstaclePose(compositeIds[0], pose);
+            } catch (err) {
+                // Ignore errors when no composite exists
+            }
+        };
+
+        // Animate composite
+        window.animateComposite = function() {
+            if (animationId) cancelAnimationFrame(animationId);
+
+            let t = 0;
+
+            function animate() {
+                t += 0.02;
+
+                const x = Math.sin(t) * 0.3;
+                const y = Math.cos(t * 0.7) * 0.2;
+                const z = 0.3 + Math.sin(t * 0.5) * 0.1;
+                const rot = t * 50;
+
+                document.getElementById('comp-x').value = x;
+                document.getElementById('comp-y').value = y;
+                document.getElementById('comp-z').value = z;
+                document.getElementById('comp-rot').value = rot % 360;
+
+                updateCompositePose();
+
+                animationId = requestAnimationFrame(animate);
+            }
+
+            animate();
+        };
+
+        window.stopAnimation = function() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        };
+
+        // Logging
+        function logToOutput(message, isError = false) {
+            const output = document.getElementById('env-output');
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = isError ? '[ERROR]' : '[INFO]';
+            output.textContent = `${timestamp} ${prefix} ${message}\n` + output.textContent;
+        }
+
+        // Start initialization
+        initialize();
+    </script>
+</body>
+</html>

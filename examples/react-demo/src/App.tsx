@@ -8,6 +8,7 @@ import { StatusBar } from './components/StatusBar';
 import { WeldingScene } from './modules/scenes/WeldingScene';
 import { GrindingScene } from './modules/scenes/GrindingScene';
 import { InspectionScene } from './modules/scenes/InspectionScene';
+import { CableManagementScene } from './modules/scenes/CableManagementScene';
 
 // Core Features
 import { RobotModule } from './modules/RobotModule';
@@ -41,6 +42,7 @@ export type ModuleType =
   | 'welding'
   | 'grinding'
   | 'inspection'
+  | 'cable-management'
   // Core Features
   | 'robot'
   | 'workpoint'
@@ -68,6 +70,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'welding': WeldingScene,
   'grinding': GrindingScene,
   'inspection': InspectionScene,
+  'cable-management': CableManagementScene,
   // Core Features
   'robot': RobotModule,
   'workpoint': WorkpointModule,
@@ -92,7 +95,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
 };
 
 // Process scenes that don't use Leva
-const PROCESS_SCENES: ModuleType[] = ['welding', 'grinding', 'inspection'];
+const PROCESS_SCENES: ModuleType[] = ['welding', 'grinding', 'inspection', 'cable-management'];
 
 export default function App() {
   // TEST: Start with inspection scene to verify first load works

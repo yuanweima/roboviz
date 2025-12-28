@@ -48,3 +48,6 @@ export * from './collision-preview';
 
 // Angle Lock Capability
 export * from './angle-lock';
+
+// Cable Management Capability
+export * from './cable-management';

@@ -189,7 +189,24 @@ interface TrajxDhDatabase {
   readonly len: number;
 }
 
-// Motion-Centric API types (NEW in daegu)
+// Cable Management API types (NEW in melbourne)
+interface TrajxCableConfig {
+  readonly initialTwist: number;
+  readonly maxTwistRate: number;
+  readonly maxTotalTwist: number;
+  readonly warningThreshold: number;
+  readonly autoUnwindEnabled: boolean;
+  isTwistValid(twist: number): boolean;
+  isTwistWarning(twist: number): boolean;
+  withAutoUnwind(enabled: boolean): TrajxCableConfig;
+  withInitialTwist(twist: number): TrajxCableConfig;
+  withMaxTwistRate(rate: number): TrajxCableConfig;
+  withMaxTotalTwist(maxTwist: number): TrajxCableConfig;
+  withWarningThreshold(threshold: number): TrajxCableConfig;
+  free(): void;
+}
+
+// Motion-Centric API types (NEW in daegu, enhanced in melbourne with cable support)
 interface TrajxMotionResult {
   readonly executed: boolean;
   readonly dof: number;
@@ -198,6 +215,12 @@ interface TrajxMotionResult {
   readonly pathLength: number;
   readonly planningTimeMs: number;
   readonly collisionFree: boolean;
+  // Cable tracking results (NEW in melbourne)
+  readonly hasCableTracking: boolean;
+  readonly cableTwist: number | undefined;
+  readonly cableWarning: boolean;
+  readonly cableExceeded: boolean;
+  readonly cableMaxTwist: number | undefined;
   getPositionsAt(index: number): number[];
   getTimeAt(index: number): number;
   getTrajectory(): number[];
@@ -220,6 +243,11 @@ interface TrajxWasmMotion {
   verified(): TrajxWasmMotion;
   adaptive(): TrajxWasmMotion;
   dwellMs(ms: number): TrajxWasmMotion;
+  // Cable-aware motion planning (NEW in melbourne)
+  cableAware(): TrajxWasmMotion;
+  cableTrack(): TrajxWasmMotion;
+  cableAwareWith(config: TrajxCableConfig): TrajxWasmMotion;
+  withCableTwist(twist: number): TrajxWasmMotion;
   run(robot: TrajxUrdfRobot): TrajxMotionResult;
   plan(robot: TrajxUrdfRobot): TrajxMotionResult;
 }
@@ -234,6 +262,10 @@ interface TrajxWasmPath {
 interface TrajxWasmSequence {
   start(motion: TrajxWasmMotion): TrajxWasmSequence;
   then(motion: TrajxWasmMotion): TrajxWasmSequence;
+  // Cable-aware sequence planning (NEW in melbourne)
+  cableAware(): TrajxWasmSequence;
+  cableAwareWith(config: TrajxCableConfig): TrajxWasmSequence;
+  withCableTwist(twist: number): TrajxWasmSequence;
   run(robot: TrajxUrdfRobot): TrajxMotionResult;
 }
 
@@ -280,7 +312,20 @@ interface TrajxModule {
   WasmSequence: {
     start(motion: TrajxWasmMotion): TrajxWasmSequence;
   };
+  // Cable Management API (NEW in melbourne - integrated into WasmMotion/WasmSequence)
+  CableConfig: new () => TrajxCableConfig;
+  // Cable presets
+  cablePresetStandard(): TrajxCableConfig;
+  cablePresetHeavyDuty(): TrajxCableConfig;
+  cablePresetPrecision(): TrajxCableConfig;
+  cablePresetLight(): TrajxCableConfig;
 }
+
+// Export cable types for external use
+export type {
+  TrajxCableConfig,
+  TrajxMotionResult,
+};
 
 // ============================================================================
 // Robot Solver Wrapper
@@ -1493,6 +1538,63 @@ class KinematicsManager {
       throw new Error('Kinematics not initialized');
     }
     return this.trajx.WasmTcpPoint.simple(name, x, y, z);
+  }
+
+  // ============================================================================
+  // Cable Management API (NEW in melbourne)
+  // ============================================================================
+
+  /**
+   * Create a cable configuration with default settings
+   * - max_total_twist: 4*PI (2 full rotations)
+   * - max_twist_rate: PI rad/m
+   * - enable_auto_unwind: true
+   */
+  createCableConfig(): TrajxCableConfig {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return new this.trajx.CableConfig();
+  }
+
+  /**
+   * Get standard cable preset (4π limit, 2 full rotations)
+   */
+  getCablePresetStandard(): TrajxCableConfig {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return this.trajx.cablePresetStandard();
+  }
+
+  /**
+   * Get heavy-duty cable preset (2π limit, 1 full rotation)
+   */
+  getCablePresetHeavyDuty(): TrajxCableConfig {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return this.trajx.cablePresetHeavyDuty();
+  }
+
+  /**
+   * Get precision cable preset (2π limit with auto-unwind)
+   */
+  getCablePresetPrecision(): TrajxCableConfig {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return this.trajx.cablePresetPrecision();
+  }
+
+  /**
+   * Get light cable preset (8π limit, 4 full rotations)
+   */
+  getCablePresetLight(): TrajxCableConfig {
+    if (!this.trajx) {
+      throw new Error('Kinematics not initialized');
+    }
+    return this.trajx.cablePresetLight();
   }
 
   // ============================================================================
