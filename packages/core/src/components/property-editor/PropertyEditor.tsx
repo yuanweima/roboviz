@@ -41,6 +41,10 @@ const DARK_THEME_VARS: Record<string, string> = {
   '--pe-slider-track': '#4b5563',
   '--pe-button-bg': '#2d2d44',
   '--pe-button-border': '#4b5563',
+  // Dropdown specific
+  '--pe-dropdown-bg': '#2d2d44',
+  '--pe-selected-bg': 'rgba(59, 130, 246, 0.25)',
+  '--pe-hover-bg': 'rgba(255, 255, 255, 0.08)',
 };
 
 /** Light theme CSS variables */
@@ -66,6 +70,10 @@ const LIGHT_THEME_VARS: Record<string, string> = {
   '--pe-slider-track': '#e5e7eb',
   '--pe-button-bg': '#ffffff',
   '--pe-button-border': '#d1d5db',
+  // Dropdown specific
+  '--pe-dropdown-bg': '#ffffff',
+  '--pe-selected-bg': '#eff6ff',
+  '--pe-hover-bg': '#f3f4f6',
 };
 
 export function PropertyEditor<T extends Record<string, unknown> = Record<string, unknown>>({

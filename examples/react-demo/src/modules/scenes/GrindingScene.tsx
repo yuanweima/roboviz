@@ -32,6 +32,11 @@ import {
   computeTcpFromMetadata,
   // History hook for undo/redo
   usePropertyHistory,
+  // Rendering system
+  RenderPipeline,
+  EnvironmentSystem,
+  SKYBOX_PRESETS,
+  QUALITY_PRESETS,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import {
@@ -449,6 +454,44 @@ function RegionSelectorPanel({
 // 3D Scene Content
 // ============================================================================
 
+// Static environment and render configs - defined outside component to prevent re-creation
+const GRINDING_ENVIRONMENT_CONFIG = {
+  ...SKYBOX_PRESETS.industrial2,
+  fog: {
+    ...SKYBOX_PRESETS.industrial2.fog!,
+    enabled: true,
+    color: '#080812',
+    near: 6,
+    far: 30,
+  },
+};
+
+const GRINDING_RENDER_CONFIG = {
+  ...QUALITY_PRESETS.high,
+  qualityPreset: 'high' as const,
+  postProcessing: {
+    ...QUALITY_PRESETS.high.postProcessing!,
+    enabled: true,
+    ssao: {
+      ...QUALITY_PRESETS.high.postProcessing!.ssao,
+      enabled: true,
+      intensity: 0.5,
+      radius: 0.4,
+    },
+    bloom: {
+      ...QUALITY_PRESETS.high.postProcessing!.bloom,
+      enabled: true,
+      intensity: 0.4,
+      threshold: 0.8,
+    },
+    vignette: {
+      ...QUALITY_PRESETS.high.postProcessing!.vignette,
+      enabled: true,
+      darkness: 0.25,
+    },
+  },
+};
+
 function GrindingSceneContent({
   regions,
   selectedRegionId,
@@ -476,37 +519,39 @@ function GrindingSceneContent({
   }, [onRegionHover]);
 
   return (
-    <>
-      <ProcessScene
-        urdfPath={URDF_PATH}
-        showGhost={true}
-        showTrajectory={true}
-        trajectoryColor={THEME.primary}
-      >
-        <EndEffector showAxes={false}>
-          <GrindingWheel color={THEME.accent} isActive={isGrinding} rpm={3000} scale={0.8} />
-        </EndEffector>
-      </ProcessScene>
+    <EnvironmentSystem config={GRINDING_ENVIRONMENT_CONFIG}>
+      <RenderPipeline config={GRINDING_RENDER_CONFIG}>
+        <ProcessScene
+          urdfPath={URDF_PATH}
+          showGhost={true}
+          showTrajectory={true}
+          trajectoryColor={THEME.primary}
+        >
+          <EndEffector showAxes={false}>
+            <GrindingWheel color={THEME.accent} isActive={isGrinding} rpm={3000} scale={0.8} />
+          </EndEffector>
+        </ProcessScene>
 
-      {/* Multi-faced polyhedron workpiece */}
-      <PolyhedronWorkpiece
-        position={[0.5, 0, 0]}
-        scale={1}
-        highlightedRegionId={highlightedRegionId}
-        selectedRegionId={selectedRegionId}
-        activeRegionId={grindingRegionId}
-        grindingProgress={grindingProgress}
-        onRegionClick={onRegionSelect}
-        onRegionHover={handleHover}
-      />
+        {/* Multi-faced polyhedron workpiece */}
+        <PolyhedronWorkpiece
+          position={[0.5, 0, 0]}
+          scale={1}
+          highlightedRegionId={highlightedRegionId}
+          selectedRegionId={selectedRegionId}
+          activeRegionId={grindingRegionId}
+          grindingProgress={grindingProgress}
+          onRegionClick={onRegionSelect}
+          onRegionHover={handleHover}
+        />
 
-      <GrindingDust position={dustPosition} active={isGrinding} />
+        <GrindingDust position={dustPosition} active={isGrinding} />
 
-      {/* Enhanced workpiece lighting */}
-      <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
-      <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
-      <spotLight position={[0.5, 1, 0]} angle={0.5} intensity={0.5} color="#ffffff" />
-    </>
+        {/* Enhanced workpiece lighting */}
+        <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
+        <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
+        <spotLight position={[0.5, 1, 0]} angle={0.5} intensity={0.5} color="#ffffff" />
+      </RenderPipeline>
+    </EnvironmentSystem>
   );
 }
 

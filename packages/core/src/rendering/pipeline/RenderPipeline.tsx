@@ -30,6 +30,7 @@ import type {
   QualityPreset,
 } from '../types';
 import { DEFAULT_RENDER_CONFIG, QUALITY_PRESETS } from '../types';
+import { DebugOverlay } from './DebugOverlay';
 
 // ============================================================================
 // Types
@@ -53,6 +54,13 @@ export interface RenderPipelineContextValue {
   removeOutlineObject: (object: THREE.Object3D) => void;
   getRenderState: () => RenderState;
 }
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Stable empty array reference to avoid infinite loops from default prop */
+const EMPTY_OUTLINE_OBJECTS: THREE.Object3D[] = [];
 
 // ============================================================================
 // Context
@@ -418,32 +426,54 @@ function PostProcessingEffects({
  */
 export function RenderPipeline({
   config: configProp,
-  outlineObjects: outlineObjectsProp = [],
+  outlineObjects: outlineObjectsProp,
   onRenderStateChange,
   children,
 }: RenderPipelineProps): React.JSX.Element {
   const { gl } = useThree();
+
+  // Use stable empty array if no outline objects provided
+  const stableOutlineObjects = outlineObjectsProp ?? EMPTY_OUTLINE_OBJECTS;
+
   const [config, setConfigState] = React.useState<RenderConfig>(() =>
     mergeConfig(DEFAULT_RENDER_CONFIG, configProp || {})
   );
   const [outlineObjects, setOutlineObjects] = React.useState<THREE.Object3D[]>(
-    outlineObjectsProp
+    stableOutlineObjects
   );
 
   // Performance monitoring
   const renderStateRef = usePerformanceMonitor(onRenderStateChange);
 
-  // Update config when prop changes
+  // Track the config prop reference to avoid unnecessary updates
+  const configPropRef = useRef(configProp);
+  const outlineObjectsPropRef = useRef(stableOutlineObjects);
+  const isFirstRender = useRef(true);
+
+  // Update config when prop changes - only if reference actually changed
   useEffect(() => {
-    if (configProp) {
+    // Skip on first render - initial state is already set from configProp
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      configPropRef.current = configProp;
+      outlineObjectsPropRef.current = stableOutlineObjects;
+      return;
+    }
+
+    // Only update if the config reference actually changed
+    if (configProp && configProp !== configPropRef.current) {
+      configPropRef.current = configProp;
       setConfigState((prev) => mergeConfig(prev, configProp));
     }
-  }, [configProp]);
+  }, [configProp, stableOutlineObjects]);
 
-  // Sync outline objects from props
+  // Sync outline objects from props - only if reference actually changed
   useEffect(() => {
-    setOutlineObjects(outlineObjectsProp);
-  }, [outlineObjectsProp]);
+    if (stableOutlineObjects !== outlineObjectsPropRef.current) {
+      outlineObjectsPropRef.current = stableOutlineObjects;
+      setOutlineObjects(stableOutlineObjects);
+    }
+  }, [stableOutlineObjects]);
 
   // Apply renderer settings
   useEffect(() => {
@@ -523,6 +553,17 @@ export function RenderPipeline({
     [config, renderStateRef]
   );
 
+  // Check if any debug option is enabled
+  const isDebugEnabled = useMemo(() => {
+    return (
+      config.debug.wireframe ||
+      config.debug.boundingBoxes ||
+      config.debug.normals ||
+      config.debug.lightHelpers ||
+      config.debug.shadowCameras
+    );
+  }, [config.debug]);
+
   return (
     <RenderPipelineContext.Provider value={contextValue}>
       {children}
@@ -530,6 +571,7 @@ export function RenderPipeline({
         config={config.postProcessing}
         outlineObjects={outlineObjects}
       />
+      {isDebugEnabled && <DebugOverlay config={config.debug} enabled />}
     </RenderPipelineContext.Provider>
   );
 }

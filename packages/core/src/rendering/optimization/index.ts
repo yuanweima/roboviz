@@ -17,3 +17,12 @@ export {
 } from './LODManager';
 
 export type { LODObject, LODManagerConfig } from './LODManager';
+
+export { useRobotLOD } from './useRobotLOD';
+
+export type {
+  RobotLODConfig,
+  RobotLODState,
+  UseRobotLODOptions,
+  UseRobotLODResult,
+} from './useRobotLOD';

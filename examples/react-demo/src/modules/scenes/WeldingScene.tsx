@@ -37,6 +37,11 @@ import {
   computeTcpFromMetadata,
   // History hook for undo/redo
   usePropertyHistory,
+  // Rendering system
+  RenderPipeline,
+  EnvironmentSystem,
+  SKYBOX_PRESETS,
+  QUALITY_PRESETS,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import {
@@ -483,6 +488,44 @@ const DEFAULT_EXTENDED_SETTINGS: ExtendedWeldingSettings = {
 // 3D Scene Content
 // ============================================================================
 
+// Static environment and render configs - defined outside component to prevent re-creation
+const WELDING_ENVIRONMENT_CONFIG = {
+  ...SKYBOX_PRESETS.industrial,
+  fog: {
+    ...SKYBOX_PRESETS.industrial.fog!,
+    enabled: true,
+    color: '#1a1208',
+    near: 5,
+    far: 25,
+  },
+};
+
+const WELDING_RENDER_CONFIG = {
+  ...QUALITY_PRESETS.high,
+  qualityPreset: 'high' as const,
+  postProcessing: {
+    ...QUALITY_PRESETS.high.postProcessing!,
+    enabled: true,
+    ssao: {
+      ...QUALITY_PRESETS.high.postProcessing!.ssao,
+      enabled: true,
+      intensity: 0.4,
+      radius: 0.3,
+    },
+    bloom: {
+      ...QUALITY_PRESETS.high.postProcessing!.bloom,
+      enabled: true,
+      intensity: 1.0, // Static bloom - welding sparks use emissive material
+      threshold: 0.6,
+    },
+    vignette: {
+      ...QUALITY_PRESETS.high.postProcessing!.vignette,
+      enabled: true,
+      darkness: 0.3,
+    },
+  },
+};
+
 function WeldingSceneContent({
   seams,
   selectedSeamId,
@@ -497,25 +540,27 @@ function WeldingSceneContent({
   sparkPosition: [number, number, number];
 }) {
   return (
-    <>
-      <ProcessScene
-        urdfPath={URDF_PATH}
-        showGhost={true}
-        showTrajectory={true}
-        trajectoryColor={THEME.primary}
-      >
-        <EndEffector showAxes={false}>
-          <WeldingTorch color={THEME.primary} isActive={isWelding} scale={1.0} />
-        </EndEffector>
-      </ProcessScene>
+    <EnvironmentSystem config={WELDING_ENVIRONMENT_CONFIG}>
+      <RenderPipeline config={WELDING_RENDER_CONFIG}>
+        <ProcessScene
+          urdfPath={URDF_PATH}
+          showGhost={true}
+          showTrajectory={true}
+          trajectoryColor={THEME.primary}
+        >
+          <EndEffector showAxes={false}>
+            <WeldingTorch color={THEME.primary} isActive={isWelding} scale={1.0} />
+          </EndEffector>
+        </ProcessScene>
 
-      <WeldingWorkpiece seams={seams} selectedSeamId={selectedSeamId} onSeamSelect={onSeamSelect} />
-      <WeldingSparks position={sparkPosition} active={isWelding} />
+        <WeldingWorkpiece seams={seams} selectedSeamId={selectedSeamId} onSeamSelect={onSeamSelect} />
+        <WeldingSparks position={sparkPosition} active={isWelding} />
 
-      {/* Enhanced workpiece lighting */}
-      <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
-      <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
-    </>
+        {/* Enhanced workpiece lighting */}
+        <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
+        <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
+      </RenderPipeline>
+    </EnvironmentSystem>
   );
 }
 

@@ -101,10 +101,10 @@ export const EnumField: React.FC<EnumFieldProps> = ({
       left: 0,
       right: 0,
       marginTop: 4,
-      backgroundColor: 'white',
+      backgroundColor: 'var(--pe-dropdown-bg, var(--pe-input-bg, white))',
       border: '1px solid var(--pe-border, #d1d5db)',
       borderRadius: 4,
-      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
       zIndex: 100,
       maxHeight: 200,
       overflowY: 'auto',
@@ -116,7 +116,7 @@ export const EnumField: React.FC<EnumFieldProps> = ({
       gap: 8,
       padding: '8px 12px',
       cursor: isDisabled ? 'not-allowed' : 'pointer',
-      backgroundColor: isSelected ? 'var(--pe-selected-bg, #eff6ff)' : 'transparent',
+      backgroundColor: isSelected ? 'var(--pe-selected-bg, rgba(59, 130, 246, 0.15))' : 'transparent',
       color: isDisabled
         ? 'var(--pe-disabled-text, #9ca3af)'
         : 'var(--pe-text, #1f2937)',
@@ -159,12 +159,12 @@ export const EnumField: React.FC<EnumFieldProps> = ({
                   onMouseEnter={(e) => {
                     if (!isOptionDisabled) {
                       (e.currentTarget as HTMLElement).style.backgroundColor =
-                        'var(--pe-hover-bg, #f3f4f6)';
+                        'var(--pe-hover-bg, rgba(255, 255, 255, 0.1))';
                     }
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLElement).style.backgroundColor = isSelected
-                      ? 'var(--pe-selected-bg, #eff6ff)'
+                      ? 'var(--pe-selected-bg, rgba(59, 130, 246, 0.15))'
                       : 'transparent';
                   }}
                 >

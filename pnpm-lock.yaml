@@ -86,7 +86,7 @@ importers:
         version: 9.4.2(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.170.0)
       '@react-three/postprocessing':
         specifier: ^3.0.4
-        version: 3.0.4(@react-three/fiber@9.4.2(@types/react@19.2.7)(react@19.2.3)(three@0.170.0))(@types/three@0.170.0)(react@19.2.3)(three@0.170.0)
+        version: 3.0.4(@react-three/fiber@9.4.2(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.170.0))(@types/three@0.170.0)(react@19.2.3)(three@0.170.0)
       nanoid:
         specifier: ^5.0.0
         version: 5.1.6
@@ -3087,7 +3087,7 @@ snapshots:
       - '@types/react'
       - immer
 
-  '@react-three/postprocessing@3.0.4(@react-three/fiber@9.4.2(@types/react@19.2.7)(react@19.2.3)(three@0.170.0))(@types/three@0.170.0)(react@19.2.3)(three@0.170.0)':
+  '@react-three/postprocessing@3.0.4(@react-three/fiber@9.4.2(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.170.0))(@types/three@0.170.0)(react@19.2.3)(three@0.170.0)':
     dependencies:
       '@react-three/fiber': 9.4.2(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.170.0)
       maath: 0.6.0(@types/three@0.170.0)(three@0.170.0)

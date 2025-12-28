@@ -44,6 +44,11 @@ import {
   usePropertyHistory,
   // Value transformers for unit conversion
   ValueTransformers,
+  // Rendering system
+  RenderPipeline,
+  EnvironmentSystem,
+  SKYBOX_PRESETS,
+  QUALITY_PRESETS,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import { IndustrialInspectionWorkpiece } from '../welding/components';
@@ -853,12 +858,10 @@ function InspectionRegionOverlay({
               rotation={[-Math.PI / 2, 0, 0]}
               renderOrder={999}
               onPointerDown={(e) => {
-                console.log('[InspectionRegionOverlay] mesh onPointerDown:', region.id);
                 e.stopPropagation();
                 onRegionSelect(region.id);
               }}
               onPointerOver={(e) => {
-                console.log('[InspectionRegionOverlay] mesh onPointerOver:', region.id);
                 e.stopPropagation();
                 document.body.style.cursor = 'pointer';
               }}
@@ -988,6 +991,50 @@ function DefectReportPanel({
 // 3D Scene Content
 // ============================================================================
 
+// Static environment and render configs - defined outside component to prevent re-creation
+const INSPECTION_ENVIRONMENT_CONFIG = {
+  ...SKYBOX_PRESETS.studio,
+  fog: {
+    ...SKYBOX_PRESETS.studio.fog!,
+    enabled: false, // 检测场景不需要雾
+  },
+};
+
+const INSPECTION_RENDER_CONFIG = {
+  ...QUALITY_PRESETS.high,
+  qualityPreset: 'high' as const,
+  postProcessing: {
+    ...QUALITY_PRESETS.high.postProcessing!,
+    enabled: true,
+    ssao: {
+      ...QUALITY_PRESETS.high.postProcessing!.ssao,
+      enabled: true,
+      intensity: 0.3,
+      radius: 0.25,
+    },
+    bloom: {
+      ...QUALITY_PRESETS.high.postProcessing!.bloom,
+      enabled: true,
+      intensity: 0.3,
+      threshold: 0.85,
+    },
+    // 缺陷轮廓高亮
+    outline: {
+      ...QUALITY_PRESETS.high.postProcessing!.outline,
+      enabled: true,
+      color: '#ff3366', // 缺陷红色轮廓
+      thickness: 3,
+      pulse: false,
+      hiddenEdgeColor: '#ff336640',
+    },
+    vignette: {
+      ...QUALITY_PRESETS.high.postProcessing!.vignette,
+      enabled: true,
+      darkness: 0.2,
+    },
+  },
+};
+
 function InspectionSceneContent({
   regions,
   selectedRegionId,
@@ -1019,85 +1066,87 @@ function InspectionSceneContent({
   // The InspectionCamera tool is designed to mount directly at flange (tcpOffset not needed)
 
   return (
-    <>
-      <ProcessScene
-        urdfPath={URDF_PATH}
-        showGhost={true}
-        showTrajectory={true}
-        trajectoryColor={THEME.primary}
-      >
-        {/* EndEffector without tcpOffset - tool is designed to mount directly at flange */}
-        <EndEffector showAxes={inspectionSettings.showDebugAxes}>
-          <InspectionCamera
-            color={THEME.accent}
-            isActive={isScanning}
-            showLaser={true}
-            showFrustum={inspectionSettings.showFrustum}
-            showPreview={false}
-            showDepthMap={false}
-            cameraType={inspectionSettings.cameraType}
-            stereoBaseline={inspectionSettings.stereoBaseline}
-            fov={inspectionSettings.cameraFOV}
-            workingDistance={inspectionSettings.cameraDistance}
-            scale={inspectionSettings.cameraScale}
-          />
-        </EndEffector>
-      </ProcessScene>
+    <EnvironmentSystem config={INSPECTION_ENVIRONMENT_CONFIG}>
+      <RenderPipeline config={INSPECTION_RENDER_CONFIG}>
+        <ProcessScene
+          urdfPath={URDF_PATH}
+          showGhost={true}
+          showTrajectory={true}
+          trajectoryColor={THEME.primary}
+        >
+          {/* EndEffector without tcpOffset - tool is designed to mount directly at flange */}
+          <EndEffector showAxes={inspectionSettings.showDebugAxes}>
+            <InspectionCamera
+              color={THEME.accent}
+              isActive={isScanning}
+              showLaser={true}
+              showFrustum={inspectionSettings.showFrustum}
+              showPreview={false}
+              showDepthMap={false}
+              cameraType={inspectionSettings.cameraType}
+              stereoBaseline={inspectionSettings.stereoBaseline}
+              fov={inspectionSettings.cameraFOV}
+              workingDistance={inspectionSettings.cameraDistance}
+              scale={inspectionSettings.cameraScale}
+            />
+          </EndEffector>
+        </ProcessScene>
 
-      {/* Workpiece */}
-      <IndustrialInspectionWorkpiece
-        position={[0.5, 0, 0]}
-        defects={defects.map(d => ({
-          id: d.id,
-          position: [d.position[0] - 0.5, d.position[1], d.position[2]] as [number, number, number],
-          type: d.type as 'crack' | 'porosity' | 'inclusion' | 'surface',
-          severity: d.severity,
-          size: d.size,
-        }))}
-        selectedDefectId={selectedDefectId}
-        detectedDefectIds={detectedDefectIds}
-        showDefects={true}
-      />
-
-      {/* Region overlay */}
-      <InspectionRegionOverlay
-        regions={regions}
-        selectedRegionId={selectedRegionId}
-        scannedRegionIds={scannedRegionIds}
-        onRegionSelect={onRegionSelect}
-      />
-
-      {/* Camera viewpoints */}
-      {viewpoints.map((vp) => (
-        <CameraFrustum
-          key={vp.id}
-          position={vp.position}
-          quaternion={vp.quaternion}
-          fov={vp.fov}
-          distance={vp.distance}
-          color={THEME.primary}
-          opacity={selectedViewpointId === vp.id ? 0.6 : 0.3}
-          selected={selectedViewpointId === vp.id}
+        {/* Workpiece */}
+        <IndustrialInspectionWorkpiece
+          position={[0.5, 0, 0]}
+          defects={defects.map(d => ({
+            id: d.id,
+            position: [d.position[0] - 0.5, d.position[1], d.position[2]] as [number, number, number],
+            type: d.type as 'crack' | 'porosity' | 'inclusion' | 'surface',
+            severity: d.severity,
+            size: d.size,
+          }))}
+          selectedDefectId={selectedDefectId}
+          detectedDefectIds={detectedDefectIds}
+          showDefects={true}
         />
-      ))}
 
-      {/* Defect markers (only for detected defects not shown by workpiece) */}
-      {defects
-        .filter((d) => detectedDefectIds.includes(d.id))
-        .map((defect) => (
-          <DefectMarker
-            key={defect.id}
-            defect={defect}
-            selected={selectedDefectId === defect.id}
-            onSelect={() => onDefectSelect(defect.id)}
+        {/* Region overlay */}
+        <InspectionRegionOverlay
+          regions={regions}
+          selectedRegionId={selectedRegionId}
+          scannedRegionIds={scannedRegionIds}
+          onRegionSelect={onRegionSelect}
+        />
+
+        {/* Camera viewpoints */}
+        {viewpoints.map((vp) => (
+          <CameraFrustum
+            key={vp.id}
+            position={vp.position}
+            quaternion={vp.quaternion}
+            fov={vp.fov}
+            distance={vp.distance}
+            color={THEME.primary}
+            opacity={selectedViewpointId === vp.id ? 0.6 : 0.3}
+            selected={selectedViewpointId === vp.id}
           />
         ))}
 
-      {/* Enhanced workpiece lighting */}
-      <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
-      <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
-      <spotLight position={[0.5, 0.8, 0]} angle={0.6} intensity={0.4} color="#ffffff" />
-    </>
+        {/* Defect markers (only for detected defects not shown by workpiece) */}
+        {defects
+          .filter((d) => detectedDefectIds.includes(d.id))
+          .map((defect) => (
+            <DefectMarker
+              key={defect.id}
+              defect={defect}
+              selected={selectedDefectId === defect.id}
+              onSelect={() => onDefectSelect(defect.id)}
+            />
+          ))}
+
+        {/* Enhanced workpiece lighting */}
+        <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
+        <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
+        <spotLight position={[0.5, 0.8, 0]} angle={0.6} intensity={0.4} color="#ffffff" />
+      </RenderPipeline>
+    </EnvironmentSystem>
   );
 }
 
@@ -1114,51 +1163,23 @@ interface TcpSettings {
   rotationZ: number;
 }
 
-interface InspectionDemoInnerProps {
-  tcpSettings: TcpSettings;
-  onTcpSettingsChange: (settings: TcpSettings) => void;
-}
-
-function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDemoInnerProps) {
+function InspectionDemoInner({ tcpSettings }: { tcpSettings: TcpSettings }) {
   const { addLog } = useAppStore();
 
-  // State - sync TCP settings with inspectionSettings
-  const [inspectionSettings, setInspectionSettings] = useState<InspectionSettings>({
-    ...DEFAULT_INSPECTION_SETTINGS,
-    tcpPositionX: tcpSettings.positionX,
-    tcpPositionY: tcpSettings.positionY,
-    tcpPositionZ: tcpSettings.positionZ,
-    tcpRotationX: tcpSettings.rotationX,
-    tcpRotationY: tcpSettings.rotationY,
-    tcpRotationZ: tcpSettings.rotationZ,
-  });
+  // State - initialize with DEFAULT_INSPECTION_SETTINGS only (avoid bidirectional sync)
+  const [inspectionSettings, setInspectionSettings] = useState<InspectionSettings>(
+    DEFAULT_INSPECTION_SETTINGS
+  );
 
   // 新功能: usePropertyHistory - 撤销/重做
+  // Note: Pass setInspectionSettings directly to avoid recreation of history on every render
   const settingsHistory = usePropertyHistory<InspectionSettings>(
     inspectionSettings,
     setInspectionSettings,
     { maxHistory: 30, debounceMs: 500 }
   );
 
-  // When settings change via history, propagate TCP settings up
-  useEffect(() => {
-    onTcpSettingsChange({
-      positionX: settingsHistory.value.tcpPositionX,
-      positionY: settingsHistory.value.tcpPositionY,
-      positionZ: settingsHistory.value.tcpPositionZ,
-      rotationX: settingsHistory.value.tcpRotationX,
-      rotationY: settingsHistory.value.tcpRotationY,
-      rotationZ: settingsHistory.value.tcpRotationZ,
-    });
-  }, [
-    settingsHistory.value.tcpPositionX,
-    settingsHistory.value.tcpPositionY,
-    settingsHistory.value.tcpPositionZ,
-    settingsHistory.value.tcpRotationX,
-    settingsHistory.value.tcpRotationY,
-    settingsHistory.value.tcpRotationZ,
-    onTcpSettingsChange,
-  ]);
+  // TCP settings are display-only (computed from tool metadata), no bidirectional sync needed
 
   // 使用 schema 中的 transform 属性后，PropertyEditor 会自动处理单位转换
   // 无需再手动转换，直接传递原始值
@@ -1345,9 +1366,6 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
 
   // Ghost preview on region selection
   const handleRegionSelect = useCallback((id: string) => {
-    console.log('[InspectionScene] handleRegionSelect called:', id);
-    console.log('[InspectionScene] ghost state:', { status: ghost.status, targetPose: ghost.targetPose });
-    console.log('[InspectionScene] state.robotReady:', state.robotReady);
     setSelectedRegionId(id);
     const region = inspectionRegions.find(r => r.id === id);
     if (region) {
@@ -1356,11 +1374,10 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
         position: [0.5 + region.center[0], region.center[1], 0.052 + inspectionSettings.cameraDistance] as [number, number, number],
         quaternion: [1, 0, 0, 0] as [number, number, number, number],
       };
-      console.log('[InspectionScene] Setting ghost target:', targetPose);
       ghost.setTarget(targetPose);
     }
     addLog('info', `Selected region: ${inspectionRegions.find(r => r.id === id)?.name || id}`);
-  }, [inspectionRegions, inspectionSettings.cameraDistance, ghost, addLog, state.robotReady]);
+  }, [inspectionRegions, inspectionSettings.cameraDistance, ghost, addLog]);
 
   const handleStop = useCallback(() => {
     setIsScanning(false);
@@ -1632,7 +1649,7 @@ export function InspectionScene() {
         robotId="inspection-robot"
         tool={{ position: tcp.position, quaternion: tcp.quaternion }}
       >
-        <InspectionDemoInner tcpSettings={tcpSettings} onTcpSettingsChange={setTcpSettings} />
+        <InspectionDemoInner tcpSettings={tcpSettings} />
       </RobotProcessProvider>
     </ProcessProvider>
   );
