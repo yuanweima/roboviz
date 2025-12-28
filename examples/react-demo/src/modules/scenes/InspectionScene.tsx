@@ -42,6 +42,8 @@ import {
   computeTcpFromMetadata,
   // History hook for undo/redo
   usePropertyHistory,
+  // Value transformers for unit conversion
+  ValueTransformers,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import { IndustrialInspectionWorkpiece } from '../welding/components';
@@ -228,7 +230,8 @@ const INSPECTION_SETTINGS_SCHEMA: PropertySchema = {
           step: 10,
           precision: 0,
           description: '相机到工件的距离',
-          // 值转换: 内部使用米,显示毫米
+          // 使用 ValueTransformers 进行单位转换: 内部使用米,显示毫米
+          transform: ValueTransformers.metersToMillimeters,
         },
         {
           key: 'exposureTime',
@@ -254,6 +257,8 @@ const INSPECTION_SETTINGS_SCHEMA: PropertySchema = {
           precision: 0,
           description: '双目相机左右镜头间距',
           visible: (values) => values.cameraType === 'stereo',
+          // 使用 ValueTransformers 进行单位转换
+          transform: ValueTransformers.metersToMillimeters,
         },
       ],
     },
@@ -1155,23 +1160,10 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
     onTcpSettingsChange,
   ]);
 
-  // Helper to convert settings for PropertyEditor (mm display)
-  const displaySettings = useMemo(() => ({
-    ...settingsHistory.value,
-    // Convert meters to mm for display
-    cameraDistance: Math.round(settingsHistory.value.cameraDistance * 1000),
-    stereoBaseline: Math.round(settingsHistory.value.stereoBaseline * 1000),
-  }), [settingsHistory.value]);
-
-  // Handle PropertyEditor changes with unit conversion
+  // 使用 schema 中的 transform 属性后，PropertyEditor 会自动处理单位转换
+  // 无需再手动转换，直接传递原始值
   const handleSettingsChange = useCallback((newValues: Record<string, unknown>) => {
-    const converted = {
-      ...newValues,
-      // Convert mm back to meters
-      cameraDistance: (newValues.cameraDistance as number) / 1000,
-      stereoBaseline: (newValues.stereoBaseline as number) / 1000,
-    } as InspectionSettings;
-    settingsHistory.push(converted);
+    settingsHistory.push(newValues as unknown as InspectionSettings);
   }, [settingsHistory]);
   const [inputMode, setInputMode] = useState<'auto' | 'manual'>('auto');
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
@@ -1517,7 +1509,7 @@ function InspectionDemoInner({ tcpSettings, onTcpSettingsChange }: InspectionDem
             </div>
             <PropertyEditor
               schema={INSPECTION_SETTINGS_SCHEMA}
-              value={displaySettings as unknown as Record<string, unknown>}
+              value={settingsHistory.value as unknown as Record<string, unknown>}
               onChange={handleSettingsChange}
               theme="dark"
               compact={true}

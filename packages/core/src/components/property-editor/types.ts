@@ -130,7 +130,8 @@ export interface PropertyField {
    * // Custom scale factor
    * transform: ValueTransformers.scale(1000)
    */
-  transform?: ValueTransformer<unknown, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  transform?: ValueTransformer<any, any>;
 
   // Position3D field options
   /** Whether to allow linking X/Y/Z for uniform scaling (Position3D only) */
