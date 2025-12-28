@@ -82,6 +82,22 @@ export interface JogControlPanelProps {
   shortcuts?: JogShortcutConfig[];
   /** Callback when a shortcut is triggered */
   onShortcut?: (action: JogShortcutAction) => void;
+
+  // ============================================================================
+  // Controlled Mode Props
+  // ============================================================================
+  /**
+   * External jog control state (controlled mode).
+   * When provided, the component uses this state instead of creating its own.
+   * Use this to share state with other components like gamepad controls.
+   */
+  externalState?: import('./useRobotJogControl').JogControlState;
+  /**
+   * External jog control actions (controlled mode).
+   * When provided, the component uses these actions instead of creating its own.
+   * Must be provided together with externalState.
+   */
+  externalActions?: import('./useRobotJogControl').JogControlActions;
 }
 
 // ============================================================================
@@ -264,11 +280,16 @@ export function JogControlPanel({
   enableShortcuts = true,
   shortcuts,
   onShortcut,
+  externalState,
+  externalActions,
 }: JogControlPanelProps): React.JSX.Element {
   const theme = useRoboVizThemeWithFallback(themeProp);
 
-  // Use jog control hook
-  const [state, actions] = useRobotJogControl({
+  // Determine if we're in controlled mode
+  const isControlled = externalState !== undefined && externalActions !== undefined;
+
+  // Use jog control hook (only when not in controlled mode)
+  const [internalState, internalActions] = useRobotJogControl({
     robotId,
     robotName,
     initialJoints,
@@ -276,6 +297,10 @@ export function JogControlPanel({
     onJointsChange,
     onPoseChange,
   });
+
+  // Use external or internal state/actions based on controlled mode
+  const state = isControlled ? externalState : internalState;
+  const actions = isControlled ? externalActions : internalActions;
 
   // Use keyboard shortcuts
   const {

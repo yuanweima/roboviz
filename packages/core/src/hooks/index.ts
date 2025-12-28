@@ -76,6 +76,7 @@ export {
 export {
   useGhostPreview,
   type GhostPreviewStatus,
+  type GhostInputMode,
   type UseGhostPreviewOptions,
   type UseGhostPreviewResult,
 } from './useGhostPreview';

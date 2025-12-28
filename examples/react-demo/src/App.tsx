@@ -9,6 +9,7 @@ import { WeldingScene } from './modules/scenes/WeldingScene';
 import { GrindingScene } from './modules/scenes/GrindingScene';
 import { InspectionScene } from './modules/scenes/InspectionScene';
 import { CableManagementScene } from './modules/scenes/CableManagementScene';
+import { CollisionAnalysisScene } from './modules/scenes/CollisionAnalysisScene';
 
 // Core Features
 import { RobotModule } from './modules/RobotModule';
@@ -19,6 +20,7 @@ import { ImperativeModule } from './modules/ImperativeModule';
 import { MultiRobotModule } from './modules/MultiRobotModule';
 import { GhostRobotModule } from './modules/GhostRobotModule';
 import { TrajxWasmModule } from './modules/TrajxWasmModule';
+import { GamepadControlModule } from './modules/GamepadControlModule';
 
 // Trajectory
 import { TrajectoryModule } from './modules/TrajectoryModule';
@@ -32,6 +34,10 @@ import { CollisionModule } from './modules/CollisionModule';
 import { EventSystemModule } from './modules/EventSystemModule';
 import { PerformanceModule } from './modules/PerformanceModule';
 
+// UI Components
+import { TimelineModule } from './modules/TimelineModule';
+import { PropertyEditorModule } from './modules/PropertyEditorModule';
+
 // Integration
 import { MultiInstanceModule } from './modules/MultiInstanceModule';
 import { HeadlessModule } from './modules/HeadlessModule';
@@ -43,6 +49,7 @@ export type ModuleType =
   | 'grinding'
   | 'inspection'
   | 'cable-management'
+  | 'collision-analysis'
   // Core Features
   | 'robot'
   | 'workpoint'
@@ -51,6 +58,7 @@ export type ModuleType =
   | 'multi-robot'
   | 'ghost-robot'
   | 'trajx-wasm'
+  | 'gamepad-control'
   // Trajectory
   | 'trajectory'
   // Vision
@@ -60,6 +68,9 @@ export type ModuleType =
   | 'collision'
   | 'events'
   | 'performance'
+  // UI Components
+  | 'timeline'
+  | 'property-editor'
   // Integration
   | 'multi-instance'
   | 'headless'
@@ -71,6 +82,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'grinding': GrindingScene,
   'inspection': InspectionScene,
   'cable-management': CableManagementScene,
+  'collision-analysis': CollisionAnalysisScene,
   // Core Features
   'robot': RobotModule,
   'workpoint': WorkpointModule,
@@ -79,6 +91,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'multi-robot': MultiRobotModule,
   'ghost-robot': GhostRobotModule,
   'trajx-wasm': TrajxWasmModule,
+  'gamepad-control': GamepadControlModule,
   // Trajectory
   'trajectory': TrajectoryModule,
   // Vision
@@ -88,6 +101,9 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'collision': CollisionModule,
   'events': EventSystemModule,
   'performance': PerformanceModule,
+  // UI Components
+  'timeline': TimelineModule,
+  'property-editor': PropertyEditorModule,
   // Integration
   'multi-instance': MultiInstanceModule,
   'headless': HeadlessModule,
@@ -95,7 +111,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
 };
 
 // Process scenes that don't use Leva
-const PROCESS_SCENES: ModuleType[] = ['welding', 'grinding', 'inspection', 'cable-management'];
+const PROCESS_SCENES: ModuleType[] = ['welding', 'grinding', 'inspection', 'cable-management', 'collision-analysis'];
 
 export default function App() {
   // TEST: Start with inspection scene to verify first load works
