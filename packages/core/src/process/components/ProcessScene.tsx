@@ -147,13 +147,13 @@ export function ProcessScene({
     }
   });
 
-  // Convert trajectory to points for visualization (Z-up to Y-up)
+  // Scene is Z-up, trajectory is Z-up - use positions directly
   const trajectoryPoints = useMemo((): THREE.Vector3[] => {
     if (!state.trajectory?.waypoints) return [];
     return state.trajectory.waypoints.map((wp) => new THREE.Vector3(
       wp.position[0],
-      wp.position[2], // Z-up to Y-up: z -> y
-      -wp.position[1], // Z-up to Y-up: y -> -z
+      wp.position[1],
+      wp.position[2],
     ));
   }, [state.trajectory]);
 

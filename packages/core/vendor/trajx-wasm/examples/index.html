@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trajx WASM Demos</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #eee;
+        }
+        h1 {
+            text-align: center;
+            color: #00d9ff;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 40px;
+        }
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        .demo-card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 25px;
+            border: 1px solid #0f3460;
+            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .demo-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0, 217, 255, 0.2);
+            border-color: #00d9ff;
+        }
+        .demo-card h3 {
+            color: #00d9ff;
+            margin: 0 0 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .demo-card .badge {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .badge.new {
+            background: #67c23a;
+            color: white;
+        }
+        .badge.gpu {
+            background: #e6a23c;
+            color: white;
+        }
+        .badge.collision {
+            background: #f56c6c;
+            color: white;
+        }
+        .demo-card p {
+            color: #aaa;
+            margin: 0 0 15px 0;
+            line-height: 1.5;
+        }
+        .demo-card .features {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .demo-card .feature {
+            background: #0d1b2a;
+            color: #67c23a;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .section-title {
+            color: #00d9ff;
+            border-bottom: 2px solid #0f3460;
+            padding-bottom: 10px;
+            margin: 40px 0 20px 0;
+        }
+        .section-title:first-of-type {
+            margin-top: 0;
+        }
+        footer {
+            text-align: center;
+            color: #555;
+            margin-top: 60px;
+            padding-top: 20px;
+            border-top: 1px solid #0f3460;
+        }
+        footer a {
+            color: #00d9ff;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>🤖 Trajx WASM Demos</h1>
+    <p class="subtitle">Robot Motion Planning Library - WebAssembly Edition</p>
+
+    <h2 class="section-title">Motion API</h2>
+    <div class="demo-grid">
+        <a href="motion-centric-demo.html" class="demo-card">
+            <h3>Motion-Centric API <span class="badge new">Updated</span></h3>
+            <p>Fluent API for robot motion planning. Includes new collision-aware motion tests with BiRRT planning.</p>
+            <div class="features">
+                <span class="feature">WasmMotion</span>
+                <span class="feature">WasmPath</span>
+                <span class="feature">WasmSequence</span>
+                <span class="feature">runWithCollision()</span>
+            </div>
+        </a>
+
+        <a href="motion-collision-demo.html" class="demo-card">
+            <h3>Motion + Collision <span class="badge new">New</span></h3>
+            <p>Demonstrates collision-aware motion execution with runWithCollision() API for Motion, Path, and Sequence.</p>
+            <div class="features">
+                <span class="feature">.safe()</span>
+                <span class="feature">BiRRT Planner</span>
+                <span class="feature">Path Smoothing</span>
+            </div>
+        </a>
+
+        <a href="motion-cable-demo.html" class="demo-card">
+            <h3>Cable Tracking</h3>
+            <p>Track cable twist during robot motion to prevent cable damage and entanglement.</p>
+            <div class="features">
+                <span class="feature">.cable()</span>
+                <span class="feature">Twist Limits</span>
+                <span class="feature">Warning System</span>
+            </div>
+        </a>
+    </div>
+
+    <h2 class="section-title">Collision Detection</h2>
+    <div class="demo-grid">
+        <a href="collision-demo.html" class="demo-card">
+            <h3>Basic Collision <span class="badge collision">Collision</span></h3>
+            <p>Basic collision detection between robot and environment using geometric primitives.</p>
+            <div class="features">
+                <span class="feature">RobotCollision</span>
+                <span class="feature">Environment</span>
+                <span class="feature">Self-Collision</span>
+            </div>
+        </a>
+
+        <a href="batch-collision-demo.html" class="demo-card">
+            <h3>Batch Collision <span class="badge collision">Collision</span></h3>
+            <p>High-performance batch collision checking for path validation and motion planning.</p>
+            <div class="features">
+                <span class="feature">Batch FK</span>
+                <span class="feature">Parallel Check</span>
+                <span class="feature">Performance Stats</span>
+            </div>
+        </a>
+
+        <a href="motion-validator-demo.html" class="demo-card">
+            <h3>Motion Validator <span class="badge collision">Collision</span></h3>
+            <p>Validate entire motion paths for collision, checking interpolated configurations along the way.</p>
+            <div class="features">
+                <span class="feature">Edge Validation</span>
+                <span class="feature">Interpolation</span>
+                <span class="feature">Path Check</span>
+            </div>
+        </a>
+    </div>
+
+    <h2 class="section-title">Path Planning</h2>
+    <div class="demo-grid">
+        <a href="advanced-planners-demo.html" class="demo-card">
+            <h3>Advanced Planners</h3>
+            <p>BiRRT, RRT*, and PRM path planners with various configuration options.</p>
+            <div class="features">
+                <span class="feature">BiRRT</span>
+                <span class="feature">RRT*</span>
+                <span class="feature">PRM</span>
+                <span class="feature">Path Smoothing</span>
+            </div>
+        </a>
+
+        <a href="gpu-batch-planning-demo.html" class="demo-card">
+            <h3>GPU Batch Planning <span class="badge gpu">GPU</span> <span class="badge new">New</span></h3>
+            <p>GPU-accelerated Lazy-PRM planning with batch collision checking helpers.</p>
+            <div class="features">
+                <span class="feature">Lazy-PRM</span>
+                <span class="feature">Batch FK</span>
+                <span class="feature">interpolateEdgesBatch()</span>
+            </div>
+        </a>
+
+        <a href="pipeline-demo.html" class="demo-card">
+            <h3>Planning Pipeline</h3>
+            <p>Complete motion planning pipeline from goal to executable trajectory.</p>
+            <div class="features">
+                <span class="feature">Full Pipeline</span>
+                <span class="feature">Trajectory Gen</span>
+                <span class="feature">Time Parameterization</span>
+            </div>
+        </a>
+    </div>
+
+    <h2 class="section-title">Kinematics</h2>
+    <div class="demo-grid">
+        <a href="urdf-cartesian-demo.html" class="demo-card">
+            <h3>URDF + Cartesian</h3>
+            <p>Load URDF robot models and perform forward/inverse kinematics with Cartesian goals.</p>
+            <div class="features">
+                <span class="feature">URDF Parser</span>
+                <span class="feature">Forward FK</span>
+                <span class="feature">Inverse IK</span>
+                <span class="feature">Cartesian Motion</span>
+            </div>
+        </a>
+    </div>
+
+    <footer>
+        <p>
+            Built with 🦀 Rust + WebAssembly |
+            <a href="https://github.com/trajx/amarillo" target="_blank">GitHub</a>
+        </p>
+        <p style="font-size: 12px; margin-top: 10px;">
+            Run locally: <code style="background: #0d1b2a; padding: 4px 8px; border-radius: 4px;">python3 -m http.server 8080</code>
+        </p>
+    </footer>
+</body>
+</html>

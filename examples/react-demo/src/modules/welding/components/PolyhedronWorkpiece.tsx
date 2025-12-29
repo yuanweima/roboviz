@@ -29,7 +29,7 @@ export interface GrindingSurfaceRegion {
 }
 
 export interface PolyhedronWorkpieceProps {
-  /** Position offset in Y-up coordinates */
+  /** Position offset in Z-up coordinates */
   position?: Vector3Tuple;
   /** Scale factor */
   scale?: number;
@@ -177,12 +177,8 @@ export const PolyhedronWorkpiece = React.memo(function PolyhedronWorkpiece({
     return r;
   }, [scale, onRegionsReady]);
 
-  // Convert Z-up position to Y-up for Three.js
-  const yUpPosition = useMemo(() => [
-    position[0],
-    position[2], // Z becomes Y
-    -position[1], // Y becomes -Z
-  ] as Vector3Tuple, [position]);
+  // Z-up scene: use position directly
+  // No coordinate conversion needed - scene is already Z-up
 
   // Get region color based on state
   const getRegionColor = useCallback((regionId: string) => {
@@ -206,24 +202,16 @@ export const PolyhedronWorkpiece = React.memo(function PolyhedronWorkpiece({
     const color = getRegionColor(region.id);
     const opacity = getRegionOpacity(region.id);
 
-    // Convert Z-up center to Y-up for rendering
-    const centerYUp: [number, number, number] = [
-      region.center[0],
-      region.center[2], // Z -> Y
-      -region.center[1], // Y -> -Z
-    ];
+    // Z-up scene: use center directly, no conversion needed
+    const center = region.center;
 
     // Calculate rotation to align plane with surface normal
-    // Normal in Z-up needs conversion to Y-up
-    const normalYUp = new THREE.Vector3(
-      region.normal[0],
-      region.normal[2],
-      -region.normal[1]
-    ).normalize();
+    // Z-up: plane default normal is +Z, rotate to match surface normal
+    const normal = new THREE.Vector3(...region.normal).normalize();
 
     // Create rotation from default plane normal (0,0,1) to target normal
     const defaultNormal = new THREE.Vector3(0, 0, 1);
-    const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultNormal, normalYUp);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultNormal, normal);
     const euler = new THREE.Euler().setFromQuaternion(quaternion);
 
     // Polished surface color based on progress
@@ -233,7 +221,7 @@ export const PolyhedronWorkpiece = React.memo(function PolyhedronWorkpiece({
       <group key={region.id}>
         {/* Region boundary indicator */}
         <mesh
-          position={centerYUp}
+          position={center}
           rotation={[euler.x, euler.y, euler.z]}
           onClick={(e) => {
             e.stopPropagation();
@@ -256,9 +244,9 @@ export const PolyhedronWorkpiece = React.memo(function PolyhedronWorkpiece({
         {progress > 0 && (
           <mesh
             position={[
-              centerYUp[0] + normalYUp.x * 0.001,
-              centerYUp[1] + normalYUp.y * 0.001,
-              centerYUp[2] + normalYUp.z * 0.001,
+              center[0] + normal.x * 0.001,
+              center[1] + normal.y * 0.001,
+              center[2] + normal.z * 0.001,
             ]}
             rotation={[euler.x, euler.y, euler.z]}
           >
@@ -278,41 +266,41 @@ export const PolyhedronWorkpiece = React.memo(function PolyhedronWorkpiece({
   }, [grindingProgress, getRegionColor, getRegionOpacity, onRegionClick, onRegionHover]);
 
   return (
-    <group position={yUpPosition}>
+    <group position={position}>
       {/* === MAIN BODY === */}
-      {/* Base block */}
+      {/* Base block - Z-up: [width, depth, height] */}
       <mesh
         ref={meshRef}
-        position={[0, height / 2, 0]}
+        position={[0, 0, height / 2]}
         name="polyhedron_workpiece"
         userData={{ workpieceId: 'polyhedron_workpiece' }}
       >
-        <boxGeometry args={[width, height, depth]} />
+        <boxGeometry args={[width, depth, height]} />
         <meshStandardMaterial color="#5a5a5a" metalness={0.75} roughness={0.35} />
       </mesh>
 
       {/* === SURFACE DETAILS === */}
 
-      {/* Top face raised features */}
-      <mesh position={[-0.1 * s, height + 0.008 * s, -0.05 * s]}>
-        <boxGeometry args={[0.06 * s, 0.016 * s, 0.04 * s]} />
+      {/* Top face raised features - Z-up: [x, y, z_height] */}
+      <mesh position={[-0.1 * s, -0.05 * s, height + 0.008 * s]}>
+        <boxGeometry args={[0.06 * s, 0.04 * s, 0.016 * s]} />
         <meshStandardMaterial color="#666666" metalness={0.65} roughness={0.4} />
       </mesh>
 
-      <mesh position={[0.1 * s, height + 0.006 * s, 0.05 * s]}>
+      <mesh position={[0.1 * s, 0.05 * s, height + 0.006 * s]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.025 * s, 0.028 * s, 0.012 * s, 16]} />
         <meshStandardMaterial color="#666666" metalness={0.65} roughness={0.4} />
       </mesh>
 
-      {/* Weld spatter / rough spots */}
+      {/* Weld spatter / rough spots - Z-up: [x, y, z_height] */}
       {[
-        [0.05, height + 0.002, 0.08],
-        [-0.12, height + 0.003, -0.02],
-        [0.15, height + 0.002, -0.08],
-        [-0.05, height + 0.002, 0.1],
-        [0.08, height + 0.003, -0.1],
+        [0.05, 0.08, height + 0.002],
+        [-0.12, -0.02, height + 0.003],
+        [0.15, -0.08, height + 0.002],
+        [-0.05, 0.1, height + 0.002],
+        [0.08, -0.1, height + 0.003],
       ].map(([x, y, z], i) => (
-        <mesh key={`spatter-${i}`} position={[x * s, y, z * s]}>
+        <mesh key={`spatter-${i}`} position={[x * s, y * s, z]}>
           <sphereGeometry args={[0.006 * s, 8, 8]} />
           <meshStandardMaterial color="#8B7355" metalness={0.4} roughness={0.7} />
         </mesh>
@@ -320,58 +308,58 @@ export const PolyhedronWorkpiece = React.memo(function PolyhedronWorkpiece({
 
       {/* === SIDE FACE FEATURES === */}
 
-      {/* Front face rib */}
-      <mesh position={[0, height / 2, -depth / 2 - 0.008 * s]} rotation={[Math.PI / 2, 0, 0]}>
+      {/* Front face rib - Z-up: front is -Y */}
+      <mesh position={[0, -depth / 2 - 0.008 * s, height / 2]}>
         <boxGeometry args={[0.2 * s, 0.016 * s, 0.08 * s]} />
         <meshStandardMaterial color="#555555" metalness={0.7} roughness={0.35} />
       </mesh>
 
-      {/* Back face rib */}
-      <mesh position={[0, height / 2, depth / 2 + 0.008 * s]} rotation={[Math.PI / 2, 0, 0]}>
+      {/* Back face rib - Z-up: back is +Y */}
+      <mesh position={[0, depth / 2 + 0.008 * s, height / 2]}>
         <boxGeometry args={[0.2 * s, 0.016 * s, 0.08 * s]} />
         <meshStandardMaterial color="#555555" metalness={0.7} roughness={0.35} />
       </mesh>
 
-      {/* Left face boss */}
-      <mesh position={[-width / 2 - 0.01 * s, height / 2, 0]} rotation={[0, 0, Math.PI / 2]}>
+      {/* Left face boss - Z-up: left is -X, cylinder along X axis */}
+      <mesh position={[-width / 2 - 0.01 * s, 0, height / 2]} rotation={[0, Math.PI / 2, 0]}>
         <cylinderGeometry args={[0.03 * s, 0.035 * s, 0.02 * s, 16]} />
         <meshStandardMaterial color="#606060" metalness={0.7} roughness={0.3} />
       </mesh>
 
-      {/* Right face boss */}
-      <mesh position={[width / 2 + 0.01 * s, height / 2, 0]} rotation={[0, 0, Math.PI / 2]}>
+      {/* Right face boss - Z-up: right is +X, cylinder along X axis */}
+      <mesh position={[width / 2 + 0.01 * s, 0, height / 2]} rotation={[0, Math.PI / 2, 0]}>
         <cylinderGeometry args={[0.03 * s, 0.035 * s, 0.02 * s, 16]} />
         <meshStandardMaterial color="#606060" metalness={0.7} roughness={0.3} />
       </mesh>
 
-      {/* === MOUNTING HOLES === */}
+      {/* === MOUNTING HOLES === Z-up: holes go into Z, positions [x, y] */}
       {[
         [-width / 2 + 0.03 * s, -depth / 2 + 0.03 * s],
         [width / 2 - 0.03 * s, -depth / 2 + 0.03 * s],
         [-width / 2 + 0.03 * s, depth / 2 - 0.03 * s],
         [width / 2 - 0.03 * s, depth / 2 - 0.03 * s],
-      ].map(([x, z], i) => (
-        <mesh key={`hole-${i}`} position={[x, height + 0.001, z]}>
+      ].map(([x, y], i) => (
+        <mesh key={`hole-${i}`} position={[x, y, height + 0.001]}>
           <cylinderGeometry args={[0.01 * s, 0.01 * s, 0.02 * s, 12]} />
           <meshStandardMaterial color="#333333" metalness={0.3} roughness={0.7} />
         </mesh>
       ))}
 
-      {/* === FIXTURE BASE === */}
-      <mesh position={[0, -0.015 * s, 0]}>
-        <boxGeometry args={[width + 0.05 * s, 0.03 * s, depth + 0.05 * s]} />
+      {/* === FIXTURE BASE === Z-up: [width, depth, height] */}
+      <mesh position={[0, 0, -0.015 * s]}>
+        <boxGeometry args={[width + 0.05 * s, depth + 0.05 * s, 0.03 * s]} />
         <meshStandardMaterial color="#3a3a3a" metalness={0.5} roughness={0.6} />
       </mesh>
 
-      {/* Fixture clamps */}
+      {/* Fixture clamps - Z-up: [x, y, z_height] */}
       {[
-        [-width / 2 - 0.02 * s, 0, -depth / 2],
-        [width / 2 + 0.02 * s, 0, -depth / 2],
-        [-width / 2 - 0.02 * s, 0, depth / 2],
-        [width / 2 + 0.02 * s, 0, depth / 2],
+        [-width / 2 - 0.02 * s, -depth / 2, 0],
+        [width / 2 + 0.02 * s, -depth / 2, 0],
+        [-width / 2 - 0.02 * s, depth / 2, 0],
+        [width / 2 + 0.02 * s, depth / 2, 0],
       ].map(([x, y, z], i) => (
-        <mesh key={`clamp-${i}`} position={[x, 0.04 * s, z]}>
-          <boxGeometry args={[0.025 * s, 0.06 * s, 0.025 * s]} />
+        <mesh key={`clamp-${i}`} position={[x, y, 0.04 * s]}>
+          <boxGeometry args={[0.025 * s, 0.025 * s, 0.06 * s]} />
           <meshStandardMaterial color="#444444" metalness={0.6} roughness={0.4} />
         </mesh>
       ))}

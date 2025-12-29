@@ -20,7 +20,8 @@ Provides high-performance FK/IK and path planning in the browser.
 - **Pre-built robots**: Fanuc M-20iA, UR5, KUKA KR6
 - **Three.js compatible**: Matrix output for direct mesh transforms
 - **Motion-Centric API**: Fluent API for motion planning (`WasmMotion.to(goal).run(robot)`)
-- **Cable-Aware Planning (NEW)**: Track and constrain cable twist during robot motion
+- **Cable-Aware Planning**: Track and constrain cable twist during robot motion
+- **GPU-Accelerated Planning (NEW)**: Lazy-PRM planner with batch collision checking for high-performance planning
 
 ## Installation
 
@@ -391,7 +392,41 @@ const trajectory = result.getTrajectory();
 | `.cableTrack()` | Track-only mode (no constraint) |
 | `.withCableTwist(rad)` | Set initial twist for multi-segment |
 | `.run(robot)` | Execute on robot |
+| `.runWithCollision(robot, checker)` | Execute with collision avoidance |
 | `.plan(robot)` | Plan without executing |
+
+### Collision-Aware Motion (runWithCollision)
+
+Use `runWithCollision()` to enable BiRRT planning with collision checking:
+
+```typescript
+// Define collision checker: returns true if configuration is VALID (no collision)
+const collisionChecker = (joints: number[]) => {
+    // Your collision detection logic
+    return !isColliding(joints);  // true = collision-free
+};
+
+// Motion with collision avoidance
+const result = WasmMotion.to(goal)
+    .safe()  // Enable collision avoidance mode
+    .runWithCollision(robot, collisionChecker);
+
+console.log('Collision-free:', result.collisionFree);
+
+// Path with collision avoidance
+const path = WasmPath.through(waypoints, 6)
+    .safe()
+    .runWithCollision(robot, collisionChecker);
+
+// Sequence with collision avoidance
+const seq = WasmSequence.start(motion1.safe())
+    .then(motion2.safe())
+    .runWithCollision(robot, collisionChecker);
+```
+
+**Important**: The collision checker callback should return:
+- `true` if the configuration is **valid** (no collision)
+- `false` if the configuration is **invalid** (collision detected)
 
 ### Result Properties (Cable)
 
@@ -484,6 +519,215 @@ console.log('Max twist:', result.cableMaxTwist);
 | `.withAutoUnwind(bool)` | Enable auto-unwind |
 | `.isTwistValid(rad)` | Check if twist is within limit |
 | `.isTwistWarning(rad)` | Check if in warning zone |
+
+## GPU-Accelerated Planning (NEW)
+
+High-performance motion planning using Lazy-PRM (Probabilistic Roadmap) with batch collision checking. Designed for GPU acceleration but works with any collision backend.
+
+### Architecture
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                     GpuPlanningContext                          │
+├─────────────────────────────────────────────────────────────────┤
+│  Robot Joint Limits  │  Lazy-PRM Planner  │  Edge Cache        │
+└─────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+                   JavaScript Callback
+                   (batch edge checking)
+                             │
+             ┌───────────────┼───────────────┐
+             ▼               ▼               ▼
+        WebGPU           CPU Parry     Custom Checker
+        (fast)           (accurate)    (user-defined)
+```
+
+### Basic Usage
+
+```typescript
+import init, {
+    createRobot,
+    GpuPlanningContext,
+    GpuPlanningContextConfig,
+    WasmRobotCollisionModel,
+    CollisionEnvironment,
+} from 'trajx-wasm';
+
+await init();
+
+// 1. Create robot
+const robot = createRobot(urdfContent);
+
+// 2. Create collision model and environment
+const robotCollision = WasmRobotCollisionModel.fromUrdf(urdfContent);
+const env = new CollisionEnvironment();
+env.addBox("table", [0.5, 0.3, 0.02], tablePose);
+
+// 3. Create GPU planning context
+const config = GpuPlanningContextConfig.balanced();
+const planner = new GpuPlanningContext(robot, config);
+
+// 4. Build roadmap (fast, no collision checking)
+planner.buildRoadmap();
+console.log(`Roadmap: ${planner.nodeCount} nodes, ${planner.edgeCount} edges`);
+
+// 5. Define batch collision checker callback
+function checkEdgesBatch(edges) {
+    return edges.map(([startJoints, endJoints]) => {
+        // Sample along edge
+        for (let t = 0; t <= 1; t += 0.2) {
+            const joints = startJoints.map((s, i) => s + t * (endJoints[i] - s));
+            const linkPoses = robot.getLinkTransforms(joints);
+
+            // Check self-collision
+            if (robotCollision.isSelfCollidingFast(linkPoses)) {
+                return false;
+            }
+
+            // Check environment collision
+            if (!robotCollision.isConfigCollisionFree(env, linkPoses)) {
+                return false;
+            }
+        }
+        return true; // Edge is collision-free
+    });
+}
+
+// 6. Plan path
+const start = [0, 0, 0, 0, 0, 0];
+const goal = [1.57, -0.5, 0.5, 0, 1.0, 0];
+
+const result = planner.planPath(start, goal, checkEdgesBatch);
+
+if (result.success) {
+    console.log(`Path found: ${result.waypointCount} waypoints`);
+    console.log(`Path length: ${result.pathLength.toFixed(2)} rad`);
+    console.log(`Planning time: ${result.planningTimeMs.toFixed(1)} ms`);
+    console.log(`GPU batches: ${result.gpuBatches}`);
+
+    // Get waypoints
+    const waypoints = result.waypoints;
+    for (const wp of waypoints) {
+        console.log('Waypoint:', wp);
+    }
+} else {
+    console.error('Planning failed:', result.error);
+}
+
+// 7. If environment changes, reset edge cache
+planner.resetValidations();
+```
+
+### Using with WasmMotion API
+
+```typescript
+import { WasmMotion, GpuPlanningContext, GpuPlanningContextConfig } from 'trajx-wasm';
+
+// Create GPU planning context
+const config = GpuPlanningContextConfig.fast();
+const gpuCtx = new GpuPlanningContext(robot, config);
+gpuCtx.buildRoadmap();
+
+// Define collision checker
+function checkEdges(edges) {
+    return edges.map(([start, end]) => {
+        // Your collision checking logic
+        return robotCollision.isEdgeCollisionFree(env, robot, start, end, 5);
+    });
+}
+
+// Create motion with GPU batch mode
+const result = WasmMotion.to(goal)
+    .gpuBatch()
+    .runWithGpuCollision(robot, gpuCtx, checkEdges);
+
+console.log('Trajectory points:', result.trajectoryLength);
+console.log('Collision-free:', result.collisionFree);
+```
+
+### Configuration Presets
+
+| Preset | Samples | K-Neighbors | Best For |
+|--------|---------|-------------|----------|
+| `GpuPlanningContextConfig.fast()` | 200 | 10 | Quick planning, simple environments |
+| `GpuPlanningContextConfig.balanced()` | 500 | 15 | General use (default) |
+| `GpuPlanningContextConfig.quality()` | 1000 | 20 | Complex environments, optimal paths |
+
+### GpuPlanningContext API
+
+| Method | Description |
+|--------|-------------|
+| `new GpuPlanningContext(robot, config?)` | Create planner with robot and optional config |
+| `.buildRoadmap()` | Build roadmap graph (call once before queries) |
+| `.isRoadmapBuilt()` | Check if roadmap is ready |
+| `.nodeCount` | Number of nodes in roadmap |
+| `.edgeCount` | Number of edges in roadmap |
+| `.planPath(start, goal, checkEdges)` | Plan path with batch collision callback |
+| `.resetValidations()` | Reset edge cache (call when environment changes) |
+
+### GpuPlanningResult Properties
+
+| Property | Description |
+|----------|-------------|
+| `.success` | Whether planning succeeded |
+| `.waypoints` | Array of joint configurations |
+| `.waypointCount` | Number of waypoints |
+| `.pathLength` | Total path length in joint space (radians) |
+| `.edgesValidated` | Number of edges checked |
+| `.gpuBatches` | Number of batch collision calls |
+| `.planningTimeMs` | Total planning time |
+| `.error` | Error message if failed |
+
+### Edge Collision Checking
+
+For validating individual edges:
+
+```typescript
+// Check if an edge is collision-free
+const start = [0, 0, 0, 0, 0, 0];
+const end = [1.0, 0.5, -0.5, 0, 0.5, 0];
+const samples = 5;  // Number of samples along edge
+
+const isFree = robotCollision.isEdgeCollisionFree(env, robot, start, end, samples);
+console.log('Edge collision-free:', isFree);
+```
+
+### Capsule Approximation for GPU
+
+Convert complex geometries to GPU-friendly capsules:
+
+```typescript
+import { WasmEnvironmentCapsuleOptions } from 'trajx-wasm';
+
+// Create environment with mixed shapes
+const env = new CollisionEnvironment();
+env.addBox("table", [0.3, 0.2, 0.02], tablePose);
+env.addCylinder("pole", 0.05, 0.2, polePose);
+env.addSphere("ball", 0.05, [0.3, 0.3, 0.3]);
+
+console.log('GPU compatible:', env.isGpuCompatible());
+console.log('Incompatible count:', env.countGpuIncompatible());
+
+// Convert to capsule approximation
+const options = WasmEnvironmentCapsuleOptions.gpuOptimized();
+const { env: capsuleEnv, stats } = env.toCapsuleApproximation(options);
+
+console.log('Obstacles converted:', stats.obstacles_converted);
+console.log('Capsules generated:', stats.capsules_generated);
+console.log('Coverage ratio:', stats.avg_coverage_ratio);
+console.log('New env GPU compatible:', capsuleEnv.isGpuCompatible());
+```
+
+### Building with GPU Planning Feature
+
+```bash
+# Build with GPU planning support
+wasm-pack build --target web --features "collision,gpu-planning"
+
+# Or use build script
+./build.sh collision gpu-planning
+```
 
 ## Tool System
 
@@ -708,10 +952,68 @@ async function planWithCollision() {
 
 ### Planning
 
-- `BiRRTPlanner` - Bidirectional RRT planner
-- `BiRRTConfig` - Planner configuration (max_iterations, goal_bias, etc.)
+- `BiRRTPlanner` - Bidirectional RRT planner (fastest for simple planning)
+  - `new BiRRTPlanner(jointLimits, config?)` - Create planner
+  - `.plan(start, goal)` - Plan with joint limits only
+  - `.planWithCollisionCheck(start, goal, checker)` - Plan with collision callback
+- `BiRRTConfig` - BiRRT configuration
+  - `.withMaxIterations(n)` - Set max iterations
+  - `.withGoalBias(p)` - Set goal sampling probability
+  - `.withMaxExtension(d)` - Set max step size
+  - `.withConnectionThreshold(d)` - Set tree connection threshold
+- `RRTStarPlanner` - Asymptotically optimal RRT*
+  - `new RRTStarPlanner(jointLimits, config?)` - Create planner
+  - `.plan(start, goal)` - Plan with joint limits only
+  - `.planWithCollisionCheck(start, goal, checker)` - Plan with collision callback
+- `RRTStarConfig` - RRT* configuration
+  - `.withMaxIterations(n)` - Set max iterations
+  - `.withGoalBias(p)` - Set goal sampling probability
+  - `.withMaxExtension(d)` - Set max step size
+  - `.withGoalRadius(r)` - Set goal reaching threshold
+  - `.withRewireFactor(f)` - Set rewiring radius multiplier
+- `PRMPlanner` - Probabilistic Roadmap planner (best for multi-query)
+  - `new PRMPlanner(jointLimits, config?)` - Create planner
+  - `.buildRoadmap()` - Build roadmap (one-time, no collision check)
+  - `.buildRoadmapWithCollisionCheck(checker)` - Build with collision
+  - `.query(start, goal)` - Query path
+  - `.queryWithCollisionCheck(start, goal, checker)` - Query with collision
+  - `.isRoadmapBuilt` - Check if roadmap is ready
+  - `.nodeCount` / `.edgeCount` - Roadmap statistics
+- `PRMConfig` - PRM configuration
+  - `.withNumSamples(n)` - Set number of roadmap samples
+  - `.withKNeighbors(k)` - Set k-nearest neighbors
 - `PathOptimizer` - Path post-processing (shortcutting)
 - `interpolatePathFlat(path, resolution)` - Interpolate waypoints
+
+### GPU Planning (optional `gpu-planning` feature)
+
+- `GpuPlanningContext` - Lazy-PRM planner with batch collision checking
+  - `new GpuPlanningContext(robot, config?)` - Create planner
+  - `.buildRoadmap()` - Build roadmap graph
+  - `.isRoadmapBuilt()` - Check if roadmap is ready
+  - `.nodeCount` - Number of nodes
+  - `.edgeCount` - Number of edges
+  - `.planPath(start, goal, checkEdges)` - Plan with batch callback
+  - `.resetValidations()` - Reset edge cache
+- `GpuPlanningContextConfig` - Configuration for GPU planning
+  - `GpuPlanningContextConfig.fast()` - Quick planning preset
+  - `GpuPlanningContextConfig.balanced()` - Default preset
+  - `GpuPlanningContextConfig.quality()` - High-quality preset
+  - `.withNumSamples(n)` - Set roadmap samples
+  - `.withKNeighbors(k)` - Set k-nearest neighbors
+  - `.withBatchSize(size)` - Set validation batch size
+- `GpuPlanningResult` - Planning result
+  - `.success` - Whether planning succeeded
+  - `.waypoints` - Array of joint configurations
+  - `.waypointCount` - Number of waypoints
+  - `.pathLength` - Path length in joint space
+  - `.edgesValidated` - Edges checked
+  - `.gpuBatches` - Number of batch calls
+  - `.planningTimeMs` - Planning time
+  - `.error` - Error message if failed
+- `LazyPrmPlanner` - Low-level Lazy-PRM planner
+- `LazyPrmConfig` - Low-level planner configuration
+- `LazyPrmResult` - Low-level planning result
 
 ### Task-Space Planning
 
@@ -777,16 +1079,6 @@ async function planWithCollision() {
   - `env.setDefaultCollisionAllowed(allowed)` - Set default behavior
   - `env.clearAcm()` - Clear all ACM entries
 
-## Remaining Features (TODO)
-
-The following features from trajx-planning are not yet wrapped:
-
-- **RRT\*** - Asymptotically optimal RRT
-- **Informed RRT\*** - Ellipsoidal sampling for faster convergence
-- **BIT\*** - Batch Informed Trees
-- **PRM** - Probabilistic Roadmap planner
-- **Distance queries** - Minimum distance computation
-
 ## Performance
 
 | Operation | Time (typical) |
@@ -830,6 +1122,9 @@ wasm-pack build --target web
 
 # With collision feature
 wasm-pack build --target web --features collision
+
+# With GPU planning feature
+wasm-pack build --target web --features "collision,gpu-planning"
 ```
 
 ## Examples
@@ -839,7 +1134,7 @@ Both directories are automatically copied to `pkg/` during build.
 
 ### Demo (included in pkg after build)
 
-- **`demo/index.html`** - Comprehensive browser demo with all features (Tool, Collision, FK/IK)
+- **`demo/index.html`** - Comprehensive browser demo with all features (Tool, Collision, GPU Planning, FK/IK)
 - **`demo/test_node.mjs`** - Node.js test suite (45 tests)
 
 ### Interactive Examples (included in pkg after build)
@@ -848,14 +1143,17 @@ These standalone HTML demos showcase specific features with interactive UI:
 
 | Demo | Description |
 |------|-------------|
-| **`examples/motion-cable-demo.html`** | Motion API + Cable Integration - WasmMotion.cableAware(), WasmSequence cable tracking |
-| **`examples/motion-centric-demo.html`** | Motion-Centric API - WasmMotion, WasmPath, WasmSequence fluent API for motion planning |
-| **`examples/collision-demo.html`** | CollisionEnvironment API - Add/remove obstacles (box, sphere, cylinder), check shape collisions |
-| **`examples/batch-collision-demo.html`** | BatchCollisionChecker - High-performance multi-configuration collision checking (1000+ configs in ~3ms) |
-| **`examples/motion-validator-demo.html`** | WasmConfigurationSpace & WasmDiscreteMotionValidator - Validate motion paths between configurations |
-| **`examples/pipeline-demo.html`** | WasmPlanningPipeline - Complete path planning with shortcutting and smoothing optimization (96% waypoint reduction) |
-| **`examples/advanced-planners-demo.html`** | BiRRT, RRT*, PRM planners - Compare different planning algorithms with 2D visualization |
-| **`examples/urdf-cartesian-demo.html`** | URDF loading, FK/IK verification - Validate IK solutions with round-trip consistency tests |
+| **`examples/index.html`** | Navigation page - Links to all demos |
+| **`examples/motion-centric-demo.html`** | Motion-Centric API - WasmMotion, WasmPath, WasmSequence with collision-aware planning |
+| **`examples/motion-collision-demo.html`** | Collision-Aware Motion - Detailed collision checking workflow and API warnings |
+| **`examples/motion-cable-demo.html`** | Motion + Cable Integration - WasmMotion.cableAware(), WasmSequence cable tracking |
+| **`examples/advanced-planners-demo.html`** | BiRRT, RRT*, PRM - Compare planning algorithms with 2D visualization |
+| **`examples/gpu-batch-planning-demo.html`** | GPU Batch Planning - Lazy-PRM with batch collision checking |
+| **`examples/collision-demo.html`** | CollisionEnvironment API - Add/remove obstacles, check collisions |
+| **`examples/batch-collision-demo.html`** | BatchCollisionChecker - Multi-configuration checking (1000+ in ~3ms) |
+| **`examples/motion-validator-demo.html`** | WasmConfigurationSpace & WasmDiscreteMotionValidator |
+| **`examples/pipeline-demo.html`** | WasmPlanningPipeline - Path planning with optimization |
+| **`examples/urdf-cartesian-demo.html`** | URDF loading, FK/IK verification |
 
 ### Running the Browser Demos
 

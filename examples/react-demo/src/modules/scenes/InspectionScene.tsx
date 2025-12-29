@@ -698,20 +698,14 @@ function CameraFrustum({
     [quaternion]
   );
 
-  // Convert Z-up to Y-up for Three.js
-  const posYup: [number, number, number] = [position[0], position[2], -position[1]];
-
   // Calculate frustum dimensions
   const halfAngle = (fov / 2) * (Math.PI / 180);
   const farWidth = Math.tan(halfAngle) * distance * 2;
   const farHeight = farWidth * 0.75; // 4:3 aspect ratio
 
-  // Convert quaternion from Z-up to Y-up
-  const zUpToYUp = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
-  const finalQuat = zUpToYUp.clone().multiply(quatObj);
-
+  // Z-up scene: use position and quaternion directly
   return (
-    <group position={posYup} quaternion={finalQuat}>
+    <group position={position} quaternion={quatObj}>
       {/* Frustum lines */}
       <lineSegments>
         <bufferGeometry>
@@ -784,17 +778,11 @@ function DefectMarker({
     minor: THEME.accent,
   };
 
-  // Convert Z-up to Y-up
-  const posYup: [number, number, number] = [
-    defect.position[0],
-    defect.position[2],
-    -defect.position[1],
-  ];
-
+  // Z-up scene: use position directly
   return (
-    <group position={posYup}>
-      {/* Outer ring */}
-      <mesh ref={meshRef} rotation={[Math.PI / 2, 0, 0]}>
+    <group position={defect.position}>
+      {/* Outer ring - Z-up: ring is on XY plane by default, no rotation needed */}
+      <mesh ref={meshRef}>
         <ringGeometry args={[defect.size * 1.2, defect.size * 1.5, 32]} />
         <meshBasicMaterial
           color={severityColor[defect.severity]}
@@ -810,15 +798,15 @@ function DefectMarker({
         <meshBasicMaterial color={severityColor[defect.severity]} />
       </mesh>
 
-      {/* Confidence indicator */}
-      <mesh position={[0, 0.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
+      {/* Confidence indicator - Z-up: ring on XY plane */}
+      <mesh position={[0, 0, 0.02]}>
         <ringGeometry args={[defect.size * 1.6, defect.size * 1.8, 32, 1, 0, defect.confidence * Math.PI * 2]} />
         <meshBasicMaterial color={THEME.success} transparent opacity={0.5} />
       </mesh>
 
-      {/* Vertical indicator */}
+      {/* Vertical indicator - Z-up: cylinder along Z axis */}
       {selected && (
-        <mesh position={[0, 0.04, 0]}>
+        <mesh position={[0, 0, 0.04]} rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[0.002, 0.002, 0.08, 8]} />
           <meshBasicMaterial color={severityColor[defect.severity]} />
         </mesh>
@@ -843,19 +831,18 @@ function InspectionRegionOverlay({
   onRegionSelect: (id: string) => void;
 }) {
   return (
-    // Position above all workpiece elements including raised boss (top at 0.066)
-    // to ensure click detection works properly
-    // Using renderOrder to ensure regions are rendered on top
-    <group position={[0.5, 0.08, 0]}>
+    // Z-up: Position above workpiece surface (Z=0.08 is height above workpiece top at ~0.05)
+    // Workpiece is at x=0.5, regions are defined relative to workpiece center
+    <group position={[0.5, 0, 0.06]}>
       {regions.map((region) => {
         const isSelected = selectedRegionId === region.id;
         const isScanned = scannedRegionIds.includes(region.id);
 
         return (
           <group key={region.id}>
+            {/* Z-up: plane is on XY by default, facing +Z, no rotation needed */}
             <mesh
-              position={[region.center[0], 0.002, -region.center[1]]}
-              rotation={[-Math.PI / 2, 0, 0]}
+              position={[region.center[0], region.center[1], 0.002]}
               renderOrder={999}
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -879,9 +866,9 @@ function InspectionRegionOverlay({
               />
             </mesh>
 
-            {/* Selection ring */}
+            {/* Selection ring - Z-up: ring on XY plane, no rotation needed */}
             {isSelected && (
-              <mesh position={[region.center[0], 0.002, -region.center[1]]} rotation={[-Math.PI / 2, 0, 0]}>
+              <mesh position={[region.center[0], region.center[1], 0.002]}>
                 <ringGeometry args={[Math.max(...region.size) * 0.55, Math.max(...region.size) * 0.58, 32]} />
                 <meshBasicMaterial color={THEME.accent} transparent opacity={0.9} />
               </mesh>
@@ -889,7 +876,7 @@ function InspectionRegionOverlay({
 
             {/* Scan complete indicator */}
             {isScanned && (
-              <mesh position={[region.center[0], 0.003, -region.center[1]]}>
+              <mesh position={[region.center[0], region.center[1], 0.003]}>
                 <sphereGeometry args={[0.008, 12, 12]} />
                 <meshBasicMaterial color={THEME.success} />
               </mesh>
@@ -1141,10 +1128,10 @@ function InspectionSceneContent({
             />
           ))}
 
-        {/* Enhanced workpiece lighting */}
-        <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
-        <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
-        <spotLight position={[0.5, 0.8, 0]} angle={0.6} intensity={0.4} color="#ffffff" />
+        {/* Enhanced workpiece lighting - Z-up: height is Z coordinate */}
+        <pointLight position={[0.5, 0.5, 1.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
+        <pointLight position={[-0.5, -0.5, 1]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
+        <spotLight position={[0.5, 0, 0.8]} angle={0.6} intensity={0.4} color="#ffffff" />
       </RenderPipeline>
     </EnvironmentSystem>
   );
@@ -1237,7 +1224,9 @@ function InspectionDemoInner({ tcpSettings }: { tcpSettings: TcpSettings }) {
     const newViewpoints: CameraViewpoint[] = [];
 
     // Camera pointing down (-Z in Z-up frame)
-    // 180° around X to flip TCP Z-axis from +Z to -Z (pointing down toward workpiece)
+    // InspectionCamera lens is along -X, TCP has -90°Y rotation making TCP +Z point along -X
+    // For lens to point world -Z (down), we need 180° around X axis
+    // Quaternion for 180° around X: [x, y, z, w] = [1, 0, 0, 0]
     const downQuat: [number, number, number, number] = [1, 0, 0, 0];
 
     // Calculate how many viewpoints needed to cover the region
@@ -1309,7 +1298,7 @@ function InspectionDemoInner({ tcpSettings }: { tcpSettings: TcpSettings }) {
         region.center[1],
         0.052 + cameraDistance,
       ],
-      quaternion: [1, 0, 0, 0], // 180° around X to point down
+      quaternion: [1, 0, 0, 0], // 180° around X for camera pointing down
       regionId: selectedRegionId,
       fov: cameraFOV,
       distance: cameraDistance,
@@ -1369,7 +1358,7 @@ function InspectionDemoInner({ tcpSettings }: { tcpSettings: TcpSettings }) {
     setSelectedRegionId(id);
     const region = inspectionRegions.find(r => r.id === id);
     if (region) {
-      // 180° around X to point TCP Z-axis down toward workpiece
+      // 180° around X for camera lens pointing down toward workpiece
       const targetPose = {
         position: [0.5 + region.center[0], region.center[1], 0.052 + inspectionSettings.cameraDistance] as [number, number, number],
         quaternion: [1, 0, 0, 0] as [number, number, number, number],
@@ -1618,13 +1607,12 @@ export function InspectionScene() {
     rotationZ: 0,
   });
 
-  // Compute TCP from tool metadata WITHOUT working distance
-  // Working distance is handled by the scene's viewpoint positioning (0.052 + cameraDistance)
-  // TCP should only represent the lens front position
-  const tcp = useMemo(
-    () => computeTcpFromMetadata(INSPECTION_CAMERA_METADATA, 0),
-    []
-  );
+  // TCP configuration using tool metadata (same pattern as WeldingScene)
+  // The InspectionCamera has its lens along -X, so metadata includes rotation
+  // to orient TCP Z-axis toward workpiece
+  const tcp = useMemo(() => {
+    return computeTcpFromMetadata(INSPECTION_CAMERA_METADATA);
+  }, []);
 
   // Sync computed TCP to settings for display in debug panel
   useEffect(() => {

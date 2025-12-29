@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trajx WASM - Batch FK Demo (GPU Instancing)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .status.loading { background: #3d3d00; color: #ffeb3b; }
+        .status.ready { background: #1b4332; color: #40c057; }
+        .status.error { background: #4a1515; color: #ff6b6b; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .card h2 {
+            color: #00d4ff;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .control-group label {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        .control-group input {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #fff;
+            width: 120px;
+        }
+        .control-group input:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+
+        button {
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,212,255,0.3);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .results {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9rem;
+            min-height: 150px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .result-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .result-row:last-child { border-bottom: none; }
+        .result-label { color: #888; }
+        .result-value { color: #00d4ff; font-weight: bold; }
+        .result-value.success { color: #40c057; }
+        .result-value.warning { color: #fab005; }
+
+        .perf-bar {
+            height: 20px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        .perf-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #40c057, #fab005, #ff6b6b);
+            transition: width 0.3s;
+        }
+
+        .animation-canvas {
+            width: 100%;
+            height: 200px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+        .robot-dot {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: #00d4ff;
+            border-radius: 50%;
+            transition: transform 0.05s linear;
+        }
+
+        .full-width { grid-column: 1 / -1; }
+
+        .log {
+            background: #0d1117;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .log-entry { padding: 3px 0; }
+        .log-entry.info { color: #58a6ff; }
+        .log-entry.success { color: #3fb950; }
+        .log-entry.error { color: #f85149; }
+        .log-entry.perf { color: #d29922; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Batch Forward Kinematics Demo</h1>
+        <p class="subtitle">GPU Instancing & RL Visualization - Issue #53</p>
+
+        <div id="status" class="status loading">Loading WASM module...</div>
+
+        <div class="grid">
+            <!-- Controls -->
+            <div class="card">
+                <h2>Configuration</h2>
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Robot Count</label>
+                        <input type="number" id="robotCount" value="500" min="1" max="10000">
+                    </div>
+                    <div class="control-group">
+                        <label>Joint Count (DOF)</label>
+                        <input type="number" id="jointCount" value="6" min="1" max="12">
+                    </div>
+                    <div class="control-group">
+                        <label>Iterations</label>
+                        <input type="number" id="iterations" value="100" min="1" max="1000">
+                    </div>
+                </div>
+                <button id="runBenchmark" disabled>Run Benchmark</button>
+                <button id="runAnimation" disabled style="margin-left: 10px;">Start Animation</button>
+            </div>
+
+            <!-- Results -->
+            <div class="card">
+                <h2>Performance Results</h2>
+                <div class="results" id="results">
+                    <div style="color: #666; text-align: center; padding: 50px 0;">
+                        Click "Run Benchmark" to see results
+                    </div>
+                </div>
+            </div>
+
+            <!-- Animation -->
+            <div class="card full-width">
+                <h2>Live Animation (End-Effector Positions)</h2>
+                <div class="animation-canvas" id="animationCanvas"></div>
+                <p style="color: #666; font-size: 0.8rem; margin-top: 10px;">
+                    Each dot represents the end-effector position of one robot instance
+                </p>
+            </div>
+
+            <!-- Log -->
+            <div class="card full-width">
+                <h2>Console Log</h2>
+                <div class="log" id="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, * as wasm from '../pkg-web/trajx_wasm.js';
+
+        let isAnimating = false;
+        let animationId = null;
+
+        // Logging
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `<div class="log-entry ${type}">[${time}] ${message}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // Create DH params for a 6-DOF robot (similar to UR5)
+        function createDhParams(jointCount) {
+            const params = [];
+            for (let i = 0; i < jointCount; i++) {
+                const a = i === 1 ? 0.4 : (i === 2 ? 0.3 : 0);
+                const alpha = (i === 0 || i === 3) ? -Math.PI/2 : (i === 4 ? Math.PI/2 : 0);
+                const d = (i === 0) ? 0.1 : (i === 3 ? 0.1 : (i === 5 ? 0.08 : 0));
+                params.push(new wasm.DhParam(a, alpha, d, 0));
+            }
+            return params;
+        }
+
+        // Run benchmark
+        function runBenchmark() {
+            const robotCount = parseInt(document.getElementById('robotCount').value);
+            const jointCount = parseInt(document.getElementById('jointCount').value);
+            const iterations = parseInt(document.getElementById('iterations').value);
+
+            log(`Starting benchmark: ${robotCount} robots × ${jointCount} DOF × ${iterations} iterations`, 'info');
+
+            // Generate random joint angles
+            const jointAngles = new Float32Array(robotCount * jointCount);
+            for (let i = 0; i < jointAngles.length; i++) {
+                jointAngles[i] = (Math.random() - 0.5) * 2;
+            }
+
+            // Warm up (DhParam objects are consumed by wasm-bindgen, so recreate each time)
+            wasm.batchForwardKinematicsEndEffector(createDhParams(jointCount), jointAngles, robotCount, jointCount);
+
+            // Benchmark: End-effector only
+            let totalTimeEE = 0;
+            for (let i = 0; i < iterations; i++) {
+                const start = performance.now();
+                wasm.batchForwardKinematicsEndEffector(createDhParams(jointCount), jointAngles, robotCount, jointCount);
+                totalTimeEE += performance.now() - start;
+            }
+            const avgTimeEE = totalTimeEE / iterations;
+
+            // Benchmark: All links
+            let totalTimeAll = 0;
+            for (let i = 0; i < iterations; i++) {
+                const start = performance.now();
+                wasm.batchForwardKinematicsF32(createDhParams(jointCount), jointAngles, robotCount, jointCount);
+                totalTimeAll += performance.now() - start;
+            }
+            const avgTimeAll = totalTimeAll / iterations;
+
+            // Calculate throughput
+            const robotsPerSecEE = (robotCount / avgTimeEE) * 1000;
+            const robotsPerSecAll = (robotCount / avgTimeAll) * 1000;
+
+            // Display results
+            const resultsEl = document.getElementById('results');
+            const targetMet = avgTimeEE < 5;
+
+            resultsEl.innerHTML = `
+                <div class="result-row">
+                    <span class="result-label">Robot Count</span>
+                    <span class="result-value">${robotCount.toLocaleString()}</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Joints per Robot</span>
+                    <span class="result-value">${jointCount}</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">End-Effector Only (avg)</span>
+                    <span class="result-value ${targetMet ? 'success' : 'warning'}">${avgTimeEE.toFixed(3)} ms</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">All Links (avg)</span>
+                    <span class="result-value">${avgTimeAll.toFixed(3)} ms</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">EE Throughput</span>
+                    <span class="result-value success">${(robotsPerSecEE/1000).toFixed(1)}K robots/sec</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Target (<5ms for 500)</span>
+                    <span class="result-value ${targetMet ? 'success' : 'warning'}">${targetMet ? 'PASSED' : 'NOT MET'}</span>
+                </div>
+                <div class="perf-bar">
+                    <div class="perf-fill" style="width: ${Math.min(100, (5 / avgTimeEE) * 20)}%"></div>
+                </div>
+            `;
+
+            log(`Benchmark complete: EE=${avgTimeEE.toFixed(3)}ms, All=${avgTimeAll.toFixed(3)}ms`, 'perf');
+            log(`Throughput: ${(robotsPerSecEE/1000).toFixed(1)}K robots/sec`, 'success');
+        }
+
+        // Animation
+        function startAnimation() {
+            const robotCount = Math.min(200, parseInt(document.getElementById('robotCount').value));
+            const jointCount = parseInt(document.getElementById('jointCount').value);
+
+            if (isAnimating) {
+                isAnimating = false;
+                document.getElementById('runAnimation').textContent = 'Start Animation';
+                if (animationId) cancelAnimationFrame(animationId);
+                return;
+            }
+
+            isAnimating = true;
+            document.getElementById('runAnimation').textContent = 'Stop Animation';
+
+            // Create dots
+            const canvas = document.getElementById('animationCanvas');
+            canvas.innerHTML = '';
+            const dots = [];
+            for (let i = 0; i < robotCount; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'robot-dot';
+                dot.style.background = `hsl(${(i / robotCount) * 360}, 70%, 60%)`;
+                canvas.appendChild(dot);
+                dots.push(dot);
+            }
+
+            const canvasWidth = canvas.offsetWidth;
+            const canvasHeight = canvas.offsetHeight;
+
+            let time = 0;
+            function animate() {
+                if (!isAnimating) return;
+
+                time += 0.02;
+
+                // Generate animated joint angles
+                const jointAngles = new Float32Array(robotCount * jointCount);
+                for (let i = 0; i < robotCount; i++) {
+                    for (let j = 0; j < jointCount; j++) {
+                        const phase = (i / robotCount) * Math.PI * 2;
+                        jointAngles[i * jointCount + j] = Math.sin(time + phase + j * 0.5) * 0.8;
+                    }
+                }
+
+                // Compute FK (recreate DhParams each frame as wasm-bindgen consumes them)
+                const transforms = wasm.batchForwardKinematicsEndEffector(createDhParams(jointCount), jointAngles, robotCount, jointCount);
+
+                // Update dot positions
+                for (let i = 0; i < robotCount; i++) {
+                    const offset = i * 16;
+                    // Extract position from 4x4 matrix (column 3: indices 12, 13, 14)
+                    const x = transforms[offset + 12];
+                    const y = transforms[offset + 13];
+
+                    // Map to canvas coordinates
+                    const px = (x + 1) * canvasWidth / 2;
+                    const py = (1 - y) * canvasHeight / 2;
+
+                    dots[i].style.transform = `translate(${px}px, ${py}px)`;
+                }
+
+                animationId = requestAnimationFrame(animate);
+            }
+
+            animate();
+            log(`Animation started with ${robotCount} robots`, 'info');
+        }
+
+        // Initialize
+        async function initialize() {
+            try {
+                await init();
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = `WASM Ready - Version: ${wasm.version()}`;
+
+                document.getElementById('runBenchmark').disabled = false;
+                document.getElementById('runAnimation').disabled = false;
+
+                document.getElementById('runBenchmark').onclick = runBenchmark;
+                document.getElementById('runAnimation').onclick = startAnimation;
+
+                log('WASM module initialized successfully', 'success');
+                log(`Available APIs: batchForwardKinematics, batchForwardKinematicsF32, batchForwardKinematicsEndEffector`, 'info');
+
+            } catch (error) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Failed to load: ${error.message}`;
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        initialize();
+    </script>
+</body>
+</html>

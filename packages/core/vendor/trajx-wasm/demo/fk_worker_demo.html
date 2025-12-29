@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trajx WASM - FK Worker Demo</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .status.loading { background: #3d3d00; color: #ffeb3b; }
+        .status.ready { background: #1b4332; color: #40c057; }
+        .status.error { background: #4a1515; color: #ff6b6b; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .card h2 {
+            color: #00d4ff;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .control-group label {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        .control-group input, .control-group select {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #fff;
+            min-width: 150px;
+        }
+        .control-group input:focus, .control-group select:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+
+        button {
+            background: linear-gradient(90deg, #00d4ff, #7b2cbf);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,212,255,0.3);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .results {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9rem;
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .result-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .result-row:last-child { border-bottom: none; }
+        .result-label { color: #888; }
+        .result-value { color: #00d4ff; font-weight: bold; }
+        .result-value.success { color: #40c057; }
+        .result-value.warning { color: #fab005; }
+
+        .full-width { grid-column: 1 / -1; }
+
+        .log {
+            background: #0d1117;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        .log-entry { padding: 3px 0; }
+        .log-entry.info { color: #58a6ff; }
+        .log-entry.success { color: #3fb950; }
+        .log-entry.error { color: #f85149; }
+        .log-entry.perf { color: #d29922; }
+
+        .comparison-chart {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .bar-container {
+            flex: 1;
+            text-align: center;
+        }
+        .bar {
+            height: 100px;
+            background: linear-gradient(180deg, #00d4ff, #7b2cbf);
+            border-radius: 4px 4px 0 0;
+            margin-bottom: 5px;
+            transition: height 0.3s;
+        }
+        .bar-label {
+            font-size: 0.75rem;
+            color: #888;
+        }
+        .bar-value {
+            font-size: 0.85rem;
+            color: #fff;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>FK Worker Demo</h1>
+        <p class="subtitle">Web Worker Integration for Batch FK - Issue #55</p>
+
+        <div id="status" class="status loading">Loading...</div>
+
+        <div class="grid">
+            <!-- Configuration -->
+            <div class="card">
+                <h2>Configuration</h2>
+                <div class="controls">
+                    <div class="control-group">
+                        <label>Robot</label>
+                        <select id="robotSelect">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>Robot Count</label>
+                        <input type="number" id="robotCount" value="500" min="1" max="10000">
+                    </div>
+                    <div class="control-group">
+                        <label>Iterations</label>
+                        <input type="number" id="iterations" value="100" min="1" max="1000">
+                    </div>
+                </div>
+                <button id="initWorker" disabled>Initialize Worker</button>
+                <button id="runBenchmark" disabled style="margin-left: 10px;">Run Benchmark</button>
+            </div>
+
+            <!-- Results -->
+            <div class="card">
+                <h2>Performance Comparison</h2>
+                <div class="results" id="results">
+                    <div style="color: #666; text-align: center; padding: 50px 0;">
+                        Initialize worker and run benchmark to see results
+                    </div>
+                </div>
+                <div class="comparison-chart" id="chart" style="display: none;">
+                    <div class="bar-container">
+                        <div class="bar" id="mainThreadBar"></div>
+                        <div class="bar-value" id="mainThreadValue">-</div>
+                        <div class="bar-label">Main Thread</div>
+                    </div>
+                    <div class="bar-container">
+                        <div class="bar" id="workerBar" style="background: linear-gradient(180deg, #40c057, #1b4332);"></div>
+                        <div class="bar-value" id="workerValue">-</div>
+                        <div class="bar-label">Web Worker</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Worker Status -->
+            <div class="card">
+                <h2>Worker Status</h2>
+                <div class="results" id="workerStatus">
+                    <div class="result-row">
+                        <span class="result-label">State</span>
+                        <span class="result-value" id="workerState">Not initialized</span>
+                    </div>
+                    <div class="result-row">
+                        <span class="result-label">Robot</span>
+                        <span class="result-value" id="workerRobot">-</span>
+                    </div>
+                    <div class="result-row">
+                        <span class="result-label">Joint Count</span>
+                        <span class="result-value" id="workerJoints">-</span>
+                    </div>
+                    <div class="result-row">
+                        <span class="result-label">Link Count</span>
+                        <span class="result-value" id="workerLinks">-</span>
+                    </div>
+                    <div class="result-row">
+                        <span class="result-label">Robot Count</span>
+                        <span class="result-value" id="workerCount">-</span>
+                    </div>
+                    <div class="result-row">
+                        <span class="result-label">SharedArrayBuffer</span>
+                        <span class="result-value" id="workerShared">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Animation -->
+            <div class="card">
+                <h2>Live Animation</h2>
+                <canvas id="animationCanvas" width="400" height="200" style="width: 100%; background: rgba(0,0,0,0.3); border-radius: 8px;"></canvas>
+                <div style="margin-top: 10px;">
+                    <button id="startAnimation" disabled>Start Animation</button>
+                    <span id="fpsCounter" style="margin-left: 15px; color: #888;">FPS: -</span>
+                </div>
+            </div>
+
+            <!-- Log -->
+            <div class="card full-width">
+                <h2>Console Log</h2>
+                <div class="log" id="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { createFKWorker, listSupportedRobots, isSharedArrayBufferAvailable } from '../workers/index.js';
+        import init, * as wasm from '../pkg-web/trajx_wasm.js';
+
+        let fkWorker = null;
+        let isAnimating = false;
+        let animationId = null;
+
+        // Logging
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `<div class="log-entry ${type}">[${time}] ${message}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(`[${type}] ${message}`);
+        }
+
+        // Update status
+        function updateStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = `status ${type}`;
+            statusEl.textContent = message;
+        }
+
+        // Update worker status display
+        function updateWorkerStatus(info) {
+            document.getElementById('workerState').textContent = info.state || 'Unknown';
+            document.getElementById('workerRobot').textContent = info.robot || '-';
+            document.getElementById('workerJoints').textContent = info.joints || '-';
+            document.getElementById('workerLinks').textContent = info.links || '-';
+            document.getElementById('workerCount').textContent = info.count || '-';
+            document.getElementById('workerShared').textContent = info.shared || '-';
+        }
+
+        // Initialize
+        async function initialize() {
+            try {
+                // Init WASM for main thread comparison
+                await init();
+                log('WASM initialized for main thread', 'success');
+
+                // List supported robots
+                const robots = await listSupportedRobots();
+                log(`Found ${robots.length} supported robots: ${robots.join(', ')}`, 'info');
+
+                // Populate robot select
+                const select = document.getElementById('robotSelect');
+                select.innerHTML = robots.map(r =>
+                    `<option value="${r}"${r === 'ur5' ? ' selected' : ''}>${r}</option>`
+                ).join('');
+
+                // Enable buttons
+                document.getElementById('initWorker').disabled = false;
+
+                // Check SharedArrayBuffer
+                const sabAvailable = isSharedArrayBufferAvailable();
+                log(`SharedArrayBuffer: ${sabAvailable ? 'Available' : 'Not available (cross-origin isolation required)'}`,
+                    sabAvailable ? 'success' : 'info');
+
+                updateStatus('Ready - Select a robot and initialize worker', 'ready');
+
+            } catch (error) {
+                log(`Initialization error: ${error.message}`, 'error');
+                updateStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize worker
+        async function initializeWorker() {
+            const robotName = document.getElementById('robotSelect').value;
+            const robotCount = parseInt(document.getElementById('robotCount').value);
+
+            log(`Initializing FK Worker: ${robotName} × ${robotCount}`, 'info');
+            updateWorkerStatus({ state: 'Initializing...' });
+
+            try {
+                // Terminate existing worker
+                if (fkWorker) {
+                    fkWorker.terminate();
+                    fkWorker = null;
+                }
+
+                const startTime = performance.now();
+                fkWorker = await createFKWorker({
+                    robotName,
+                    robotCount,
+                    useSharedBuffer: isSharedArrayBufferAvailable()
+                });
+                const initTime = performance.now() - startTime;
+
+                log(`Worker initialized in ${initTime.toFixed(1)}ms`, 'success');
+                log(`Joint count: ${fkWorker.jointCount}, Link count: ${fkWorker.linkCount}`, 'info');
+
+                updateWorkerStatus({
+                    state: 'Ready',
+                    robot: robotName,
+                    joints: fkWorker.jointCount,
+                    links: fkWorker.linkCount,
+                    count: fkWorker.robotCount,
+                    shared: fkWorker.useSharedBuffer ? 'Enabled' : 'Disabled'
+                });
+
+                document.getElementById('runBenchmark').disabled = false;
+                document.getElementById('startAnimation').disabled = false;
+                updateStatus('Worker ready', 'ready');
+
+            } catch (error) {
+                log(`Worker initialization failed: ${error.message}`, 'error');
+                updateWorkerStatus({ state: 'Error: ' + error.message });
+                updateStatus(`Worker error: ${error.message}`, 'error');
+            }
+        }
+
+        // Run benchmark
+        async function runBenchmark() {
+            if (!fkWorker) {
+                log('Worker not initialized', 'error');
+                return;
+            }
+
+            const iterations = parseInt(document.getElementById('iterations').value);
+            const robotCount = fkWorker.robotCount;
+            const jointCount = fkWorker.jointCount;
+
+            log(`Running benchmark: ${robotCount} robots × ${iterations} iterations`, 'info');
+
+            // Generate random joint angles
+            const jointAngles = new Float32Array(robotCount * jointCount);
+            for (let i = 0; i < jointAngles.length; i++) {
+                jointAngles[i] = (Math.random() - 0.5) * 2;
+            }
+
+            // Get DH params for main thread test
+            const db = wasm.WasmDhDatabase.withDefaults();
+            const robotName = document.getElementById('robotSelect').value;
+
+            // Benchmark: Main thread
+            // Note: getDhParams returns array that may include extra rows (e.g., flange offset)
+            // The jointCount from worker matches this, so we use it consistently
+            let mainThreadTime = 0;
+            for (let i = 0; i < iterations; i++) {
+                const dhParams = db.getDhParams(robotName);
+                const start = performance.now();
+                // Use dhParams.length as joint_count to match the actual DH params
+                wasm.batchForwardKinematicsF32(dhParams, jointAngles, robotCount, dhParams.length);
+                mainThreadTime += performance.now() - start;
+            }
+            const avgMainThread = mainThreadTime / iterations;
+
+            log(`Main thread: ${avgMainThread.toFixed(2)}ms avg`, 'perf');
+
+            // Benchmark: Web Worker
+            let workerTime = 0;
+            for (let i = 0; i < iterations; i++) {
+                const anglesCopy = new Float32Array(jointAngles);
+                const start = performance.now();
+                await fkWorker.computeFK(anglesCopy);
+                workerTime += performance.now() - start;
+            }
+            const avgWorker = workerTime / iterations;
+
+            log(`Web Worker: ${avgWorker.toFixed(2)}ms avg`, 'perf');
+
+            // Display results
+            const resultsEl = document.getElementById('results');
+            const speedup = avgMainThread / avgWorker;
+            const mainThroughput = (robotCount / avgMainThread) * 1000;
+            const workerThroughput = (robotCount / avgWorker) * 1000;
+
+            resultsEl.innerHTML = `
+                <div class="result-row">
+                    <span class="result-label">Robot Count</span>
+                    <span class="result-value">${robotCount.toLocaleString()}</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Iterations</span>
+                    <span class="result-value">${iterations}</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Main Thread (avg)</span>
+                    <span class="result-value">${avgMainThread.toFixed(2)} ms</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Web Worker (avg)</span>
+                    <span class="result-value success">${avgWorker.toFixed(2)} ms</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Main Thread Throughput</span>
+                    <span class="result-value">${(mainThroughput/1000).toFixed(1)}K robots/sec</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Worker Throughput</span>
+                    <span class="result-value success">${(workerThroughput/1000).toFixed(1)}K robots/sec</span>
+                </div>
+                <div class="result-row">
+                    <span class="result-label">Benefit</span>
+                    <span class="result-value ${speedup > 1 ? 'success' : 'warning'}">
+                        ${speedup > 1 ? 'Main thread freed!' : `${(1/speedup).toFixed(1)}x overhead`}
+                    </span>
+                </div>
+            `;
+
+            // Update chart
+            const maxTime = Math.max(avgMainThread, avgWorker);
+            document.getElementById('chart').style.display = 'flex';
+            document.getElementById('mainThreadBar').style.height = `${(avgMainThread / maxTime) * 100}px`;
+            document.getElementById('workerBar').style.height = `${(avgWorker / maxTime) * 100}px`;
+            document.getElementById('mainThreadValue').textContent = `${avgMainThread.toFixed(1)}ms`;
+            document.getElementById('workerValue').textContent = `${avgWorker.toFixed(1)}ms`;
+
+            log(`Benchmark complete. Worker frees main thread for rendering!`, 'success');
+        }
+
+        // Animation
+        function startAnimation() {
+            if (!fkWorker) return;
+
+            if (isAnimating) {
+                isAnimating = false;
+                document.getElementById('startAnimation').textContent = 'Start Animation';
+                if (animationId) cancelAnimationFrame(animationId);
+                return;
+            }
+
+            isAnimating = true;
+            document.getElementById('startAnimation').textContent = 'Stop Animation';
+
+            const canvas = document.getElementById('animationCanvas');
+            const ctx = canvas.getContext('2d');
+            // Worker expects all robots, we'll only render first 100
+            const workerRobotCount = fkWorker.robotCount;
+            const displayRobotCount = Math.min(100, workerRobotCount);
+            const jointCount = fkWorker.jointCount;
+
+            let time = 0;
+            let frameCount = 0;
+            let lastFpsTime = performance.now();
+
+            async function animate() {
+                if (!isAnimating) return;
+
+                time += 0.02;
+
+                // Generate animated joint angles for ALL robots (worker expects full array)
+                const jointAngles = new Float32Array(workerRobotCount * jointCount);
+                for (let i = 0; i < workerRobotCount; i++) {
+                    for (let j = 0; j < jointCount; j++) {
+                        const phase = (i / workerRobotCount) * Math.PI * 2;
+                        jointAngles[i * jointCount + j] = Math.sin(time + phase + j * 0.5) * 0.8;
+                    }
+                }
+
+                // Compute FK using worker
+                const { transforms } = await fkWorker.computeFK(jointAngles);
+
+                // Render (only display first displayRobotCount robots)
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                for (let i = 0; i < displayRobotCount; i++) {
+                    const offset = i * fkWorker.linkCount * 16 + (fkWorker.linkCount - 1) * 16;
+                    const x = transforms[offset + 12];
+                    const y = transforms[offset + 13];
+
+                    const px = (x + 1) * canvas.width / 2;
+                    const py = (1 - y) * canvas.height / 2;
+
+                    const hue = (i / displayRobotCount) * 360;
+                    ctx.fillStyle = `hsl(${hue}, 70%, 60%)`;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // FPS counter
+                frameCount++;
+                const now = performance.now();
+                if (now - lastFpsTime >= 1000) {
+                    document.getElementById('fpsCounter').textContent = `FPS: ${frameCount}`;
+                    frameCount = 0;
+                    lastFpsTime = now;
+                }
+
+                animationId = requestAnimationFrame(animate);
+            }
+
+            animate();
+            log(`Animation started with ${displayRobotCount} robots (computing ${workerRobotCount})`, 'info');
+        }
+
+        // Event listeners
+        document.getElementById('initWorker').onclick = initializeWorker;
+        document.getElementById('runBenchmark').onclick = runBenchmark;
+        document.getElementById('startAnimation').onclick = startAnimation;
+
+        // Start
+        initialize();
+    </script>
+</body>
+</html>

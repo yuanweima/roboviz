@@ -34,10 +34,14 @@ function quaternionToEuler(q: Quaternion): THREE.Euler {
  * Axes helper for showing waypoint orientation
  */
 function WaypointAxes({ size = 0.05 }: { size?: number }): React.JSX.Element {
+  // Cylinder default is along Y axis. Rotations to align:
+  // X-axis: rotate 90° around Z
+  // Y-axis: rotate 90° around X (to align with Y in Z-up)
+  // Z-axis: no rotation needed in Z-up (cylinder along Y maps to Z with scene Z-up)
   return (
     <group>
-      {/* X axis - red */}
-      <mesh position={[size / 2, 0, 0]}>
+      {/* X axis - red (cylinder rotated to align with X) */}
+      <mesh position={[size / 2, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.002, 0.002, size, 8]} />
         <meshBasicMaterial color="#ff0000" />
       </mesh>
@@ -46,22 +50,22 @@ function WaypointAxes({ size = 0.05 }: { size?: number }): React.JSX.Element {
         <meshBasicMaterial color="#ff0000" />
       </mesh>
 
-      {/* Y axis - green */}
-      <mesh position={[0, size / 2, 0]} rotation={[0, 0, Math.PI / 2]}>
+      {/* Y axis - green (cylinder rotated to align with Y) */}
+      <mesh position={[0, size / 2, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.002, 0.002, size, 8]} />
         <meshBasicMaterial color="#00ff00" />
       </mesh>
-      <mesh position={[0, size, 0]}>
+      <mesh position={[0, size, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <coneGeometry args={[0.006, 0.015, 8]} />
         <meshBasicMaterial color="#00ff00" />
       </mesh>
 
-      {/* Z axis - blue */}
-      <mesh position={[0, 0, size / 2]} rotation={[Math.PI / 2, 0, 0]}>
+      {/* Z axis - blue (cylinder rotated to align with Z, cone points up) */}
+      <mesh position={[0, 0, size / 2]}>
         <cylinderGeometry args={[0.002, 0.002, size, 8]} />
         <meshBasicMaterial color="#0000ff" />
       </mesh>
-      <mesh position={[0, 0, size]} rotation={[Math.PI / 2, 0, 0]}>
+      <mesh position={[0, 0, size]} rotation={[-Math.PI / 2, 0, 0]}>
         <coneGeometry args={[0.006, 0.015, 8]} />
         <meshBasicMaterial color="#0000ff" />
       </mesh>
@@ -140,17 +144,17 @@ export function Waypoint({
         />
       </mesh>
 
-      {/* Selection ring */}
+      {/* Selection ring - on XY plane for Z-up */}
       {selected && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh>
           <ringGeometry args={[size * 1.5, size * 1.8, 32]} />
           <meshBasicMaterial color={color} side={THREE.DoubleSide} transparent opacity={0.6} />
         </mesh>
       )}
 
-      {/* Hover ring */}
+      {/* Hover ring - on XY plane for Z-up */}
       {hovered && !selected && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh>
           <ringGeometry args={[size * 1.2, size * 1.4, 32]} />
           <meshBasicMaterial color={color} side={THREE.DoubleSide} transparent opacity={0.3} />
         </mesh>
@@ -159,10 +163,10 @@ export function Waypoint({
       {/* Orientation axes */}
       {showAxes && <WaypointAxes size={size * 2} />}
 
-      {/* Label */}
+      {/* Label - above waypoint in Z-up */}
       {showLabel && (
         <Text
-          position={[0, size * 2.5, 0]}
+          position={[0, 0, size * 2.5]}
           fontSize={size * 1.5}
           color={isActive ? '#ffffff' : color}
           anchorX="center"
@@ -172,22 +176,22 @@ export function Waypoint({
         </Text>
       )}
 
-      {/* Vertical line to ground for spatial reference */}
-      {position.y > 0.01 && (
+      {/* Vertical line to ground for spatial reference (Z-up: z is height) */}
+      {position.z > 0.01 && (
         <line>
           <bufferGeometry>
             <bufferAttribute
               attach="attributes-position"
-              args={[new Float32Array([0, 0, 0, 0, -position.y, 0]), 3]}
+              args={[new Float32Array([0, 0, 0, 0, 0, -position.z]), 3]}
             />
           </bufferGeometry>
           <lineBasicMaterial color={color} opacity={0.3} transparent linewidth={1} />
         </line>
       )}
 
-      {/* Ground marker */}
-      {position.y > 0.01 && (
-        <mesh position={[0, -position.y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* Ground marker - on XY plane for Z-up */}
+      {position.z > 0.01 && (
+        <mesh position={[0, 0, -position.z]}>
           <circleGeometry args={[size * 0.5, 16]} />
           <meshBasicMaterial color={color} opacity={0.2} transparent side={THREE.DoubleSide} />
         </mesh>

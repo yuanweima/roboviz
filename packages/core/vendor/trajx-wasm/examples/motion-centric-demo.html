@@ -203,6 +203,63 @@ result.<span class="keyword">getPositionsAt</span>(index)
             </div>
         </div>
 
+        <!-- Collision-Aware Motion -->
+        <div class="section full-width">
+            <h2>Collision-Aware Motion (NEW!)</h2>
+            <p style="color: #666; margin-bottom: 15px;">
+                Use <code>runWithCollision()</code> to enable BiRRT planning with collision checking.
+                When <code>.safe()</code> is set, the planner automatically avoids obstacles.
+            </p>
+
+            <div class="test-group">
+                <h3>8. Motion with Collision Avoidance</h3>
+                <div class="code">
+<span class="comment">// Collision-aware motion planning</span>
+<span class="keyword">const</span> motion = WasmMotion.<span class="keyword">to</span>(goal)
+    .<span class="keyword">safe</span>()  <span class="comment">// Enable collision avoidance</span>
+    .<span class="keyword">speed</span>(<span class="number">0.8</span>);
+
+<span class="comment">// Define collision checker (returns true if VALID - no collision)</span>
+<span class="keyword">const</span> collisionChecker = (joints) => {
+    <span class="comment">// Your collision detection logic here</span>
+    <span class="keyword">return</span> <span class="keyword">true</span>;  <span class="comment">// Valid (no collision)</span>
+};
+
+<span class="keyword">const</span> result = motion.<span class="keyword">runWithCollision</span>(robot, collisionChecker);
+                </div>
+                <button onclick="testCollisionAwareMotion()" id="testCollisionMotionBtn" disabled>Test Collision-Aware Motion</button>
+                <div id="collisionMotionResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>9. Path with Collision Avoidance</h3>
+                <div class="code">
+<span class="comment">// Path through waypoints with collision checking</span>
+<span class="keyword">const</span> path = WasmPath.<span class="keyword">through</span>(waypoints, dof)
+    .<span class="keyword">safe</span>()
+    .<span class="keyword">linear</span>();
+
+<span class="keyword">const</span> result = path.<span class="keyword">runWithCollision</span>(robot, collisionChecker);
+                </div>
+                <button onclick="testCollisionAwarePath()" id="testCollisionPathBtn" disabled>Test Collision-Aware Path</button>
+                <div id="collisionPathResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>10. Sequence with Collision Avoidance</h3>
+                <div class="code">
+<span class="comment">// Chain motions with collision checking</span>
+<span class="keyword">const</span> seq = WasmSequence.<span class="keyword">start</span>(motion1.<span class="keyword">safe</span>())
+    .<span class="keyword">then</span>(motion2.<span class="keyword">safe</span>())
+    .<span class="keyword">then</span>(motion3.<span class="keyword">safe</span>());
+
+<span class="keyword">const</span> result = seq.<span class="keyword">runWithCollision</span>(robot, collisionChecker);
+                </div>
+                <button onclick="testCollisionAwareSequence()" id="testCollisionSeqBtn" disabled>Test Collision-Aware Sequence</button>
+                <div id="collisionSeqResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
         <!-- Integration Tests -->
         <div class="section full-width">
             <h2>Integration Test: Pick and Place</h2>
@@ -621,6 +678,132 @@ result.<span class="keyword">getPositionsAt</span>(index)
             }
         };
 
+        // Test: Collision-Aware Motion
+        window.testCollisionAwareMotion = function() {
+            log('--- Testing Collision-Aware Motion ---', 'info');
+            try {
+                const target = [1.0, 0.5, -0.5, 0, 0.5, 0];
+                const motion = wasm.WasmMotion.to(target)
+                    .safe()
+                    .speed(0.8);
+
+                // Collision checker - returns true if configuration is VALID (no collision)
+                let checkCount = 0;
+                const collisionChecker = (joints) => {
+                    checkCount++;
+                    // Simulate an obstacle - configuration is INVALID if joint2 > 1.5
+                    // Return true = valid (no collision), false = invalid (collision)
+                    return joints[1] <= 1.5;
+                };
+
+                const result = motion.runWithCollision(robot, collisionChecker);
+
+                log(`Collision-aware motion executed`, 'success');
+                log(`Collision checks performed: ${checkCount}`, 'info');
+                log(`Points: ${result.numPoints}, Duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+                log(`Path length: ${result.pathLength.toFixed(4)} rad`, 'info');
+                log(`Collision-free: ${result.collisionFree}`, 'info');
+
+                showResult('collisionMotionResult', {
+                    executed: result.executed,
+                    numPoints: result.numPoints,
+                    duration: result.trajectoryDuration,
+                    pathLength: result.pathLength,
+                    collisionChecks: checkCount,
+                    collisionFree: result.collisionFree
+                });
+
+                log('Collision-aware motion test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('collisionMotionResult', error.message, false);
+            }
+        };
+
+        // Test: Collision-Aware Path
+        window.testCollisionAwarePath = function() {
+            log('--- Testing Collision-Aware Path ---', 'info');
+            try {
+                const dof = 6;
+                const waypoints = [
+                    0.5, 0.3, -0.3, 0, 0.3, 0,
+                    1.0, 0.5, -0.5, 0, 0.5, 0,
+                    0.8, 0.4, -0.4, 0, 0.4, 0,
+                ];
+
+                const path = wasm.WasmPath.through(waypoints, dof)
+                    .safe()
+                    .linear();
+
+                // Collision checker - returns true if configuration is VALID (no collision)
+                let checkCount = 0;
+                const collisionChecker = (joints) => {
+                    checkCount++;
+                    return true; // Configuration is valid (no collision)
+                };
+
+                const result = path.runWithCollision(robot, collisionChecker);
+
+                log(`Collision-aware path executed through 3 waypoints`, 'success');
+                log(`Collision checks: ${checkCount}`, 'info');
+                log(`Points: ${result.numPoints}, Duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+
+                showResult('collisionPathResult', {
+                    waypointCount: 3,
+                    numPoints: result.numPoints,
+                    duration: result.trajectoryDuration,
+                    collisionChecks: checkCount,
+                    collisionFree: result.collisionFree
+                });
+
+                log('Collision-aware path test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('collisionPathResult', error.message, false);
+            }
+        };
+
+        // Test: Collision-Aware Sequence
+        window.testCollisionAwareSequence = function() {
+            log('--- Testing Collision-Aware Sequence ---', 'info');
+            try {
+                const motion1 = wasm.WasmMotion.to([0.5, 0.3, -0.3, 0, 0.3, 0]).safe().fast();
+                const motion2 = wasm.WasmMotion.to([1.0, 0.5, -0.5, 0, 0.5, 0]).safe().slow();
+                const motion3 = wasm.WasmMotion.to([0.0, 0.0, 0.0, 0, 0.0, 0]).safe();
+
+                const sequence = wasm.WasmSequence.start(motion1)
+                    .then(motion2)
+                    .then(motion3);
+
+                // Collision checker - returns true if configuration is VALID (no collision)
+                let checkCount = 0;
+                const collisionChecker = (joints) => {
+                    checkCount++;
+                    return true; // Configuration is valid (no collision)
+                };
+
+                const result = sequence.runWithCollision(robot, collisionChecker);
+
+                log(`Collision-aware sequence executed: 3 motions`, 'success');
+                log(`Total collision checks: ${checkCount}`, 'info');
+                log(`Total points: ${result.numPoints}`, 'info');
+                log(`Total duration: ${result.trajectoryDuration.toFixed(3)}s`, 'info');
+
+                showResult('collisionSeqResult', {
+                    motionCount: 3,
+                    totalPoints: result.numPoints,
+                    totalDuration: result.trajectoryDuration,
+                    totalCollisionChecks: checkCount,
+                    collisionFree: result.collisionFree
+                });
+
+                log('Collision-aware sequence test passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('collisionSeqResult', error.message, false);
+            }
+        };
+
         // Run all tests
         window.runAllMotionTests = async function() {
             log('========== RUNNING ALL MOTION TESTS ==========', 'info');
@@ -633,6 +816,9 @@ result.<span class="keyword">getPositionsAt</span>(index)
                 testPath,
                 testSequence,
                 testTrajectoryInspection,
+                testCollisionAwareMotion,
+                testCollisionAwarePath,
+                testCollisionAwareSequence,
                 testPickAndPlace
             ];
 

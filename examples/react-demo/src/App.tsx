@@ -11,6 +11,8 @@ import { InspectionScene } from './modules/scenes/InspectionScene';
 import { CableManagementScene } from './modules/scenes/CableManagementScene';
 import { CollisionAnalysisScene } from './modules/scenes/CollisionAnalysisScene';
 import RenderingShowcaseScene from './modules/scenes/RenderingShowcaseScene';
+import { MotionPlanningScene } from './modules/scenes/MotionPlanningScene';
+import { GPUMotionPlanningScene } from './modules/scenes/GPUMotionPlanningScene';
 
 // Core Features
 import { RobotModule } from './modules/RobotModule';
@@ -52,6 +54,8 @@ export type ModuleType =
   | 'cable-management'
   | 'collision-analysis'
   | 'rendering-showcase'
+  | 'motion-planning'
+  | 'gpu-motion-planning'
   // Core Features
   | 'robot'
   | 'workpoint'
@@ -86,6 +90,8 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'cable-management': CableManagementScene,
   'collision-analysis': CollisionAnalysisScene,
   'rendering-showcase': RenderingShowcaseScene,
+  'motion-planning': MotionPlanningScene,
+  'gpu-motion-planning': GPUMotionPlanningScene,
   // Core Features
   'robot': RobotModule,
   'workpoint': WorkpointModule,

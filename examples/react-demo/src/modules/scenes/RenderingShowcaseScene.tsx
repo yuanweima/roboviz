@@ -113,7 +113,7 @@ function HologramCube({ position }: { position: [number, number, number] }) {
   useFrame(() => {
     if (material && meshRef.current) {
       getMaterialLibrary().updateTime(material);
-      meshRef.current.rotation.y += 0.005;
+      meshRef.current.rotation.z += 0.005; // Z-up: rotate around Z axis
     }
   });
 
@@ -207,7 +207,7 @@ function DistanceFieldPlane({ position }: { position: [number, number, number] }
   }, [material]);
 
   return (
-    <mesh ref={meshRef} position={position} rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh ref={meshRef} position={position}>
       <planeGeometry args={[1, 1, 32, 32]} />
       <meshBasicMaterial color="#114422" />
     </mesh>
@@ -257,7 +257,7 @@ function HeatmapSurface({ position }: { position: [number, number, number] }) {
   }, [material]);
 
   return (
-    <mesh ref={meshRef} position={position} rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh ref={meshRef} position={position}>
       <planeGeometry args={[1.5, 1.5, 32, 32]} />
       <meshBasicMaterial color="#333" /> {/* Placeholder until heatmap material is ready */}
     </mesh>
@@ -267,7 +267,7 @@ function HeatmapSurface({ position }: { position: [number, number, number] }) {
 // Emissive objects for bloom demo
 function EmissiveRing({ position, color }: { position: [number, number, number]; color: string }) {
   return (
-    <mesh position={position} rotation={[Math.PI / 2, 0, 0]}>
+    <mesh position={position}>
       <torusGeometry args={[0.15, 0.02, 16, 32]} />
       <meshStandardMaterial
         color={color}
@@ -957,24 +957,24 @@ function SceneContent({
         />
       )}
 
-      {/* Selectable Boxes */}
-      <SelectableBox position={[0, 2, 0]} color="#4488ff" onSelect={onSelectObject} isSelected={selectedIds.has('box-0')} />
-      <SelectableBox position={[1, 2, 0]} color="#ff8844" onSelect={onSelectObject} isSelected={selectedIds.has('box-1')} />
-      <SelectableBox position={[-1, 2, 0]} color="#44ff88" onSelect={onSelectObject} isSelected={selectedIds.has('box-2')} />
+      {/* Selectable Boxes - Z-up: height is Z coordinate */}
+      <SelectableBox position={[0, 0, 2]} color="#4488ff" onSelect={onSelectObject} isSelected={selectedIds.has('box-0')} />
+      <SelectableBox position={[1, 0, 2]} color="#ff8844" onSelect={onSelectObject} isSelected={selectedIds.has('box-1')} />
+      <SelectableBox position={[-1, 0, 2]} color="#44ff88" onSelect={onSelectObject} isSelected={selectedIds.has('box-2')} />
 
-      {/* Emissive Rings for Bloom */}
-      <EmissiveRing position={[0.5, 2.5, 0.5]} color="#ff0088" />
-      <EmissiveRing position={[-0.5, 2.5, 0.5]} color="#00ff88" />
-      <EmissiveRing position={[0, 2.5, -0.5]} color="#8800ff" />
+      {/* Emissive Rings for Bloom - Z-up: height is Z coordinate */}
+      <EmissiveRing position={[0.5, 0.5, 2.5]} color="#ff0088" />
+      <EmissiveRing position={[-0.5, 0.5, 2.5]} color="#00ff88" />
+      <EmissiveRing position={[0, -0.5, 2.5]} color="#8800ff" />
 
-      {/* Custom Shader Demos */}
-      <HologramCube position={[2, 2, 0]} />
-      <XRaySphere position={[-2, 2, 0]} />
-      <DistanceFieldPlane position={[0, 0.01, 0]} />
-      <HeatmapSurface position={[3, 0.02, 0]} />
+      {/* Custom Shader Demos - Z-up: height is Z coordinate */}
+      <HologramCube position={[2, 0, 2]} />
+      <XRaySphere position={[-2, 0, 2]} />
+      <DistanceFieldPlane position={[0, 0, 0.01]} />
+      <HeatmapSurface position={[3, 0, 0.02]} />
 
-      {/* Ground plane - reflective to show environment */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+      {/* Ground plane - Z-up: PlaneGeometry is already on XY plane, no rotation needed */}
+      <mesh position={[0, 0, -0.01]} receiveShadow>
         <planeGeometry args={[100, 100]} />
         <meshStandardMaterial
           color="#2a2a3a"
@@ -987,9 +987,9 @@ function SceneContent({
       {/* Ambient light for base illumination */}
       <ambientLight intensity={0.3} />
 
-      {/* Key light - main directional light */}
+      {/* Key light - main directional light - Z-up: height is Z coordinate */}
       <directionalLight
-        position={[10, 15, 10]}
+        position={[10, 10, 15]}
         intensity={1.5}
         color="#ffffff"
         castShadow
@@ -1001,16 +1001,16 @@ function SceneContent({
         shadow-camera-bottom={-20}
       />
 
-      {/* Fill light */}
+      {/* Fill light - Z-up: height is Z coordinate */}
       <directionalLight
-        position={[-5, 5, -5]}
+        position={[-5, -5, 5]}
         intensity={0.5}
         color="#aaccff"
       />
 
-      {/* Point lights for local illumination */}
+      {/* Point lights for local illumination - Z-up: height is Z coordinate */}
       <pointLight position={[5, 5, 5]} intensity={50} color="#ffffff" />
-      <spotLight position={[-5, 8, 0]} intensity={100} angle={0.5} penumbra={0.5} castShadow />
+      <spotLight position={[-5, 0, 8]} intensity={100} angle={0.5} penumbra={0.5} castShadow />
     </>
   );
 }
@@ -1093,9 +1093,10 @@ export default function RenderingShowcaseScene() {
       const newSet = new Set(prev);
       const pos = mesh.position;
       let boxId = '';
-      if (Math.abs(pos.x) < 0.1 && Math.abs(pos.y - 2) < 0.1) boxId = 'box-0';
-      else if (Math.abs(pos.x - 1) < 0.1 && Math.abs(pos.y - 2) < 0.1) boxId = 'box-1';
-      else if (Math.abs(pos.x + 1) < 0.1 && Math.abs(pos.y - 2) < 0.1) boxId = 'box-2';
+      // Z-up: boxes are at Z=2, not Y=2
+      if (Math.abs(pos.x) < 0.1 && Math.abs(pos.z - 2) < 0.1) boxId = 'box-0';
+      else if (Math.abs(pos.x - 1) < 0.1 && Math.abs(pos.z - 2) < 0.1) boxId = 'box-1';
+      else if (Math.abs(pos.x + 1) < 0.1 && Math.abs(pos.z - 2) < 0.1) boxId = 'box-2';
 
       if (boxId) {
         if (newSet.has(boxId)) newSet.delete(boxId);

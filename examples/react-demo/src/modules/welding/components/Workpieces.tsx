@@ -39,6 +39,7 @@ export interface IndustrialWeldingWorkpieceProps {
 
 /**
  * Industrial welding workpiece with multiple joint types
+ * Z-up coordinate system: X=forward, Y=left, Z=up
  */
 export const IndustrialWeldingWorkpiece = React.memo(function IndustrialWeldingWorkpiece({
   position = [0.5, 0, 0],
@@ -50,51 +51,51 @@ export const IndustrialWeldingWorkpiece = React.memo(function IndustrialWeldingW
 }: IndustrialWeldingWorkpieceProps) {
   const baseRef = useRef<THREE.Mesh>(null);
 
-  // Define weld seams
+  // Define weld seams (Z-up: Z is height)
   const seams = useMemo<WeldSeamDefinition[]>(() => [
     // Left T-joint fillet weld
-    { id: 'seam-1', start: [-0.12, 0.025, -0.08], end: [-0.12, 0.025, 0.08], type: 'fillet' },
+    { id: 'seam-1', start: [-0.12, -0.08, 0.025], end: [-0.12, 0.08, 0.025], type: 'fillet' },
     // Right T-joint fillet weld
-    { id: 'seam-2', start: [0.12, 0.025, -0.08], end: [0.12, 0.025, 0.08], type: 'fillet' },
+    { id: 'seam-2', start: [0.12, -0.08, 0.025], end: [0.12, 0.08, 0.025], type: 'fillet' },
     // Front corner weld
-    { id: 'seam-3', start: [-0.15, 0.025, 0.12], end: [0.15, 0.025, 0.12], type: 'corner' },
+    { id: 'seam-3', start: [-0.15, 0.12, 0.025], end: [0.15, 0.12, 0.025], type: 'corner' },
     // Back corner weld
-    { id: 'seam-4', start: [-0.15, 0.025, -0.12], end: [0.15, 0.025, -0.12], type: 'corner' },
+    { id: 'seam-4', start: [-0.15, -0.12, 0.025], end: [0.15, -0.12, 0.025], type: 'corner' },
   ], []);
 
   const s = scale;
 
   return (
     <group position={position}>
-      {/* Base plate (main workpiece for interaction) */}
+      {/* Base plate (main workpiece for interaction) - Z-up: [width, depth, height] */}
       <mesh
         ref={(mesh) => {
           baseRef.current = mesh;
           onMeshRef?.(mesh);
         }}
         name="welding_workpiece"
-        position={[0, -0.015 * s, 0]}
+        position={[0, 0, -0.015 * s]}
         userData={{ workpieceId: 'welding_workpiece' }}
       >
-        <boxGeometry args={[0.35 * s, 0.03 * s, 0.3 * s]} />
+        <boxGeometry args={[0.35 * s, 0.3 * s, 0.03 * s]} />
         <meshStandardMaterial color="#4a4a4a" metalness={0.7} roughness={0.3} />
       </mesh>
 
       {/* Vertical rib - left */}
-      <mesh position={[-0.1 * s, 0.06 * s, 0]}>
-        <boxGeometry args={[0.02 * s, 0.12 * s, 0.22 * s]} />
+      <mesh position={[-0.1 * s, 0, 0.06 * s]}>
+        <boxGeometry args={[0.02 * s, 0.22 * s, 0.12 * s]} />
         <meshStandardMaterial color="#555555" metalness={0.6} roughness={0.4} />
       </mesh>
 
       {/* Vertical rib - right */}
-      <mesh position={[0.1 * s, 0.06 * s, 0]}>
-        <boxGeometry args={[0.02 * s, 0.12 * s, 0.22 * s]} />
+      <mesh position={[0.1 * s, 0, 0.06 * s]}>
+        <boxGeometry args={[0.02 * s, 0.22 * s, 0.12 * s]} />
         <meshStandardMaterial color="#555555" metalness={0.6} roughness={0.4} />
       </mesh>
 
       {/* Cross beam top */}
-      <mesh position={[0, 0.13 * s, 0]}>
-        <boxGeometry args={[0.24 * s, 0.02 * s, 0.18 * s]} />
+      <mesh position={[0, 0, 0.13 * s]}>
+        <boxGeometry args={[0.24 * s, 0.18 * s, 0.02 * s]} />
         <meshStandardMaterial color="#4d4d4d" metalness={0.65} roughness={0.35} />
       </mesh>
 
@@ -205,6 +206,7 @@ export interface IndustrialGrindingWorkpieceProps {
 
 /**
  * Industrial grinding workpiece with defined surface regions
+ * Z-up coordinate system: X=forward, Y=left, Z=up
  */
 export const IndustrialGrindingWorkpiece = React.memo(function IndustrialGrindingWorkpiece({
   position = [0.5, 0, 0],
@@ -217,51 +219,51 @@ export const IndustrialGrindingWorkpiece = React.memo(function IndustrialGrindin
 }: IndustrialGrindingWorkpieceProps) {
   const meshRef = useRef<THREE.Mesh>(null);
 
-  // Define surface regions for grinding
+  // Define surface regions for grinding (Z-up: [x, y, z_height])
   const regions = useMemo<SurfaceRegionDef[]>(() => [
-    { id: 'region-1', center: [-0.08, 0.076, -0.06], size: [0.08, 0.06] },
-    { id: 'region-2', center: [0.08, 0.076, -0.06], size: [0.08, 0.06] },
-    { id: 'region-3', center: [-0.08, 0.076, 0.06], size: [0.08, 0.06] },
-    { id: 'region-4', center: [0.08, 0.076, 0.06], size: [0.08, 0.06] },
-    { id: 'region-5', center: [0, 0.076, 0], size: [0.1, 0.08] },
-    { id: 'region-6', center: [0, 0.076, -0.1], size: [0.15, 0.04] },
+    { id: 'region-1', center: [-0.08, -0.06, 0.076], size: [0.08, 0.06] },
+    { id: 'region-2', center: [0.08, -0.06, 0.076], size: [0.08, 0.06] },
+    { id: 'region-3', center: [-0.08, 0.06, 0.076], size: [0.08, 0.06] },
+    { id: 'region-4', center: [0.08, 0.06, 0.076], size: [0.08, 0.06] },
+    { id: 'region-5', center: [0, 0, 0.076], size: [0.1, 0.08] },
+    { id: 'region-6', center: [0, -0.1, 0.076], size: [0.15, 0.04] },
   ], []);
 
   const s = scale;
 
   return (
     <group position={position}>
-      {/* Main metal block */}
+      {/* Main metal block - Z-up: [width, depth, height] */}
       <mesh
         ref={(mesh) => {
           meshRef.current = mesh;
           onMeshRef?.(mesh);
         }}
         name="grinding_workpiece"
-        position={[0, 0.0375 * s, 0]}
+        position={[0, 0, 0.0375 * s]}
         userData={{ workpieceId: 'grinding_workpiece' }}
       >
-        <boxGeometry args={[0.3 * s, 0.075 * s, 0.25 * s]} />
+        <boxGeometry args={[0.3 * s, 0.25 * s, 0.075 * s]} />
         <meshStandardMaterial color="#6b6b6b" metalness={0.8} roughness={0.3} />
       </mesh>
 
-      {/* Raised features (need grinding) */}
-      <mesh position={[-0.08 * s, 0.085 * s, -0.06 * s]}>
-        <boxGeometry args={[0.05 * s, 0.02 * s, 0.04 * s]} />
+      {/* Raised features (need grinding) - Z-up: [width, depth, height] */}
+      <mesh position={[-0.08 * s, -0.06 * s, 0.085 * s]}>
+        <boxGeometry args={[0.05 * s, 0.04 * s, 0.02 * s]} />
         <meshStandardMaterial color="#777777" metalness={0.6} roughness={0.5} />
       </mesh>
 
-      <mesh position={[0.08 * s, 0.083 * s, 0.06 * s]}>
+      <mesh position={[0.08 * s, 0.06 * s, 0.083 * s]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.025 * s, 0.025 * s, 0.016 * s, 16]} />
         <meshStandardMaterial color="#777777" metalness={0.6} roughness={0.5} />
       </mesh>
 
-      {/* Weld spatter (to be ground off) */}
+      {/* Weld spatter (to be ground off) - Z-up: [x, y, z_height] */}
       {[
-        [0.05, 0.077, 0.02],
-        [-0.03, 0.078, -0.08],
-        [0.1, 0.077, -0.03],
-        [-0.1, 0.078, 0.05],
+        [0.05, 0.02, 0.077],
+        [-0.03, -0.08, 0.078],
+        [0.1, -0.03, 0.077],
+        [-0.1, 0.05, 0.078],
       ].map(([x, y, z], i) => (
         <mesh key={`spatter-${i}`} position={[x * s, y * s, z * s]}>
           <sphereGeometry args={[0.005 * s, 8, 8]} />
@@ -280,10 +282,10 @@ export const IndustrialGrindingWorkpiece = React.memo(function IndustrialGrindin
 
         return (
           <group key={region.id}>
-            {/* Region boundary indicator - rotated to lie flat on XZ plane (facing +Y) */}
+            {/* Region boundary indicator - Z-up: plane on XY, facing +Z */}
             <mesh
               position={[region.center[0] * s, region.center[1] * s, region.center[2] * s]}
-              rotation={[-Math.PI / 2, 0, region.rotation || 0]}
+              rotation={[0, 0, region.rotation || 0]}
               onClick={(e) => {
                 e.stopPropagation();
                 onRegionClick?.(region.id);
@@ -301,8 +303,8 @@ export const IndustrialGrindingWorkpiece = React.memo(function IndustrialGrindin
             {/* Progress overlay */}
             {progress > 0 && (
               <mesh
-                position={[region.center[0] * s, (region.center[1] + 0.001) * s, region.center[2] * s]}
-                rotation={[-Math.PI / 2, 0, 0]}
+                position={[region.center[0] * s, region.center[1] * s, (region.center[2] + 0.001) * s]}
+                rotation={[0, 0, 0]}
               >
                 <planeGeometry args={[region.size[0] * s * progress, region.size[1] * s]} />
                 <meshStandardMaterial
@@ -318,22 +320,22 @@ export const IndustrialGrindingWorkpiece = React.memo(function IndustrialGrindin
         );
       })}
 
-      {/* Mounting holes */}
+      {/* Mounting holes - Z-up: holes go into Z direction */}
       {[
         [-0.12, -0.1],
         [0.12, -0.1],
         [-0.12, 0.1],
         [0.12, 0.1],
-      ].map(([x, z], i) => (
-        <mesh key={`hole-${i}`} position={[x * s, 0.076 * s, z * s]} rotation={[Math.PI / 2, 0, 0]}>
+      ].map(([x, y], i) => (
+        <mesh key={`hole-${i}`} position={[x * s, y * s, 0.076 * s]}>
           <cylinderGeometry args={[0.008 * s, 0.008 * s, 0.02 * s, 12]} />
           <meshStandardMaterial color="#333333" metalness={0.3} roughness={0.7} />
         </mesh>
       ))}
 
-      {/* Fixture base */}
-      <mesh position={[0, -0.015 * s, 0]}>
-        <boxGeometry args={[0.35 * s, 0.03 * s, 0.3 * s]} />
+      {/* Fixture base - Z-up: [width, depth, height] */}
+      <mesh position={[0, 0, -0.015 * s]}>
+        <boxGeometry args={[0.35 * s, 0.3 * s, 0.03 * s]} />
         <meshStandardMaterial color="#444444" metalness={0.5} roughness={0.5} />
       </mesh>
     </group>
@@ -373,6 +375,7 @@ export interface IndustrialInspectionWorkpieceProps {
 
 /**
  * Industrial inspection workpiece with simulated defects
+ * Z-up coordinate system: X=forward, Y=left, Z=up
  */
 export const IndustrialInspectionWorkpiece = React.memo(function IndustrialInspectionWorkpiece({
   position = [0.5, 0, 0],
@@ -388,15 +391,15 @@ export const IndustrialInspectionWorkpiece = React.memo(function IndustrialInspe
 
   const s = scale;
 
-  // Default defects if none provided
+  // Default defects if none provided (Z-up: [x, y, z_height])
   const displayDefects = useMemo(() => {
     if (defects.length > 0) return defects;
     return [
-      { id: 'def-1', position: [0.05, 0.051, 0.03] as Vector3Tuple, type: 'crack' as const, severity: 'critical' as const, size: 0.015 },
-      { id: 'def-2', position: [-0.06, 0.051, -0.04] as Vector3Tuple, type: 'porosity' as const, severity: 'warning' as const, size: 0.008 },
-      { id: 'def-3', position: [0.08, 0.051, -0.06] as Vector3Tuple, type: 'inclusion' as const, severity: 'minor' as const, size: 0.006 },
-      { id: 'def-4', position: [-0.03, 0.051, 0.07] as Vector3Tuple, type: 'surface' as const, severity: 'warning' as const, size: 0.012 },
-      { id: 'def-5', position: [0.02, 0.051, -0.08] as Vector3Tuple, type: 'crack' as const, severity: 'critical' as const, size: 0.02 },
+      { id: 'def-1', position: [0.05, 0.03, 0.051] as Vector3Tuple, type: 'crack' as const, severity: 'critical' as const, size: 0.015 },
+      { id: 'def-2', position: [-0.06, -0.04, 0.051] as Vector3Tuple, type: 'porosity' as const, severity: 'warning' as const, size: 0.008 },
+      { id: 'def-3', position: [0.08, -0.06, 0.051] as Vector3Tuple, type: 'inclusion' as const, severity: 'minor' as const, size: 0.006 },
+      { id: 'def-4', position: [-0.03, 0.07, 0.051] as Vector3Tuple, type: 'surface' as const, severity: 'warning' as const, size: 0.012 },
+      { id: 'def-5', position: [0.02, -0.08, 0.051] as Vector3Tuple, type: 'crack' as const, severity: 'critical' as const, size: 0.02 },
     ];
   }, [defects]);
 
@@ -413,48 +416,48 @@ export const IndustrialInspectionWorkpiece = React.memo(function IndustrialInspe
 
   return (
     <group position={position}>
-      {/* Main inspection part - machined aluminum block */}
+      {/* Main inspection part - machined aluminum block - Z-up: [width, depth, height] */}
       <mesh
         ref={(mesh) => {
           meshRef.current = mesh;
           onMeshRef?.(mesh);
         }}
         name="inspection_workpiece"
-        position={[0, 0.025 * s, 0]}
+        position={[0, 0, 0.025 * s]}
         userData={{ workpieceId: 'inspection_workpiece' }}
       >
-        <boxGeometry args={[0.25 * s, 0.05 * s, 0.2 * s]} />
+        <boxGeometry args={[0.25 * s, 0.2 * s, 0.05 * s]} />
         <meshStandardMaterial color="#a0a8b0" metalness={0.8} roughness={0.2} />
       </mesh>
 
-      {/* Machined pocket */}
-      <mesh position={[0, 0.045 * s, 0]}>
-        <boxGeometry args={[0.15 * s, 0.01 * s, 0.12 * s]} />
+      {/* Machined pocket - Z-up: [width, depth, height] */}
+      <mesh position={[0, 0, 0.045 * s]}>
+        <boxGeometry args={[0.15 * s, 0.12 * s, 0.01 * s]} />
         <meshStandardMaterial color="#909098" metalness={0.85} roughness={0.15} />
       </mesh>
 
-      {/* Drilled holes */}
+      {/* Drilled holes - Z-up: [x, y] positions, holes go into Z */}
       {[
         [-0.08, 0],
         [0.08, 0],
         [0, -0.06],
         [0, 0.06],
-      ].map(([x, z], i) => (
+      ].map(([x, y], i) => (
         <group key={`hole-${i}`}>
-          <mesh position={[x * s, 0.051 * s, z * s]} rotation={[Math.PI / 2, 0, 0]}>
+          <mesh position={[x * s, y * s, 0.051 * s]}>
             <cylinderGeometry args={[0.012 * s, 0.012 * s, 0.03 * s, 16]} />
             <meshStandardMaterial color="#707078" metalness={0.7} roughness={0.3} />
           </mesh>
           {/* Chamfer */}
-          <mesh position={[x * s, 0.052 * s, z * s]} rotation={[Math.PI / 2, 0, 0]}>
+          <mesh position={[x * s, y * s, 0.052 * s]}>
             <cylinderGeometry args={[0.015 * s, 0.012 * s, 0.004 * s, 16]} />
             <meshStandardMaterial color="#909098" metalness={0.8} roughness={0.2} />
           </mesh>
         </group>
       ))}
 
-      {/* Raised boss */}
-      <mesh position={[-0.08 * s, 0.058 * s, 0.06 * s]}>
+      {/* Raised boss - Z-up: rotate cylinder to stand upright */}
+      <mesh position={[-0.08 * s, 0.06 * s, 0.058 * s]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.02 * s, 0.022 * s, 0.016 * s, 20]} />
         <meshStandardMaterial color="#a8b0b8" metalness={0.75} roughness={0.25} />
       </mesh>
@@ -474,8 +477,8 @@ export const IndustrialInspectionWorkpiece = React.memo(function IndustrialInspe
             {/* Defect marker */}
             {isDetected && (
               <>
-                {/* Outer ring */}
-                <mesh rotation={[Math.PI / 2, 0, 0]}>
+                {/* Outer ring - Z-up: no rotation needed, torus lies on XY plane */}
+                <mesh>
                   <torusGeometry args={[size * 1.5, size * 0.15, 8, 24]} />
                   <meshBasicMaterial
                     color={color}
@@ -499,16 +502,16 @@ export const IndustrialInspectionWorkpiece = React.memo(function IndustrialInspe
                   />
                 </mesh>
 
-                {/* Selection highlight */}
+                {/* Selection highlight - Z-up: ring on XY plane */}
                 {isSelected && (
-                  <mesh rotation={[Math.PI / 2, 0, 0]}>
+                  <mesh>
                     <ringGeometry args={[size * 2, size * 2.3, 24]} />
                     <meshBasicMaterial color="#ffffff" transparent opacity={0.5} side={THREE.DoubleSide} />
                   </mesh>
                 )}
 
-                {/* Vertical indicator line */}
-                <mesh position={[0, size * 2, 0]}>
+                {/* Vertical indicator line - Z-up: cylinder along Z axis */}
+                <mesh position={[0, 0, size * 2]} rotation={[Math.PI / 2, 0, 0]}>
                   <cylinderGeometry args={[size * 0.05, size * 0.05, size * 4, 8]} />
                   <meshBasicMaterial color={color} transparent opacity={0.5} />
                 </mesh>
@@ -517,7 +520,7 @@ export const IndustrialInspectionWorkpiece = React.memo(function IndustrialInspe
 
             {/* Actual defect visualization (subtle surface imperfection) */}
             {defect.type === 'crack' && (
-              <mesh rotation={[Math.PI / 2, Math.random() * Math.PI, 0]}>
+              <mesh rotation={[0, 0, Math.random() * Math.PI]}>
                 <planeGeometry args={[size * 2, size * 0.2]} />
                 <meshBasicMaterial color="#333333" transparent opacity={0.3} side={THREE.DoubleSide} />
               </mesh>
@@ -532,9 +535,9 @@ export const IndustrialInspectionWorkpiece = React.memo(function IndustrialInspe
         );
       })}
 
-      {/* Fixture plate */}
-      <mesh position={[0, -0.01 * s, 0]}>
-        <boxGeometry args={[0.3 * s, 0.02 * s, 0.25 * s]} />
+      {/* Fixture plate - Z-up: [width, depth, height] */}
+      <mesh position={[0, 0, -0.01 * s]}>
+        <boxGeometry args={[0.3 * s, 0.25 * s, 0.02 * s]} />
         <meshStandardMaterial color="#3a3a3a" metalness={0.5} roughness={0.6} />
       </mesh>
     </group>

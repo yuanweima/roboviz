@@ -215,7 +215,8 @@ export function InstancedRobotArms({
   const tempColor = useMemo(() => new THREE.Color(), []);
   const baseRotation = useMemo(() => {
     const m = new THREE.Matrix4();
-    m.makeRotationX(-Math.PI / 2); // Z-up to Y-up
+    // Scene is already Z-up, URDF robots are also Z-up - no rotation needed
+    m.identity();
     return m;
   }, []);
 
@@ -232,13 +233,13 @@ export function InstancedRobotArms({
           positionsBuffer[robotIdx * 3 + 2],
         ];
       }
-      // Default grid layout
+      // Default grid layout - Z-up: distribute on XY plane (ground), Z=0
       const gridX = robotIdx % gridSize;
-      const gridZ = Math.floor(robotIdx / gridSize);
+      const gridY = Math.floor(robotIdx / gridSize);
       return [
         (gridX - gridSize / 2 + 0.5) * gridSpacing,
-        0,
-        (gridZ - gridSize / 2 + 0.5) * gridSpacing,
+        (gridY - gridSize / 2 + 0.5) * gridSpacing,
+        0, // Z=0 (ground level in Z-up)
       ];
     },
     [positionsBuffer, gridSize, gridSpacing]

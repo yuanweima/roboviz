@@ -45,7 +45,8 @@ const ROBOT_ID = 'fanuc-cable-demo';
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';
 
 // Cable anchor - fixed point in world (e.g., cable tray on wall)
-const CABLE_ANCHOR: [number, number, number] = [-0.5, 0.4, 0];
+// Z-up coordinates: [x, y, z_height]
+const CABLE_ANCHOR: [number, number, number] = [-0.5, 0, 0.4];
 
 // Cable preset options
 const CABLE_PRESETS: { value: CablePresetType; label: string; maxDeg: number }[] = [
@@ -389,7 +390,8 @@ function SceneContent({
   onTwistChange: (twist: number) => void;
 }) {
   const [joints, setJoints] = useState([0, 0, 0, 0, 0, 0]);
-  const [tcpPosition, setTcpPosition] = useState<[number, number, number]>([0.5, 0.6, 0]);
+  // Z-up coordinates: [x, y, z_height]
+  const [tcpPosition, setTcpPosition] = useState<[number, number, number]>([0.5, 0, 0.6]);
   const [twist, setTwist] = useState(0);
 
   const { maxTotalTwist, warningThreshold } = useTrajxCableConfig({ preset });
@@ -421,25 +423,25 @@ function SceneContent({
         warningThreshold={warningThreshold}
       />
 
-      {/* Cable anchor mount on "wall" */}
-      <mesh position={[-0.6, 0.4, 0]}>
+      {/* Cable anchor mount on "wall" - Z-up: [x, y, z_height], box [width, depth, height] */}
+      <mesh position={[-0.6, 0, 0.4]}>
         <boxGeometry args={[0.2, 0.15, 0.15]} />
         <meshStandardMaterial color="#444" metalness={0.6} roughness={0.4} />
       </mesh>
 
-      {/* Ground */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+      {/* Ground - on XY plane for Z-up, no rotation needed */}
+      <mesh position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[6, 6]} />
         <meshStandardMaterial color="#1a2525" roughness={0.9} />
       </mesh>
 
-      {/* Grid helper */}
-      <gridHelper args={[4, 20, '#333', '#222']} position={[0, 0.001, 0]} />
+      {/* Grid helper - Z-up scene already configured, no rotation needed */}
+      <gridHelper args={[4, 20, '#333', '#222']} position={[0, 0, 0.001]} rotation={[Math.PI / 2, 0, 0]} />
 
-      {/* Lighting */}
+      {/* Lighting - Z-up: [x, y, z_height] */}
       <ambientLight intensity={0.3} />
-      <directionalLight position={[5, 8, 5]} intensity={0.8} castShadow />
-      <pointLight position={[-2, 3, -2]} intensity={0.4} color="#4ecdc4" />
+      <directionalLight position={[5, 5, 8]} intensity={0.8} castShadow />
+      <pointLight position={[-2, -2, 3]} intensity={0.4} color="#4ecdc4" />
     </>
   );
 }

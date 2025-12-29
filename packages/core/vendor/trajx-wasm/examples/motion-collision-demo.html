@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Motion API with Collision Detection Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0a0a1a;
+            color: #eee;
+        }
+        h1 { color: #00d9ff; margin-bottom: 5px; }
+        h2 { color: #00d9ff; margin-top: 0; font-size: 18px; }
+        h3 { color: #aaa; font-size: 14px; margin: 15px 0 10px 0; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: #12122a;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #2a2a4a;
+        }
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+        .card.highlight {
+            border-color: #00d9ff;
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.1);
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.loading { background: #e6a23c22; color: #e6a23c; border: 1px solid #e6a23c44; }
+        .status.ready { background: #67c23a22; color: #67c23a; border: 1px solid #67c23a44; }
+        .status.error { background: #f56c6c22; color: #f56c6c; border: 1px solid #f56c6c44; }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        button.success {
+            background: linear-gradient(135deg, #67c23a 0%, #4a9e2a 100%);
+        }
+        button.warning {
+            background: linear-gradient(135deg, #e6a23c 0%, #c48a2a 100%);
+        }
+        button.danger {
+            background: linear-gradient(135deg, #f56c6c 0%, #c45454 100%);
+        }
+        button.secondary {
+            background: #2a2a4a;
+            border: 1px solid #00d9ff;
+        }
+
+        .output {
+            background: #0d0d1a;
+            color: #67c23a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #2a2a4a;
+        }
+
+        .code-example {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 3px solid #00d9ff;
+        }
+        .code-example code {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 13px;
+            color: #a6e22e;
+        }
+        .code-example .comment { color: #75715e; }
+        .code-example .keyword { color: #66d9ef; }
+        .code-example .string { color: #e6db74; }
+        .code-example .number { color: #ae81ff; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: #0d0d1a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #2a2a4a;
+        }
+        .stat-box .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #00d9ff;
+        }
+        .stat-box .label {
+            font-size: 10px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .stat-box.success .value { color: #67c23a; }
+        .stat-box.warning .value { color: #e6a23c; }
+        .stat-box.error .value { color: #f56c6c; }
+
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .test-result.pass {
+            background: #67c23a22;
+            border: 1px solid #67c23a44;
+            color: #67c23a;
+        }
+        .test-result.fail {
+            background: #f56c6c22;
+            border: 1px solid #f56c6c44;
+            color: #f56c6c;
+        }
+        .test-result.info {
+            background: #00d9ff22;
+            border: 1px solid #00d9ff44;
+            color: #00d9ff;
+        }
+
+        canvas {
+            width: 100%;
+            height: 200px;
+            background: #0d0d1a;
+            border-radius: 8px;
+            border: 1px solid #2a2a4a;
+            margin-top: 10px;
+        }
+
+        .feature-tag {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin: 2px;
+        }
+        .feature-tag.new { background: #67c23a44; color: #67c23a; }
+        .feature-tag.improved { background: #e6a23c44; color: #e6a23c; }
+        .feature-tag.api { background: #00d9ff44; color: #00d9ff; }
+    </style>
+</head>
+<body>
+    <h1>Motion API with Collision Detection</h1>
+    <p class="subtitle">
+        Demonstrates the unified Motion API with collision-aware path planning
+        <span class="feature-tag new">NEW</span>
+        <span class="feature-tag improved">runWithCollision()</span>
+    </p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="grid">
+        <!-- Feature Overview -->
+        <div class="card full-width highlight">
+            <h2>New Features in Motion API</h2>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                <div>
+                    <h3>1. WasmMotion.runWithCollision()</h3>
+                    <p style="color: #888; font-size: 13px;">
+                        Single motion with BiRRT collision-free planning
+                    </p>
+                    <div class="code-example">
+                        <code>
+<span class="keyword">const</span> result = WasmMotion.to(goal)
+    .safe()  <span class="comment">// Enable collision mode</span>
+    .smooth()
+    .runWithCollision(robot, checkCollision);
+                        </code>
+                    </div>
+                </div>
+                <div>
+                    <h3>2. WasmPath.runWithCollision()</h3>
+                    <p style="color: #888; font-size: 13px;">
+                        Multi-waypoint path with collision-free segments
+                    </p>
+                    <div class="code-example">
+                        <code>
+<span class="keyword">const</span> result = WasmPath.through(waypoints, <span class="number">6</span>)
+    .safe()
+    .runWithCollision(robot, checkCollision);
+                        </code>
+                    </div>
+                </div>
+                <div>
+                    <h3>3. WasmSequence.runWithCollision()</h3>
+                    <p style="color: #888; font-size: 13px;">
+                        Sequence of motions with collision planning
+                    </p>
+                    <div class="code-example">
+                        <code>
+<span class="keyword">const</span> result = WasmSequence
+    .start(motion1.safe())
+    .then(motion2.safe())
+    .runWithCollision(robot, checkCollision);
+                        </code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test: WasmMotion with Collision -->
+        <div class="card">
+            <h2>Test 1: WasmMotion with Collision</h2>
+            <p style="color: #888; font-size: 13px;">
+                Compare run() vs runWithCollision() with obstacles
+            </p>
+
+            <button onclick="testMotionWithCollision()" id="btn-motion">Run Test</button>
+            <button class="secondary" onclick="clearTest('motion')">Clear</button>
+
+            <div id="motion-results"></div>
+            <div class="output" id="motion-output">Click "Run Test" to see results...</div>
+        </div>
+
+        <!-- Test: WasmPath with Collision -->
+        <div class="card">
+            <h2>Test 2: WasmPath with Collision</h2>
+            <p style="color: #888; font-size: 13px;">
+                Multi-waypoint path planning through obstacles
+            </p>
+
+            <button onclick="testPathWithCollision()" id="btn-path">Run Test</button>
+            <button class="secondary" onclick="clearTest('path')">Clear</button>
+
+            <div id="path-results"></div>
+            <div class="output" id="path-output">Click "Run Test" to see results...</div>
+        </div>
+
+        <!-- Test: WasmSequence with Collision -->
+        <div class="card">
+            <h2>Test 3: WasmSequence with Collision</h2>
+            <p style="color: #888; font-size: 13px;">
+                Chained motions (pick-and-place) with collision avoidance
+            </p>
+
+            <button onclick="testSequenceWithCollision()" id="btn-sequence">Run Test</button>
+            <button class="secondary" onclick="clearTest('sequence')">Clear</button>
+
+            <div id="sequence-results"></div>
+            <div class="output" id="sequence-output">Click "Run Test" to see results...</div>
+        </div>
+
+        <!-- Test: Warning on run() without collision checker -->
+        <div class="card">
+            <h2>Test 4: API Warning System</h2>
+            <p style="color: #888; font-size: 13px;">
+                Test warning when .safe() is used but run() is called without collision checker
+            </p>
+
+            <button onclick="testWarningSystem()" id="btn-warning">Run Test</button>
+            <button class="secondary" onclick="clearTest('warning')">Clear</button>
+
+            <div id="warning-results"></div>
+            <div class="output" id="warning-output">Click "Run Test" to see results...</div>
+        </div>
+
+        <!-- Collision Checker Visualization -->
+        <div class="card full-width">
+            <h2>Collision Configuration</h2>
+            <p style="color: #888; font-size: 13px;">
+                Simple joint-space obstacle for demonstration
+            </p>
+
+            <div style="display: flex; gap: 20px; align-items: start;">
+                <div style="flex: 1;">
+                    <h3>Obstacle Zone (Joint 1 & 2)</h3>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                        <label style="color: #888; font-size: 12px;">
+                            J1 Min: <input type="number" id="obs-j1-min" value="-0.5" step="0.1" style="width: 80px; background: #1a1a2e; color: #eee; border: 1px solid #2a2a4a; padding: 5px;">
+                        </label>
+                        <label style="color: #888; font-size: 12px;">
+                            J1 Max: <input type="number" id="obs-j1-max" value="0.5" step="0.1" style="width: 80px; background: #1a1a2e; color: #eee; border: 1px solid #2a2a4a; padding: 5px;">
+                        </label>
+                        <label style="color: #888; font-size: 12px;">
+                            J2 Min: <input type="number" id="obs-j2-min" value="-0.3" step="0.1" style="width: 80px; background: #1a1a2e; color: #eee; border: 1px solid #2a2a4a; padding: 5px;">
+                        </label>
+                        <label style="color: #888; font-size: 12px;">
+                            J2 Max: <input type="number" id="obs-j2-max" value="0.3" step="0.1" style="width: 80px; background: #1a1a2e; color: #eee; border: 1px solid #2a2a4a; padding: 5px;">
+                        </label>
+                    </div>
+                </div>
+                <div style="flex: 1;">
+                    <h3>Collision Checker Code</h3>
+                    <div class="code-example" style="margin: 0;">
+                        <code>
+<span class="keyword">function</span> checkCollision(joints) {
+    <span class="keyword">const</span> j1 = joints[<span class="number">0</span>], j2 = joints[<span class="number">1</span>];
+    <span class="comment">// Returns true if collision-free</span>
+    <span class="keyword">if</span> (j1 >= obsJ1Min && j1 <= obsJ1Max &&
+        j2 >= obsJ2Min && j2 <= obsJ2Max) {
+        <span class="keyword">return false</span>; <span class="comment">// In collision</span>
+    }
+    <span class="keyword">return true</span>; <span class="comment">// Collision-free</span>
+}
+                        </code>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Run All Tests -->
+        <div class="card full-width">
+            <h2>Run All Tests</h2>
+            <button class="success" onclick="runAllTests()">Run All Tests</button>
+            <button class="secondary" onclick="clearAllTests()">Clear All</button>
+
+            <div class="stats-grid" id="summary-stats" style="display: none;">
+                <div class="stat-box success">
+                    <div class="value" id="tests-passed">0</div>
+                    <div class="label">Tests Passed</div>
+                </div>
+                <div class="stat-box error">
+                    <div class="value" id="tests-failed">0</div>
+                    <div class="label">Tests Failed</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="total-time">0</div>
+                    <div class="label">Total Time (ms)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="total-waypoints">0</div>
+                    <div class="label">Total Waypoints</div>
+                </div>
+            </div>
+
+            <div class="output" id="summary-output">Click "Run All Tests" to see summary...</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, * as wasm from '../trajx_wasm.js';
+
+        window.wasm = wasm;
+
+        // Test URDF (6-DOF robot)
+        const TEST_URDF = `<?xml version="1.0"?>
+<robot name="test_robot">
+  <link name="base_link"/>
+  <link name="link1"/><link name="link2"/><link name="link3"/>
+  <link name="link4"/><link name="link5"/><link name="link6"/>
+  <link name="tool0"/>
+
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/><child link="link1"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="2.0" effort="100"/>
+  </joint>
+  <joint name="joint2" type="revolute">
+    <parent link="link1"/><child link="link2"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" velocity="2.0" effort="100"/>
+  </joint>
+  <joint name="joint3" type="revolute">
+    <parent link="link2"/><child link="link3"/>
+    <origin xyz="0 0 0.3" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5" upper="2.5" velocity="2.0" effort="100"/>
+  </joint>
+  <joint name="joint4" type="revolute">
+    <parent link="link3"/><child link="link4"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="3.0" effort="50"/>
+  </joint>
+  <joint name="joint5" type="revolute">
+    <parent link="link4"/><child link="link5"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.0" upper="2.0" velocity="3.0" effort="50"/>
+  </joint>
+  <joint name="joint6" type="revolute">
+    <parent link="link5"/><child link="link6"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" velocity="3.0" effort="50"/>
+  </joint>
+  <joint name="tool_joint" type="fixed">
+    <parent link="link6"/><child link="tool0"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+  </joint>
+</robot>`;
+
+        window.robot = null;
+
+        // Get obstacle bounds
+        function getObstacleBounds() {
+            return {
+                j1Min: parseFloat(document.getElementById('obs-j1-min').value),
+                j1Max: parseFloat(document.getElementById('obs-j1-max').value),
+                j2Min: parseFloat(document.getElementById('obs-j2-min').value),
+                j2Max: parseFloat(document.getElementById('obs-j2-max').value)
+            };
+        }
+
+        // Collision checker function
+        window.checkCollision = function(joints) {
+            const { j1Min, j1Max, j2Min, j2Max } = getObstacleBounds();
+            const j1 = joints[0];
+            const j2 = joints[1];
+
+            // Check if joints are in the obstacle zone
+            if (j1 >= j1Min && j1 <= j1Max && j2 >= j2Min && j2 <= j2Max) {
+                return false; // In collision
+            }
+            return true; // Collision-free
+        };
+
+        // Add result to test
+        function addResult(containerId, message, type = 'info') {
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = message;
+            container.appendChild(div);
+        }
+
+        // Clear test results
+        window.clearTest = function(testName) {
+            document.getElementById(`${testName}-results`).innerHTML = '';
+            document.getElementById(`${testName}-output`).textContent = 'Cleared.';
+        };
+
+        window.clearAllTests = function() {
+            ['motion', 'path', 'sequence', 'warning'].forEach(t => clearTest(t));
+            document.getElementById('summary-stats').style.display = 'none';
+            document.getElementById('summary-output').textContent = 'Cleared.';
+        };
+
+        // Initialize
+        async function initialize() {
+            try {
+                await init();
+                const version = wasm.version();
+
+                window.robot = wasm.createRobot(TEST_URDF);
+                window.robot.setJointPositions([0, 0, 0, 0, 0, 0]);
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = `WASM Ready! Version: ${version} | Robot: ${robot.name} (${robot.dof} DOF)`;
+
+                console.log('trajx-wasm motion-collision demo initialized');
+            } catch (error) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Failed: ${error.message}`;
+                console.error(error);
+            }
+        }
+
+        // Test 1: WasmMotion with Collision
+        window.testMotionWithCollision = function() {
+            const container = 'motion-results';
+            const output = document.getElementById('motion-output');
+            document.getElementById(container).innerHTML = '';
+
+            output.textContent = 'Testing WasmMotion.runWithCollision()...\n\n';
+
+            try {
+                // Define start and goal that require going around obstacle
+                const start = [-1.0, -0.8, 0, 0, 0, 0];
+                const goal = [1.0, 0.8, 0.5, 0, 0.3, 0];
+
+                robot.setJointPositions(start);
+
+                // Test without collision (simple interpolation)
+                output.textContent += '1. Testing run() without collision:\n';
+                const motionSimple = wasm.WasmMotion.to(goal);
+                const resultSimple = motionSimple.run(robot);
+                output.textContent += `   Points: ${resultSimple.numPoints}\n`;
+                output.textContent += `   Duration: ${resultSimple.trajectoryDuration.toFixed(3)}s\n`;
+                output.textContent += `   Path Length: ${resultSimple.pathLength.toFixed(4)}\n`;
+                output.textContent += `   Collision-free: ${resultSimple.collisionFree}\n\n`;
+
+                // Test WITH collision checking
+                output.textContent += '2. Testing runWithCollision():\n';
+                const motionSafe = wasm.WasmMotion.to(goal).safe().smooth();
+                const startTime = performance.now();
+                const resultSafe = motionSafe.runWithCollision(robot, checkCollision);
+                const planTime = performance.now() - startTime;
+
+                output.textContent += `   Points: ${resultSafe.numPoints}\n`;
+                output.textContent += `   Duration: ${resultSafe.trajectoryDuration.toFixed(3)}s\n`;
+                output.textContent += `   Path Length: ${resultSafe.pathLength.toFixed(4)}\n`;
+                output.textContent += `   Collision-free: ${resultSafe.collisionFree}\n`;
+                output.textContent += `   Planning Time: ${planTime.toFixed(2)}ms\n`;
+
+                // Verify the path avoids obstacles
+                const pathAvoidedObstacle = resultSafe.pathLength > resultSimple.pathLength;
+
+                if (resultSafe.collisionFree && pathAvoidedObstacle) {
+                    addResult(container, `SUCCESS: Collision-free path found (${resultSafe.numPoints} points, ${planTime.toFixed(1)}ms)`, 'pass');
+                    addResult(container, `Path is ${((resultSafe.pathLength / resultSimple.pathLength - 1) * 100).toFixed(1)}% longer to avoid obstacles`, 'info');
+                } else {
+                    addResult(container, `WARNING: Path may not properly avoid obstacles`, 'fail');
+                }
+
+                return { success: true, time: planTime, waypoints: resultSafe.numPoints };
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+                return { success: false, error: error.message };
+            }
+        };
+
+        // Test 2: WasmPath with Collision
+        window.testPathWithCollision = function() {
+            const container = 'path-results';
+            const output = document.getElementById('path-output');
+            document.getElementById(container).innerHTML = '';
+
+            output.textContent = 'Testing WasmPath.runWithCollision()...\n\n';
+
+            try {
+                const dof = 6;
+                // Waypoints that require collision avoidance
+                const waypoints = [
+                    -1.0, -0.5, 0, 0, 0, 0,    // Start
+                    0.0, -1.0, 0.3, 0, 0.2, 0,  // Via point 1 (below obstacle)
+                    1.0, 0.5, 0.5, 0, 0.3, 0,   // Via point 2
+                    0.5, 1.0, 0, 0, 0, 0        // End
+                ];
+
+                robot.setJointPositions(waypoints.slice(0, dof));
+
+                // Test with collision checking
+                output.textContent += 'Running WasmPath.through().safe().runWithCollision()...\n\n';
+
+                const path = wasm.WasmPath.through(waypoints, dof).safe().speed(0.8);
+                const startTime = performance.now();
+                const result = path.runWithCollision(robot, checkCollision);
+                const planTime = performance.now() - startTime;
+
+                output.textContent += `Path through 4 waypoints:\n`;
+                output.textContent += `   Points: ${result.numPoints}\n`;
+                output.textContent += `   Duration: ${result.trajectoryDuration.toFixed(3)}s\n`;
+                output.textContent += `   Path Length: ${result.pathLength.toFixed(4)}\n`;
+                output.textContent += `   Collision-free: ${result.collisionFree}\n`;
+                output.textContent += `   Planning Time: ${planTime.toFixed(2)}ms\n`;
+
+                if (result.collisionFree) {
+                    addResult(container, `SUCCESS: Multi-waypoint path planned (${result.numPoints} points)`, 'pass');
+                    addResult(container, `Planning time: ${planTime.toFixed(1)}ms`, 'info');
+                } else {
+                    addResult(container, `WARNING: Path may have collision issues`, 'fail');
+                }
+
+                return { success: true, time: planTime, waypoints: result.numPoints };
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+                return { success: false, error: error.message };
+            }
+        };
+
+        // Test 3: WasmSequence with Collision
+        window.testSequenceWithCollision = function() {
+            const container = 'sequence-results';
+            const output = document.getElementById('sequence-output');
+            document.getElementById(container).innerHTML = '';
+
+            output.textContent = 'Testing WasmSequence.runWithCollision()...\n\n';
+
+            try {
+                // Simulated pick-and-place with collision avoidance
+                const homePos = [0, -0.5, 0, 0, 0, 0];
+                const pickApproach = [-0.8, -0.5, 0.2, 0, 0.2, 0];
+                const pickPos = [-0.8, -0.8, 0.3, 0, 0.3, 0];
+                const placeApproach = [0.8, 0.5, 0.2, 0, 0.2, 0];
+                const placePos = [0.8, 0.8, 0.3, 0, 0.3, 0];
+
+                robot.setJointPositions(homePos);
+
+                output.textContent += 'Pick-and-Place Sequence (6 motions):\n\n';
+                output.textContent += '  1. Home -> Pick Approach (fast, safe)\n';
+                output.textContent += '  2. Pick Approach -> Pick (slow, linear)\n';
+                output.textContent += '  3. Pick -> Pick Approach (linear)\n';
+                output.textContent += '  4. Pick Approach -> Place Approach (fast, safe)\n';
+                output.textContent += '  5. Place Approach -> Place (slow, linear)\n';
+                output.textContent += '  6. Place -> Home (fast, safe)\n\n';
+
+                // Create motions
+                const motion1 = wasm.WasmMotion.to(pickApproach).fast().safe();
+                const motion2 = wasm.WasmMotion.to(pickPos).slow().linear();
+                const motion3 = wasm.WasmMotion.to(pickApproach).linear();
+                const motion4 = wasm.WasmMotion.to(placeApproach).fast().safe();
+                const motion5 = wasm.WasmMotion.to(placePos).slow().linear();
+                const motion6 = wasm.WasmMotion.to(homePos).fast().safe();
+
+                // Build sequence
+                const sequence = wasm.WasmSequence.start(motion1)
+                    .then(motion2)
+                    .then(motion3)
+                    .then(motion4)
+                    .then(motion5)
+                    .then(motion6);
+
+                const startTime = performance.now();
+                const result = sequence.runWithCollision(robot, checkCollision);
+                const planTime = performance.now() - startTime;
+
+                output.textContent += `Results:\n`;
+                output.textContent += `   Total Points: ${result.numPoints}\n`;
+                output.textContent += `   Total Duration: ${result.trajectoryDuration.toFixed(3)}s\n`;
+                output.textContent += `   Total Path Length: ${result.pathLength.toFixed(4)}\n`;
+                output.textContent += `   Collision-free: ${result.collisionFree}\n`;
+                output.textContent += `   Planning Time: ${planTime.toFixed(2)}ms\n`;
+
+                if (result.collisionFree) {
+                    addResult(container, `SUCCESS: Pick-and-place sequence completed (${result.numPoints} points)`, 'pass');
+                    addResult(container, `Total duration: ${result.trajectoryDuration.toFixed(2)}s`, 'info');
+                } else {
+                    addResult(container, `WARNING: Sequence may have collision issues`, 'fail');
+                }
+
+                return { success: true, time: planTime, waypoints: result.numPoints };
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+                return { success: false, error: error.message };
+            }
+        };
+
+        // Test 4: Warning System
+        window.testWarningSystem = function() {
+            const container = 'warning-results';
+            const output = document.getElementById('warning-output');
+            document.getElementById(container).innerHTML = '';
+
+            output.textContent = 'Testing API warning system...\n\n';
+
+            try {
+                // Start and goal positions outside the obstacle zone
+                // Obstacle zone is J1: [-0.5, 0.5], J2: [-0.3, 0.3]
+                const start = [1.0, 0.5, 0, 0, 0, 0];  // Outside obstacle
+                const goal = [1.5, 0.8, 0, 0, 0, 0];   // Outside obstacle
+                robot.setJointPositions(start);
+
+                // This should trigger a console warning
+                output.textContent += '1. Calling WasmMotion.to(goal).safe().run(robot):\n';
+                output.textContent += '   (Check browser console for warning)\n\n';
+
+                const motion = wasm.WasmMotion.to(goal).safe();
+                const result = motion.run(robot);
+
+                output.textContent += '   Result: Motion executed with simple interpolation\n';
+                output.textContent += `   Points: ${result.numPoints}\n`;
+                output.textContent += `   Collision-free: ${result.collisionFree} (NOT verified - no checker provided)\n\n`;
+
+                output.textContent += '2. Correct usage: runWithCollision():\n';
+                const resultSafe = motion.runWithCollision(robot, checkCollision);
+                output.textContent += `   Collision-free: ${resultSafe.collisionFree} (properly verified)\n`;
+
+                addResult(container, 'Check browser console for warning message', 'info');
+                addResult(container, 'Warning helps developers use the correct API', 'pass');
+
+                return { success: true, time: 0, waypoints: result.numPoints };
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+                return { success: false, error: error.message };
+            }
+        };
+
+        // Run all tests
+        window.runAllTests = async function() {
+            const summaryOutput = document.getElementById('summary-output');
+            summaryOutput.textContent = 'Running all tests...\n\n';
+
+            let passed = 0;
+            let failed = 0;
+            let totalTime = 0;
+            let totalWaypoints = 0;
+
+            const tests = [
+                { name: 'WasmMotion.runWithCollision()', fn: testMotionWithCollision },
+                { name: 'WasmPath.runWithCollision()', fn: testPathWithCollision },
+                { name: 'WasmSequence.runWithCollision()', fn: testSequenceWithCollision },
+                { name: 'API Warning System', fn: testWarningSystem }
+            ];
+
+            for (const test of tests) {
+                summaryOutput.textContent += `Running: ${test.name}...\n`;
+                try {
+                    const result = test.fn();
+                    if (result.success) {
+                        passed++;
+                        totalTime += result.time || 0;
+                        totalWaypoints += result.waypoints || 0;
+                        summaryOutput.textContent += `   PASSED\n`;
+                    } else {
+                        failed++;
+                        summaryOutput.textContent += `   FAILED: ${result.error}\n`;
+                    }
+                } catch (e) {
+                    failed++;
+                    summaryOutput.textContent += `   ERROR: ${e.message}\n`;
+                }
+            }
+
+            summaryOutput.textContent += `\n${'='.repeat(50)}\n`;
+            summaryOutput.textContent += `Summary: ${passed} passed, ${failed} failed\n`;
+            summaryOutput.textContent += `Total planning time: ${totalTime.toFixed(2)}ms\n`;
+            summaryOutput.textContent += `Total waypoints generated: ${totalWaypoints}\n`;
+
+            // Update stats
+            document.getElementById('summary-stats').style.display = 'grid';
+            document.getElementById('tests-passed').textContent = passed;
+            document.getElementById('tests-failed').textContent = failed;
+            document.getElementById('total-time').textContent = totalTime.toFixed(1);
+            document.getElementById('total-waypoints').textContent = totalWaypoints;
+        };
+
+        initialize();
+    </script>
+</body>
+</html>

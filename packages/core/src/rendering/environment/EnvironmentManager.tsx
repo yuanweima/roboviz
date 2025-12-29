@@ -368,14 +368,17 @@ function BackgroundColor({ color }: { color: string }): null {
 function SkyComponent({ config }: { config: SkyConfig }): React.JSX.Element | null {
   if (!config.enabled) return null;
 
-  // Convert azimuth/elevation to cartesian
+  // Convert azimuth/elevation to cartesian (Z-up coordinate system)
   const azimuthRad = (config.sunPosition[0] * Math.PI) / 180;
   const elevationRad = (config.sunPosition[1] * Math.PI) / 180;
 
+  // Z-up: X=forward, Y=left, Z=up
+  // Azimuth 0° = +X direction, 90° = +Y direction
+  // Elevation 0° = horizontal, 90° = straight up (+Z)
   const sunPosition: [number, number, number] = [
-    Math.cos(elevationRad) * Math.sin(azimuthRad) * config.distance,
-    Math.sin(elevationRad) * config.distance,
     Math.cos(elevationRad) * Math.cos(azimuthRad) * config.distance,
+    Math.cos(elevationRad) * Math.sin(azimuthRad) * config.distance,
+    Math.sin(elevationRad) * config.distance, // Z is up
   ];
 
   return (
@@ -504,11 +507,14 @@ export function EnvironmentSystem({
       )}
 
       {/* HDR Environment */}
+      {/* Rotate environment from Y-up to Z-up coordinate system */}
       {environment.enabled && environment.preset && (
         <Environment
           preset={environment.preset}
           background={environment.backgroundType === 'environment'}
           blur={environment.backgroundBlur}
+          backgroundRotation={[Math.PI / 2, 0, 0]}
+          environmentRotation={[Math.PI / 2, 0, 0]}
           ground={
             environment.groundProjection
               ? {
@@ -527,6 +533,8 @@ export function EnvironmentSystem({
           files={environment.hdrPath}
           background={environment.backgroundType === 'environment'}
           blur={environment.backgroundBlur}
+          backgroundRotation={[Math.PI / 2, 0, 0]}
+          environmentRotation={[Math.PI / 2, 0, 0]}
         />
       )}
 

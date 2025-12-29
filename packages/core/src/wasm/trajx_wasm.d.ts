@@ -9,21 +9,6 @@ export function listDhDatabase(): string[];
  */
 export function createRobot(urdf_content: string): Robot;
 /**
- * Compute inverse kinematics using numerical method (Damped Least Squares)
- *
- * # Arguments
- * * `dh_params` - DH parameters for the robot
- * * `target_pose` - Target end-effector pose
- * * `seed` - Initial joint configuration (optional, uses zeros if not provided)
- * * `joint_limits` - Joint limits for the robot
- * * `max_iterations` - Maximum solver iterations (default: 100)
- * * `tolerance` - Position tolerance in meters (default: 1e-4)
- *
- * # Returns
- * IK solution or error
- */
-export function inverseKinematicsDh(dh_params: DhParam[], target_pose: Pose, seed?: Float64Array | null, joint_limits?: JointLimits | null, max_iterations?: number | null, tolerance?: number | null): IkResult;
-/**
  * Batch forward kinematics with Float32 input/output for WebGL/InstancedMesh compatibility
  *
  * Same as batchForwardKinematics but uses Float32Array for zero-copy with GPU buffers.
@@ -36,6 +21,17 @@ export function batchForwardKinematicsF32(dh_params: DhParam[], joint_angles_fla
  * Array of poses for each link (useful for rendering robot in 3D)
  */
 export function forwardKinematicsChainDh(dh_params: DhParam[], joint_angles: Float64Array): Pose[];
+/**
+ * Compute forward kinematics from DH parameters
+ *
+ * # Arguments
+ * * `dh_params` - Array of DH parameters [a, alpha, d, theta] for each joint
+ * * `joint_angles` - Current joint angles in radians
+ *
+ * # Returns
+ * End-effector pose (position + orientation)
+ */
+export function forwardKinematicsDh(dh_params: DhParam[], joint_angles: Float64Array): Pose;
 /**
  * Batch forward kinematics for multiple robots (GPU instancing optimization)
  *
@@ -66,16 +62,20 @@ export function forwardKinematicsChainDh(dh_params: DhParam[], joint_angles: Flo
  */
 export function batchForwardKinematics(dh_params: DhParam[], joint_angles_flat: Float64Array, robot_count: number, joint_count: number): Float64Array;
 /**
- * Compute forward kinematics from DH parameters
+ * Compute inverse kinematics using numerical method (Damped Least Squares)
  *
  * # Arguments
- * * `dh_params` - Array of DH parameters [a, alpha, d, theta] for each joint
- * * `joint_angles` - Current joint angles in radians
+ * * `dh_params` - DH parameters for the robot
+ * * `target_pose` - Target end-effector pose
+ * * `seed` - Initial joint configuration (optional, uses zeros if not provided)
+ * * `joint_limits` - Joint limits for the robot
+ * * `max_iterations` - Maximum solver iterations (default: 100)
+ * * `tolerance` - Position tolerance in meters (default: 1e-4)
  *
  * # Returns
- * End-effector pose (position + orientation)
+ * IK solution or error
  */
-export function forwardKinematicsDh(dh_params: DhParam[], joint_angles: Float64Array): Pose;
+export function inverseKinematicsDh(dh_params: DhParam[], target_pose: Pose, seed?: Float64Array | null, joint_limits?: JointLimits | null, max_iterations?: number | null, tolerance?: number | null): IkResult;
 /**
  * Batch FK returning only end-effector poses (for scenarios where link transforms aren't needed)
  *
@@ -96,10 +96,6 @@ export function createSimpleTrajectory(waypoints: Float64Array, dof: number, max
  */
 export function listSupportedRobots(): string[];
 /**
- * Check if the library is initialized
- */
-export function is_ready(): boolean;
-/**
  * Get the library version
  */
 export function version(): string;
@@ -107,6 +103,19 @@ export function version(): string;
  * Initialize panic hook for better error messages in browser console
  */
 export function init(): void;
+/**
+ * Check if the library is initialized
+ */
+export function is_ready(): boolean;
+/**
+ * Get a light cable configuration (8π limit, 4 full rotations / 1440°)
+ * For thin, flexible cables
+ */
+export function cablePresetLight(): CableConfig;
+/**
+ * Get a standard cable configuration (4π limit, 2 full rotations / 720°)
+ */
+export function cablePresetStandard(): CableConfig;
 /**
  * Get a precision cable configuration (2π limit with auto-unwind)
  * For applications requiring minimal cable stress
@@ -117,15 +126,6 @@ export function cablePresetPrecision(): CableConfig;
  * For thick, stiff cables that cannot twist much
  */
 export function cablePresetHeavyDuty(): CableConfig;
-/**
- * Get a standard cable configuration (4π limit, 2 full rotations / 720°)
- */
-export function cablePresetStandard(): CableConfig;
-/**
- * Get a light cable configuration (8π limit, 4 full rotations / 1440°)
- * For thin, flexible cables
- */
-export function cablePresetLight(): CableConfig;
 /**
  * Compute path length from flat array
  */
@@ -176,6 +176,11 @@ export enum CollisionMode {
    * Adaptive replanning
    */
   Adaptive = 3,
+  /**
+   * GPU-accelerated batch planning with Lazy-PRM
+   * Uses batch collision checking optimized for GPU/WebGPU
+   */
+  GpuBatch = 4,
 }
 /**
  * Motion style for path generation
@@ -269,8 +274,14 @@ export class BiRRTConfig {
 /**
  * BiRRT Planner for WASM
  *
- * Single-threaded bidirectional RRT planner optimized for browser execution.
- * Provides excellent performance for point-to-point motion planning.
+ * This is a thin wrapper around `trajx_planning::planners::core::BiRRTCore`.
+ * It provides WASM bindings that allow JavaScript to use the planner with
+ * callback-based collision checking.
+ *
+ * ## Performance
+ *
+ * Uses KD-Tree acceleration for O(log n) nearest neighbor queries.
+ * Typical planning time: 0.07-10 ms for simple 6-DOF queries.
  */
 export class BiRRTPlanner {
   free(): void;
@@ -280,6 +291,13 @@ export class BiRRTPlanner {
    * The callback receives joint configuration and returns true if valid (no collision)
    */
   planWithCollisionCheck(start: Float64Array, goal: Float64Array, collision_checker: Function): PlanningResult;
+  /**
+   * Plan with dense-path collision checking callback
+   *
+   * Returns a densely sampled path with all validated intermediate points.
+   * The callback receives joint configuration and returns true if valid (no collision).
+   */
+  planDenseWithCollisionCheck(start: Float64Array, goal: Float64Array, collision_checker: Function): PlanningResult;
   /**
    * Create a new BiRRT planner
    */
@@ -763,6 +781,8 @@ export class RRTStarConfig {
  *
  * Optimal path planner that iteratively improves path cost.
  * Provides asymptotically optimal paths but is slower than BiRRT.
+ *
+ * This is a thin wrapper around `trajx_planning::planners::core::RRTStarCore`.
  */
 export class RRTStarPlanner {
   free(): void;
@@ -1428,11 +1448,45 @@ export class WasmMotion {
    */
   withCableTwist(twist: number): WasmMotion;
   /**
+   * Execute the motion with collision-aware path planning
+   *
+   * When CollisionMode::Avoid is set (via .safe()), this method uses BiRRT
+   * to plan a collision-free path. Otherwise, it falls back to simple
+   * linear interpolation.
+   *
+   * # Arguments
+   * * `robot` - The robot for kinematics
+   * * `collision_checker` - JavaScript callback function(jointConfig: number[]) -> boolean
+   *   Returns true if the configuration is collision-free
+   *
+   * # Example
+   * ```typescript
+   * // Create collision checker callback
+   * const checkCollision = (joints: number[]): boolean => {
+   *     const poses = robot.getLinkTransforms(joints);
+   *     const selfResult = robotCollision.checkSelfCollision(poses);
+   *     if (selfResult.inCollision) return false;
+   *     const envResult = robotCollision.checkEnvironmentCollision(env, poses);
+   *     return !envResult.inCollision;
+   * };
+   *
+   * // Execute with collision avoidance
+   * const result = WasmMotion.to(goal)
+   *     .safe()  // Enable collision avoidance
+   *     .runWithCollision(robot, checkCollision);
+   * ```
+   */
+  runWithCollision(robot: Robot, collision_checker: Function): WasmMotionResult;
+  /**
    * Create a motion to the target joint positions
    */
   static to(target: Float64Array): WasmMotion;
   /**
    * Execute the motion on the robot
+   *
+   * Note: For collision-aware planning, use `runWithCollision()` which accepts
+   * a collision checker callback. This method performs simple linear interpolation
+   * or warns if collision mode is set without a collision checker.
    */
   run(robot: Robot): WasmMotionResult;
   /**
@@ -1551,6 +1605,23 @@ export class WasmMotionResult {
 export class WasmPath {
   private constructor();
   free(): void;
+  /**
+   * Execute the path with collision-aware planning
+   *
+   * Plans collision-free paths between consecutive waypoints using BiRRT.
+   *
+   * # Arguments
+   * * `robot` - The robot for kinematics
+   * * `collision_checker` - JS callback: (joints: number[]) => boolean (true = collision-free)
+   *
+   * # Example
+   * ```typescript
+   * const path = WasmPath.through([wp1, wp2, wp3], 6)
+   *     .safe()  // Enable collision avoidance
+   *     .runWithCollision(robot, checkCollision);
+   * ```
+   */
+  runWithCollision(robot: Robot, collision_checker: Function): WasmMotionResult;
   /**
    * Execute the path on the robot
    */
@@ -1810,6 +1881,24 @@ export class WasmSequence {
    * Set initial cable twist for the sequence
    */
   withCableTwist(twist: number): WasmSequence;
+  /**
+   * Execute all motions in sequence with collision avoidance
+   *
+   * Each motion in the sequence that has collision mode enabled will use
+   * the BiRRT planner for collision-free path planning.
+   *
+   * # Arguments
+   * * `robot` - The robot for kinematics
+   * * `collision_checker` - JS callback: (joints: number[]) => boolean (true = collision-free)
+   *
+   * # Example
+   * ```typescript
+   * const seq = WasmSequence.start(motion1.safe())
+   *     .then(motion2.safe())
+   *     .runWithCollision(robot, checkCollision);
+   * ```
+   */
+  runWithCollision(robot: Robot, collision_checker: Function): WasmMotionResult;
   /**
    * Execute all motions in sequence
    */
@@ -2273,6 +2362,7 @@ export interface InitOutput {
   readonly birrtconfig_withParams: (a: number, b: number, c: number) => number;
   readonly birrtplanner_new: (a: number, b: number) => number;
   readonly birrtplanner_plan: (a: number, b: number, c: number, d: number, e: number) => number;
+  readonly birrtplanner_planDenseWithCollisionCheck: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
   readonly birrtplanner_planWithCollisionCheck: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
   readonly cablePresetHeavyDuty: () => number;
   readonly cablePresetLight: () => number;
@@ -2493,6 +2583,7 @@ export interface InitOutput {
   readonly wasmmotion_plan: (a: number, b: number, c: number) => void;
   readonly wasmmotion_precise: (a: number) => number;
   readonly wasmmotion_run: (a: number, b: number, c: number) => void;
+  readonly wasmmotion_runWithCollision: (a: number, b: number, c: number, d: number) => void;
   readonly wasmmotion_safe: (a: number) => number;
   readonly wasmmotion_slow: (a: number) => number;
   readonly wasmmotion_smooth: (a: number) => number;
@@ -2520,6 +2611,7 @@ export interface InitOutput {
   readonly wasmpath_joint: (a: number) => number;
   readonly wasmpath_linear: (a: number) => number;
   readonly wasmpath_run: (a: number, b: number, c: number) => void;
+  readonly wasmpath_runWithCollision: (a: number, b: number, c: number, d: number) => void;
   readonly wasmpath_safe: (a: number) => number;
   readonly wasmpath_smooth: (a: number) => number;
   readonly wasmpath_speed: (a: number, b: number) => number;
@@ -2555,6 +2647,7 @@ export interface InitOutput {
   readonly wasmsequence_cableAware: (a: number) => number;
   readonly wasmsequence_cableAwareWith: (a: number, b: number) => number;
   readonly wasmsequence_run: (a: number, b: number, c: number) => void;
+  readonly wasmsequence_runWithCollision: (a: number, b: number, c: number, d: number) => void;
   readonly wasmsequence_start: (a: number) => number;
   readonly wasmsequence_then: (a: number, b: number) => number;
   readonly wasmsequence_withCableTwist: (a: number, b: number) => number;
