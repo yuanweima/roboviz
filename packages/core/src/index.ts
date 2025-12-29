@@ -354,6 +354,11 @@ export * from './components/property-editor';
 export * from './workers';
 
 // =============================================================================
+// Motion Planning (GPU-Accelerated Path Planning)
+// =============================================================================
+export * from './planning';
+
+// =============================================================================
 // Main Component
 // =============================================================================
 export { RoboVizCore, type RoboVizCoreProps } from './RoboVizCore';

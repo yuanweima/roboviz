@@ -10,9 +10,11 @@ trajx-wasm 是 trajx 机器人运动学库的 WebAssembly 封装，提供在浏�
 4. [API 详解](#api-详解)
 5. [Motion-Centric API](#motion-centric-api运动中心-apinew)
 6. [Cable-Aware Planning](#cable-aware-planning线缆感知规划new)
-7. [使用示例](#使用示例)
-8. [坐标系说明](#坐标系说明)
-9. [常见问题](#常见问题)
+7. [Batch Forward Kinematics](#batch-forward-kinematics批量正运动学)
+8. [FK Worker（Web Worker 集成）](#fk-workerweb-worker-集成) ⚡ NEW
+9. [使用示例](#使用示例)
+10. [坐标系说明](#坐标系说明)
+11. [常见问题](#常见问题)
 
 ---
 
@@ -533,7 +535,41 @@ const trajectory = result.getTrajectory();
 | `.cableTrack()` | 仅跟踪模式（不约束规划） |
 | `.withCableTwist(rad)` | 设置初始扭转（多段跟踪） |
 | `.run(robot)` | 在机器人上执行 |
+| `.runWithCollision(robot, checker)` | 带碰撞避障执行 |
 | `.plan(robot)` | 只规划不执行 |
+
+### 碰撞感知运动 (runWithCollision)
+
+使用 `runWithCollision()` 启用 BiRRT 规划和碰撞检测：
+
+```javascript
+// 定义碰撞检测器：返回 true 表示配置有效（无碰撞）
+const collisionChecker = (joints) => {
+    // 你的碰撞检测逻辑
+    return !isColliding(joints);  // true = 无碰撞
+};
+
+// 带碰撞避障的运动
+const result = WasmMotion.to(goal)
+    .safe()  // 启用避障模式
+    .runWithCollision(robot, collisionChecker);
+
+console.log('无碰撞:', result.collisionFree);
+
+// 带碰撞避障的路径
+const path = WasmPath.through(waypoints, 6)
+    .safe()
+    .runWithCollision(robot, collisionChecker);
+
+// 带碰撞避障的序列
+const seq = WasmSequence.start(motion1.safe())
+    .then(motion2.safe())
+    .runWithCollision(robot, collisionChecker);
+```
+
+**重要**: 碰撞检测回调应返回：
+- `true` 表示配置**有效**（无碰撞）
+- `false` 表示配置**无效**（检测到碰撞）
 
 ### 结果属性（Cable）
 
@@ -803,6 +839,312 @@ IK 求解器会自动考虑这些限制，返回的所有解都在限制范围�
 
 ---
 
+## Batch Forward Kinematics（批量正运动学）
+
+针对 GPU Instancing 和强化学习可视化场景，trajx-wasm 提供了高性能的批量 FK API，可以在毫秒级时间内计算数百个机器人实例的运动学。
+
+### 使用场景
+
+- **RL 训练可视化**: 同时渲染数百个机器人进行策略对比
+- **GPU Instancing**: 与 Three.js InstancedMesh 配合使用
+- **蒙特卡洛仿真**: 批量计算多种关节配置
+
+### API 概述
+
+```javascript
+import { batchForwardKinematics, batchForwardKinematicsF32, batchForwardKinematicsEndEffector, DhParam } from 'trajx-wasm';
+
+// 定义机器人 DH 参数（所有实例共享）
+const dhParams = [
+    new DhParam(0, -Math.PI/2, 0.1, 0),   // joint 1
+    new DhParam(0.4, 0, 0, 0),             // joint 2
+    new DhParam(0.02, -Math.PI/2, 0, 0),   // joint 3
+    new DhParam(0, Math.PI/2, 0.4, 0),     // joint 4
+    new DhParam(0, -Math.PI/2, 0, 0),      // joint 5
+    new DhParam(0, 0, 0.1, 0),             // joint 6
+];
+
+const robotCount = 500;
+const jointCount = 6;
+
+// 关节角度扁平数组: [robot1_j1, robot1_j2, ..., robot2_j1, robot2_j2, ...]
+const jointAngles = new Float32Array(robotCount * jointCount);
+// ... 从 RL policy 或其他来源填充数据 ...
+
+// 计算所有 link 的变换矩阵
+const allTransforms = batchForwardKinematicsF32(dhParams, Array.from(jointAngles), robotCount, jointCount);
+// 返回: [robot1_link1_mat4, robot1_link2_mat4, ..., robot2_link1_mat4, ...]
+// 每个机器人有 (jointCount + 1) 个 link（包括 base）
+// 总长度: 500 * 7 * 16 = 56000
+
+// 或者只计算末端执行器（更高效）
+const eeTransforms = batchForwardKinematicsEndEffector(dhParams, Array.from(jointAngles), robotCount, jointCount);
+// 返回: [robot1_ee_mat4, robot2_ee_mat4, ...]
+// 总长度: 500 * 16 = 8000
+```
+
+### 与 Three.js InstancedMesh 配合使用
+
+```javascript
+import * as THREE from 'three';
+import { batchForwardKinematicsEndEffector, DhParam } from 'trajx-wasm';
+
+// 创建 InstancedMesh
+const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+const instancedMesh = new THREE.InstancedMesh(geometry, material, robotCount);
+
+// 临时矩阵对象
+const matrix = new THREE.Matrix4();
+
+function updateRobots(jointAnglesFlat) {
+    // 批量计算 FK
+    const transforms = batchForwardKinematicsEndEffector(dhParams, jointAnglesFlat, robotCount, jointCount);
+
+    // 更新 InstancedMesh
+    for (let i = 0; i < robotCount; i++) {
+        const offset = i * 16;
+        matrix.fromArray(transforms, offset);
+        instancedMesh.setMatrixAt(i, matrix);
+    }
+    instancedMesh.instanceMatrix.needsUpdate = true;
+}
+```
+
+### 性能
+
+| 机器人数量 | 批量 FK 时间 | 目标 |
+|-----------|-------------|------|
+| 500       | ~0.3ms      | <5ms |
+| 1000      | ~0.6ms      | <10ms |
+
+批量 FK 避免了：
+- 每个机器人单独调用 WASM 函数的开销
+- JavaScript 和 WASM 之间的多次内存拷贝
+
+### API 变体
+
+| 函数名 | 返回类型 | 用途 |
+|-------|---------|------|
+| `batchForwardKinematics` | `number[]` (f64) | 高精度计算 |
+| `batchForwardKinematicsF32` | `Float32Array` | WebGL/GPU 兼容 |
+| `batchForwardKinematicsEndEffector` | `Float32Array` | 仅末端执行器，最高效 |
+
+---
+
+## FK Worker（Web Worker 集成）
+
+为了保持主线程流畅（用于渲染），trajx-wasm 提供了预打包的 Web Worker 解决方案，将批量 FK 计算移到后台线程。
+
+### 问题背景
+
+在 Web 应用中使用 WASM + Web Worker 时，通常会遇到：
+
+1. **WASM 文件路径**：不同打包工具（Vite/Webpack/Rollup）解析路径方式不同
+2. **ES Module 支持**：Worker 中的 ES Module 导入兼容性问题
+3. **重复工作**：每个项目都需要解决相同的打包问题
+
+### 解决方案
+
+trajx-wasm 提供预打包的 FK Worker：
+
+```
+trajx-wasm/
+├── pkg-web/           # Web 构建
+│   ├── trajx_wasm.js
+│   └── trajx_wasm_bg.wasm
+└── workers/           # ⚡ 新增
+    ├── index.js       # 工厂函数
+    ├── fk-worker.js   # Worker 实现
+    └── fk-worker.d.ts # TypeScript 类型
+```
+
+### 基本用法
+
+```typescript
+import { createFKWorker } from 'trajx-wasm/workers';
+
+// 使用内置机器人数据库
+const fkWorker = await createFKWorker({
+    robotName: 'ur5',    // 从 DH 数据库查找
+    robotCount: 500
+});
+
+// 生成关节角度
+const jointAngles = new Float32Array(500 * 6);
+for (let i = 0; i < jointAngles.length; i++) {
+    jointAngles[i] = Math.random() * 2 - 1;
+}
+
+// 在 Worker 中计算 FK
+const { transforms, computeTimeMs } = await fkWorker.computeFK(jointAngles);
+console.log(`Computed in ${computeTimeMs.toFixed(2)}ms on background thread`);
+
+// 更新 Three.js InstancedMesh
+for (let i = 0; i < 500; i++) {
+    for (let link = 0; link < fkWorker.linkCount; link++) {
+        const offset = (i * fkWorker.linkCount + link) * 16;
+        matrix.fromArray(transforms, offset);
+        instancedMesh.setMatrixAt(i * fkWorker.linkCount + link, matrix);
+    }
+}
+instancedMesh.instanceMatrix.needsUpdate = true;
+
+// 完成后终止 Worker
+fkWorker.terminate();
+```
+
+### 使用自定义 DH 参数
+
+```typescript
+const fkWorker = await createFKWorker({
+    dhParams: [
+        { a: 0, alpha: -Math.PI/2, d: 0.1, theta: 0 },
+        { a: 0.4, alpha: 0, d: 0, theta: 0 },
+        { a: 0.02, alpha: -Math.PI/2, d: 0, theta: 0 },
+        { a: 0, alpha: Math.PI/2, d: 0.4, theta: 0 },
+        { a: 0, alpha: -Math.PI/2, d: 0, theta: 0 },
+        { a: 0, alpha: 0, d: 0.1, theta: 0 }
+    ],
+    robotCount: 500
+});
+```
+
+### SharedArrayBuffer 支持（高级）
+
+对于极高性能场景，可以使用 SharedArrayBuffer 实现零拷贝通信：
+
+```typescript
+import { createFKWorker, isSharedArrayBufferAvailable } from 'trajx-wasm/workers';
+
+// 检查是否可用（需要 cross-origin isolation）
+if (isSharedArrayBufferAvailable()) {
+    const fkWorker = await createFKWorker({
+        robotName: 'ur5',
+        robotCount: 500,
+        useSharedBuffer: true  // 启用共享内存
+    });
+
+    // 获取共享内存视图
+    const views = fkWorker.getBufferViews();
+
+    // 直接写入共享内存
+    for (let i = 0; i < views.jointAngles.length; i++) {
+        views.jointAngles[i] = Math.sin(time + i * 0.01);
+    }
+
+    // 触发计算（零拷贝）
+    await fkWorker.computeFKShared();
+
+    // 直接从共享内存读取结果
+    for (let i = 0; i < 500; i++) {
+        const offset = i * 16;
+        matrix.fromArray(views.transforms, offset);
+        // ...
+    }
+}
+```
+
+**注意**: SharedArrayBuffer 需要设置正确的 HTTP 头：
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+### 消息协议
+
+Worker 使用标准的 postMessage API：
+
+```typescript
+// Main → Worker
+{ type: 'init', robotName?: string, dhParams?: DhParam[], robotCount: number }
+{ type: 'compute-fk', jointAngles: Float32Array }
+{ type: 'compute-fk-shared' }  // 使用 SharedArrayBuffer
+{ type: 'update-config', robotCount?: number, dhParams?: DhParam[] }
+{ type: 'terminate' }
+
+// Worker → Main
+{ type: 'ready', jointCount: number, linkCount: number, supportedRobots: string[] }
+{ type: 'fk-result', transforms: Float32Array, computeTimeMs: number }
+{ type: 'fk-result-shared', computeTimeMs: number }
+{ type: 'error', message: string }
+```
+
+### 支持的机器人
+
+查询内置 DH 数据库：
+
+```typescript
+import { listSupportedRobots } from 'trajx-wasm/workers';
+
+const robots = await listSupportedRobots();
+console.log('Available robots:', robots);
+// 输出: ['ur3', 'ur5', 'ur10', 'kuka_iiwa7', 'fanuc_lr_mate_200id', ...]
+```
+
+### 性能对比
+
+| 场景 | 主线程 FK | Worker FK | 优势 |
+|-----|----------|-----------|-----|
+| 500 robots | 0.3ms 阻塞渲染 | 0.3ms 后台计算 | 渲染流畅 60fps |
+| 1000 robots | 0.6ms 阻塞渲染 | 0.6ms 后台计算 | 渲染流畅 60fps |
+
+**关键优势**: Worker 不阻塞主线程，即使 FK 计算需要更长时间，渲染循环仍然保持流畅。
+
+### 与 React 集成
+
+```tsx
+import { useEffect, useRef, useState } from 'react';
+import { createFKWorker, FKWorkerInstance } from 'trajx-wasm/workers';
+
+function useFK Worker(robotName: string, robotCount: number) {
+    const workerRef = useRef<FKWorkerInstance | null>(null);
+    const [ready, setReady] = useState(false);
+
+    useEffect(() => {
+        let mounted = true;
+
+        createFKWorker({ robotName, robotCount }).then(worker => {
+            if (mounted) {
+                workerRef.current = worker;
+                setReady(true);
+            } else {
+                worker.terminate();
+            }
+        });
+
+        return () => {
+            mounted = false;
+            workerRef.current?.terminate();
+        };
+    }, [robotName, robotCount]);
+
+    return { worker: workerRef.current, ready };
+}
+
+// 使用
+function RobotVisualization() {
+    const { worker, ready } = useFKWorker('ur5', 500);
+
+    useEffect(() => {
+        if (!ready || !worker) return;
+
+        const animate = async () => {
+            const jointAngles = generateJointAngles();
+            const { transforms } = await worker.computeFK(jointAngles);
+            updateMeshes(transforms);
+            requestAnimationFrame(animate);
+        };
+
+        animate();
+    }, [ready, worker]);
+
+    return <canvas id="robot-canvas" />;
+}
+```
+
+---
+
 ## 常见问题
 
 ### Q: IK 返回 "Joint limit violation" 错误
@@ -879,7 +1221,7 @@ if (result.success) {
 ```
 crates/trajx-wasm/
 ├── build.sh              # 构建脚本
-├── GUIDE.md              # 本使用指南
+├── GUIDE.md              # 本使用指南（中文）
 ├── README.md             # 英文说明
 ├── Cargo.toml            # Rust 包配置
 ├── src/
@@ -887,22 +1229,39 @@ crates/trajx-wasm/
 │   ├── core_robot.rs     # Robot 类封装
 │   ├── kinematics.rs     # 运动学函数
 │   ├── types.rs          # 类型定义 (Pose, Position, ...)
-│   ├── planning.rs       # 路径规划
-│   └── taskspace.rs      # 任务空间规划
-│   ├── cable.rs          # 线缆配置（用于 Motion API）
-├── pkg/                  # 构建输出 (wasm-pack build 后生成)
+│   ├── planning.rs       # 路径规划 (BiRRT, RRT*, PRM)
+│   ├── motion.rs         # Motion-Centric API
+│   ├── cable.rs          # 线缆配置
+│   ├── collision.rs      # 碰撞检测
+│   └── gpu_motion.rs     # GPU 加速规划
+├── pkg/                  # 构建输出
 └── examples/
-    ├── motion-cable-demo.html    # Motion API + Cable 集成示例
-    ├── motion-centric-demo.html  # Motion-Centric API 示例
-    └── urdf-cartesian-demo.html  # 交互式 FK/IK Demo
+    ├── index.html                  # 导航页面
+    ├── motion-centric-demo.html    # Motion API + 碰撞避障
+    ├── motion-collision-demo.html  # 碰撞感知运动详细示例
+    ├── motion-cable-demo.html      # Motion + Cable 集成
+    ├── advanced-planners-demo.html # BiRRT/RRT*/PRM 对比
+    ├── gpu-batch-planning-demo.html# GPU 批量规划
+    └── ...
 ```
 
 ---
 
 ## 更多资源
 
-- [Motion + Cable Demo](examples/motion-cable-demo.html): Motion API + Cable 集成测试
-- [Motion-Centric API Demo](examples/motion-centric-demo.html): 运动中心 API 交互式测试
-- [FK/IK Demo 页面](examples/urdf-cartesian-demo.html): 交互式测试 FK/IK
+### 交互式示例
+
+| 示例 | 描述 |
+|-----|------|
+| [导航页面](examples/index.html) | 所有示例的导航入口 |
+| [Motion-Centric Demo](examples/motion-centric-demo.html) | 运动 API + 碰撞避障测试 |
+| [Motion-Collision Demo](examples/motion-collision-demo.html) | 碰撞感知运动详细测试 |
+| [Motion + Cable Demo](examples/motion-cable-demo.html) | Motion API + 线缆集成测试 |
+| [Advanced Planners](examples/advanced-planners-demo.html) | BiRRT/RRT*/PRM 规划器对比 |
+| [GPU Batch Planning](examples/gpu-batch-planning-demo.html) | GPU 加速批量规划 |
+
+### 相关文档
+
 - [trajx-core 文档](../trajx-core/): 核心运动学库
+- [trajx-planning 文档](../trajx-planning/): 路径规划库
 - [URDF 规范](http://wiki.ros.org/urdf/XML): 机器人描述格式

@@ -244,8 +244,9 @@ function getEndEffectorPosition(robot: URDFRobot): THREE.Vector3 {
   return pos;
 }
 
-// Rotation to convert Z-up to Y-up
-const Z_UP_TO_Y_UP_ROTATION = new THREE.Euler(-Math.PI / 2, 0, 0);
+// Rotation to convert Y-up URDF models to Z-up scene
+// (Only needed if upAxis='Y' is specified for rare Y-up URDF models)
+const Y_UP_TO_Z_UP_ROTATION = new THREE.Euler(Math.PI / 2, 0, 0);
 
 /**
  * Helper component to apply ghost styling to tool children
@@ -502,7 +503,9 @@ export function GhostRobot({
   if (!robot) return null;
 
   // Compute transforms
-  const needsRotation = upAxis === 'Z';
+  // Scene is Z-up. URDF models are typically Z-up, so no rotation needed when upAxis='Z'.
+  // Only rotate if upAxis='Y' (rare Y-up URDF models need rotation to fit Z-up scene).
+  const needsRotation = upAxis === 'Y';
 
   const finalPosition = positionProp
     ? (Array.isArray(positionProp)
@@ -543,16 +546,16 @@ export function GhostRobot({
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
       >
-        {/* Robot model with coordinate conversion */}
-        <group rotation={needsRotation ? Z_UP_TO_Y_UP_ROTATION : undefined}>
+        {/* Robot model - scene is Z-up, URDF is typically Z-up, so no rotation needed */}
+        <group rotation={needsRotation ? Y_UP_TO_Z_UP_ROTATION : undefined}>
           <primitive object={robot} />
         </group>
 
         {/* Axes helper */}
         {showAxes && <axesHelper args={[0.2]} />}
 
-        {/* Status indicator ring at base */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
+        {/* Status indicator ring at base - on XY plane for Z-up */}
+        <mesh position={[0, 0, 0.001]}>
           <ringGeometry args={[0.08, 0.1, 32]} />
           <meshBasicMaterial
             color={ghostColor}

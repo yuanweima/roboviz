@@ -275,6 +275,60 @@ function getArrayF64FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
 }
+
+let cachedFloat32ArrayMemory0 = null;
+
+function getFloat32ArrayMemory0() {
+    if (cachedFloat32ArrayMemory0 === null || cachedFloat32ArrayMemory0.byteLength === 0) {
+        cachedFloat32ArrayMemory0 = new Float32Array(wasm.memory.buffer);
+    }
+    return cachedFloat32ArrayMemory0;
+}
+
+function passArrayF32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getFloat32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function getArrayF32FromWasm0(ptr, len) {
+    ptr = ptr >>> 0;
+    return getFloat32ArrayMemory0().subarray(ptr / 4, ptr / 4 + len);
+}
+/**
+ * Batch forward kinematics with Float32 input/output for WebGL/InstancedMesh compatibility
+ *
+ * Same as batchForwardKinematics but uses Float32Array for zero-copy with GPU buffers.
+ * @param {DhParam[]} dh_params
+ * @param {Float32Array} joint_angles_flat
+ * @param {number} robot_count
+ * @param {number} joint_count
+ * @returns {Float32Array}
+ */
+export function batchForwardKinematicsF32(dh_params, joint_angles_flat, robot_count, joint_count) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayJsValueToWasm0(dh_params, wasm.__wbindgen_export_2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF32ToWasm0(joint_angles_flat, wasm.__wbindgen_export_2);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.batchForwardKinematicsF32(retptr, ptr0, len0, ptr1, len1, robot_count, joint_count);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v3 = getArrayF32FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export_1(r0, r1 * 4, 4);
+        return v3;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
 /**
  * Compute forward kinematics for visualization (returns all link poses)
  *
@@ -301,6 +355,95 @@ export function forwardKinematicsChainDh(dh_params, joint_angles) {
         }
         var v3 = getArrayJsValueFromWasm0(r0, r1).slice();
         wasm.__wbindgen_export_1(r0, r1 * 4, 4);
+        return v3;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * Compute forward kinematics from DH parameters
+ *
+ * # Arguments
+ * * `dh_params` - Array of DH parameters [a, alpha, d, theta] for each joint
+ * * `joint_angles` - Current joint angles in radians
+ *
+ * # Returns
+ * End-effector pose (position + orientation)
+ * @param {DhParam[]} dh_params
+ * @param {Float64Array} joint_angles
+ * @returns {Pose}
+ */
+export function forwardKinematicsDh(dh_params, joint_angles) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayJsValueToWasm0(dh_params, wasm.__wbindgen_export_2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(joint_angles, wasm.__wbindgen_export_2);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.forwardKinematicsDh(retptr, ptr0, len0, ptr1, len1);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return Pose.__wrap(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * Batch forward kinematics for multiple robots (GPU instancing optimization)
+ *
+ * Computes forward kinematics for multiple robot instances in parallel,
+ * returning all link transformation matrices in a single flat array.
+ *
+ * # Arguments
+ * * `dh_params` - DH parameters for the robot (shared by all instances)
+ * * `joint_angles_flat` - Flat array of joint angles: [robot1_j1, robot1_j2, ..., robot2_j1, ...]
+ * * `robot_count` - Number of robot instances
+ * * `joint_count` - Number of joints per robot
+ *
+ * # Returns
+ * Flat array of 4x4 transformation matrices (column-major, compatible with Three.js):
+ * Format: [robot1_link1_mat4, robot1_link2_mat4, ..., robot2_link1_mat4, ...]
+ * Each robot has (joint_count + 1) links (including base)
+ * Total size: robot_count * (joint_count + 1) * 16
+ *
+ * # Example (JavaScript)
+ * ```js
+ * const robotCount = 500;
+ * const jointCount = 6;
+ * const jointAngles = new Float32Array(robotCount * jointCount);
+ * // ... fill joint angles ...
+ * const transforms = batchForwardKinematics(dhParams, jointAngles, robotCount, jointCount);
+ * // transforms.length = 500 * 7 * 16 = 56000
+ * ```
+ * @param {DhParam[]} dh_params
+ * @param {Float64Array} joint_angles_flat
+ * @param {number} robot_count
+ * @param {number} joint_count
+ * @returns {Float64Array}
+ */
+export function batchForwardKinematics(dh_params, joint_angles_flat, robot_count, joint_count) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArrayJsValueToWasm0(dh_params, wasm.__wbindgen_export_2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(joint_angles_flat, wasm.__wbindgen_export_2);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.batchForwardKinematics(retptr, ptr0, len0, ptr1, len1, robot_count, joint_count);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v3 = getArrayF64FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export_1(r0, r1 * 8, 8);
         return v3;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
@@ -344,33 +487,38 @@ export function inverseKinematicsDh(dh_params, target_pose, seed, joint_limits, 
 }
 
 /**
- * Compute forward kinematics from DH parameters
+ * Batch FK returning only end-effector poses (for scenarios where link transforms aren't needed)
  *
- * # Arguments
- * * `dh_params` - Array of DH parameters [a, alpha, d, theta] for each joint
- * * `joint_angles` - Current joint angles in radians
+ * More efficient when you only need the final pose of each robot.
  *
  * # Returns
- * End-effector pose (position + orientation)
+ * Flat array of 4x4 matrices for end-effector only:
+ * Format: [robot1_ee_mat4, robot2_ee_mat4, ...]
+ * Total size: robot_count * 16
  * @param {DhParam[]} dh_params
- * @param {Float64Array} joint_angles
- * @returns {Pose}
+ * @param {Float32Array} joint_angles_flat
+ * @param {number} robot_count
+ * @param {number} joint_count
+ * @returns {Float32Array}
  */
-export function forwardKinematicsDh(dh_params, joint_angles) {
+export function batchForwardKinematicsEndEffector(dh_params, joint_angles_flat, robot_count, joint_count) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         const ptr0 = passArrayJsValueToWasm0(dh_params, wasm.__wbindgen_export_2);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passArrayF64ToWasm0(joint_angles, wasm.__wbindgen_export_2);
+        const ptr1 = passArrayF32ToWasm0(joint_angles_flat, wasm.__wbindgen_export_2);
         const len1 = WASM_VECTOR_LEN;
-        wasm.forwardKinematicsDh(retptr, ptr0, len0, ptr1, len1);
+        wasm.batchForwardKinematicsEndEffector(retptr, ptr0, len0, ptr1, len1, robot_count, joint_count);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
-        if (r2) {
-            throw takeObject(r1);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
         }
-        return Pose.__wrap(r0);
+        var v3 = getArrayF32FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export_1(r0, r1 * 4, 4);
+        return v3;
     } finally {
         wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -421,15 +569,6 @@ export function listSupportedRobots() {
 }
 
 /**
- * Check if the library is initialized
- * @returns {boolean}
- */
-export function is_ready() {
-    const ret = wasm.is_ready();
-    return ret !== 0;
-}
-
-/**
  * Get the library version
  * @returns {string}
  */
@@ -458,6 +597,34 @@ export function init() {
 }
 
 /**
+ * Check if the library is initialized
+ * @returns {boolean}
+ */
+export function is_ready() {
+    const ret = wasm.is_ready();
+    return ret !== 0;
+}
+
+/**
+ * Get a light cable configuration (8π limit, 4 full rotations / 1440°)
+ * For thin, flexible cables
+ * @returns {CableConfig}
+ */
+export function cablePresetLight() {
+    const ret = wasm.cablePresetLight();
+    return CableConfig.__wrap(ret);
+}
+
+/**
+ * Get a standard cable configuration (4π limit, 2 full rotations / 720°)
+ * @returns {CableConfig}
+ */
+export function cablePresetStandard() {
+    const ret = wasm.cablePresetStandard();
+    return CableConfig.__wrap(ret);
+}
+
+/**
  * Get a precision cable configuration (2π limit with auto-unwind)
  * For applications requiring minimal cable stress
  * @returns {CableConfig}
@@ -474,25 +641,6 @@ export function cablePresetPrecision() {
  */
 export function cablePresetHeavyDuty() {
     const ret = wasm.cablePresetHeavyDuty();
-    return CableConfig.__wrap(ret);
-}
-
-/**
- * Get a standard cable configuration (4π limit, 2 full rotations / 720°)
- * @returns {CableConfig}
- */
-export function cablePresetStandard() {
-    const ret = wasm.cablePresetStandard();
-    return CableConfig.__wrap(ret);
-}
-
-/**
- * Get a light cable configuration (8π limit, 4 full rotations / 1440°)
- * For thin, flexible cables
- * @returns {CableConfig}
- */
-export function cablePresetLight() {
-    const ret = wasm.cablePresetLight();
     return CableConfig.__wrap(ret);
 }
 
@@ -572,7 +720,7 @@ export const CableMode = Object.freeze({
 });
 /**
  * Collision handling mode
- * @enum {0 | 1 | 2 | 3}
+ * @enum {0 | 1 | 2 | 3 | 4}
  */
 export const CollisionMode = Object.freeze({
     /**
@@ -591,6 +739,11 @@ export const CollisionMode = Object.freeze({
      * Adaptive replanning
      */
     Adaptive: 3, "3": "Adaptive",
+    /**
+     * GPU-accelerated batch planning with Lazy-PRM
+     * Uses batch collision checking optimized for GPU/WebGPU
+     */
+    GpuBatch: 4, "4": "GpuBatch",
 });
 /**
  * Motion style for path generation
@@ -804,8 +957,14 @@ const BiRRTPlannerFinalization = (typeof FinalizationRegistry === 'undefined')
 /**
  * BiRRT Planner for WASM
  *
- * Single-threaded bidirectional RRT planner optimized for browser execution.
- * Provides excellent performance for point-to-point motion planning.
+ * This is a thin wrapper around `trajx_planning::planners::core::BiRRTCore`.
+ * It provides WASM bindings that allow JavaScript to use the planner with
+ * callback-based collision checking.
+ *
+ * ## Performance
+ *
+ * Uses KD-Tree acceleration for O(log n) nearest neighbor queries.
+ * Typical planning time: 0.07-10 ms for simple 6-DOF queries.
  */
 export class BiRRTPlanner {
 
@@ -842,19 +1001,40 @@ export class BiRRTPlanner {
         }
     }
     /**
+     * Plan with dense-path collision checking callback
+     *
+     * Returns a densely sampled path with all validated intermediate points.
+     * The callback receives joint configuration and returns true if valid (no collision).
+     * @param {Float64Array} start
+     * @param {Float64Array} goal
+     * @param {Function} collision_checker
+     * @returns {PlanningResult}
+     */
+    planDenseWithCollisionCheck(start, goal, collision_checker) {
+        try {
+            const ptr0 = passArrayF64ToWasm0(start, wasm.__wbindgen_export_2);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passArrayF64ToWasm0(goal, wasm.__wbindgen_export_2);
+            const len1 = WASM_VECTOR_LEN;
+            const ret = wasm.birrtplanner_planDenseWithCollisionCheck(this.__wbg_ptr, ptr0, len0, ptr1, len1, addBorrowedObject(collision_checker));
+            return PlanningResult.__wrap(ret);
+        } finally {
+            heap[stack_pointer++] = undefined;
+        }
+    }
+    /**
      * Create a new BiRRT planner
      * @param {JointLimits} joint_limits
      * @param {BiRRTConfig | null} [config]
      */
     constructor(joint_limits, config) {
         _assertClass(joint_limits, JointLimits);
-        var ptr0 = joint_limits.__destroy_into_raw();
-        let ptr1 = 0;
+        let ptr0 = 0;
         if (!isLikeNone(config)) {
             _assertClass(config, BiRRTConfig);
-            ptr1 = config.__destroy_into_raw();
+            ptr0 = config.__destroy_into_raw();
         }
-        const ret = wasm.birrtplanner_new(ptr0, ptr1);
+        const ret = wasm.birrtplanner_new(joint_limits.__wbg_ptr, ptr0);
         this.__wbg_ptr = ret >>> 0;
         BiRRTPlannerFinalization.register(this, this.__wbg_ptr, this);
         return this;
@@ -2110,13 +2290,12 @@ export class PRMPlanner {
      */
     constructor(joint_limits, config) {
         _assertClass(joint_limits, JointLimits);
-        var ptr0 = joint_limits.__destroy_into_raw();
-        let ptr1 = 0;
+        let ptr0 = 0;
         if (!isLikeNone(config)) {
             _assertClass(config, PRMConfig);
-            ptr1 = config.__destroy_into_raw();
+            ptr0 = config.__destroy_into_raw();
         }
-        const ret = wasm.prmplanner_new(ptr0, ptr1);
+        const ret = wasm.prmplanner_new(joint_limits.__wbg_ptr, ptr0);
         this.__wbg_ptr = ret >>> 0;
         PRMPlannerFinalization.register(this, this.__wbg_ptr, this);
         return this;
@@ -2933,6 +3112,8 @@ const RRTStarPlannerFinalization = (typeof FinalizationRegistry === 'undefined')
  *
  * Optimal path planner that iteratively improves path cost.
  * Provides asymptotically optimal paths but is slower than BiRRT.
+ *
+ * This is a thin wrapper around `trajx_planning::planners::core::RRTStarCore`.
  */
 export class RRTStarPlanner {
 
@@ -2973,13 +3154,12 @@ export class RRTStarPlanner {
      */
     constructor(joint_limits, config) {
         _assertClass(joint_limits, JointLimits);
-        var ptr0 = joint_limits.__destroy_into_raw();
-        let ptr1 = 0;
+        let ptr0 = 0;
         if (!isLikeNone(config)) {
             _assertClass(config, RRTStarConfig);
-            ptr1 = config.__destroy_into_raw();
+            ptr0 = config.__destroy_into_raw();
         }
-        const ret = wasm.rrtstarplanner_new(ptr0, ptr1);
+        const ret = wasm.rrtstarplanner_new(joint_limits.__wbg_ptr, ptr0);
         this.__wbg_ptr = ret >>> 0;
         RRTStarPlannerFinalization.register(this, this.__wbg_ptr, this);
         return this;
@@ -5158,6 +5338,55 @@ export class WasmMotion {
         return WasmMotion.__wrap(ret);
     }
     /**
+     * Execute the motion with collision-aware path planning
+     *
+     * When CollisionMode::Avoid is set (via .safe()), this method uses BiRRT
+     * to plan a collision-free path. Otherwise, it falls back to simple
+     * linear interpolation.
+     *
+     * # Arguments
+     * * `robot` - The robot for kinematics
+     * * `collision_checker` - JavaScript callback function(jointConfig: number[]) -> boolean
+     *   Returns true if the configuration is collision-free
+     *
+     * # Example
+     * ```typescript
+     * // Create collision checker callback
+     * const checkCollision = (joints: number[]): boolean => {
+     *     const poses = robot.getLinkTransforms(joints);
+     *     const selfResult = robotCollision.checkSelfCollision(poses);
+     *     if (selfResult.inCollision) return false;
+     *     const envResult = robotCollision.checkEnvironmentCollision(env, poses);
+     *     return !envResult.inCollision;
+     * };
+     *
+     * // Execute with collision avoidance
+     * const result = WasmMotion.to(goal)
+     *     .safe()  // Enable collision avoidance
+     *     .runWithCollision(robot, checkCollision);
+     * ```
+     * @param {Robot} robot
+     * @param {Function} collision_checker
+     * @returns {WasmMotionResult}
+     */
+    runWithCollision(robot, collision_checker) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            _assertClass(robot, Robot);
+            wasm.wasmmotion_runWithCollision(retptr, this.__wbg_ptr, robot.__wbg_ptr, addBorrowedObject(collision_checker));
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return WasmMotionResult.__wrap(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
+        }
+    }
+    /**
      * Create a motion to the target joint positions
      * @param {Float64Array} target
      * @returns {WasmMotion}
@@ -5170,6 +5399,10 @@ export class WasmMotion {
     }
     /**
      * Execute the motion on the robot
+     *
+     * Note: For collision-aware planning, use `runWithCollision()` which accepts
+     * a collision checker callback. This method performs simple linear interpolation
+     * or warns if collision mode is set without a collision checker.
      * @param {Robot} robot
      * @returns {WasmMotionResult}
      */
@@ -5557,6 +5790,42 @@ export class WasmPath {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_wasmpath_free(ptr, 0);
+    }
+    /**
+     * Execute the path with collision-aware planning
+     *
+     * Plans collision-free paths between consecutive waypoints using BiRRT.
+     *
+     * # Arguments
+     * * `robot` - The robot for kinematics
+     * * `collision_checker` - JS callback: (joints: number[]) => boolean (true = collision-free)
+     *
+     * # Example
+     * ```typescript
+     * const path = WasmPath.through([wp1, wp2, wp3], 6)
+     *     .safe()  // Enable collision avoidance
+     *     .runWithCollision(robot, checkCollision);
+     * ```
+     * @param {Robot} robot
+     * @param {Function} collision_checker
+     * @returns {WasmMotionResult}
+     */
+    runWithCollision(robot, collision_checker) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            _assertClass(robot, Robot);
+            wasm.wasmpath_runWithCollision(retptr, this.__wbg_ptr, robot.__wbg_ptr, addBorrowedObject(collision_checker));
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return WasmMotionResult.__wrap(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
+        }
     }
     /**
      * Execute the path on the robot
@@ -6205,13 +6474,12 @@ export class WasmPlanningPipeline {
      */
     constructor(joint_limits, config) {
         _assertClass(joint_limits, JointLimits);
-        var ptr0 = joint_limits.__destroy_into_raw();
-        let ptr1 = 0;
+        let ptr0 = 0;
         if (!isLikeNone(config)) {
             _assertClass(config, WasmPipelineConfig);
-            ptr1 = config.__destroy_into_raw();
+            ptr0 = config.__destroy_into_raw();
         }
-        const ret = wasm.wasmplanningpipeline_new(ptr0, ptr1);
+        const ret = wasm.wasmplanningpipeline_new(joint_limits.__wbg_ptr, ptr0);
         this.__wbg_ptr = ret >>> 0;
         WasmPlanningPipelineFinalization.register(this, this.__wbg_ptr, this);
         return this;
@@ -6477,6 +6745,43 @@ export class WasmSequence {
         const ptr = this.__destroy_into_raw();
         const ret = wasm.wasmsequence_withCableTwist(ptr, twist);
         return WasmSequence.__wrap(ret);
+    }
+    /**
+     * Execute all motions in sequence with collision avoidance
+     *
+     * Each motion in the sequence that has collision mode enabled will use
+     * the BiRRT planner for collision-free path planning.
+     *
+     * # Arguments
+     * * `robot` - The robot for kinematics
+     * * `collision_checker` - JS callback: (joints: number[]) => boolean (true = collision-free)
+     *
+     * # Example
+     * ```typescript
+     * const seq = WasmSequence.start(motion1.safe())
+     *     .then(motion2.safe())
+     *     .runWithCollision(robot, checkCollision);
+     * ```
+     * @param {Robot} robot
+     * @param {Function} collision_checker
+     * @returns {WasmMotionResult}
+     */
+    runWithCollision(robot, collision_checker) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            _assertClass(robot, Robot);
+            wasm.wasmsequence_runWithCollision(retptr, this.__wbg_ptr, robot.__wbg_ptr, addBorrowedObject(collision_checker));
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+            if (r2) {
+                throw takeObject(r1);
+            }
+            return WasmMotionResult.__wrap(r0);
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+            heap[stack_pointer++] = undefined;
+        }
     }
     /**
      * Execute all motions in sequence
@@ -7949,6 +8254,9 @@ function __wbg_get_imports() {
         const ret = getObject(arg0).versions;
         return addHeapObject(ret);
     };
+    imports.wbg.__wbg_warn_4ca3906c248c47c4 = function(arg0) {
+        console.warn(getObject(arg0));
+    };
     imports.wbg.__wbindgen_boolean_get = function(arg0) {
         const v = getObject(arg0);
         const ret = typeof(v) === 'boolean' ? (v ? 1 : 0) : 2;
@@ -8016,6 +8324,7 @@ function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     __wbg_init.__wbindgen_wasm_module = module;
     cachedDataViewMemory0 = null;
+    cachedFloat32ArrayMemory0 = null;
     cachedFloat64ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
 

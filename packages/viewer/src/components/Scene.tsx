@@ -14,8 +14,9 @@ export interface SceneProps {
 }
 
 function GroundPlane({ color = '#303030' }: { color?: string }) {
+  // Z-up: PlaneGeometry is on XY plane by default, no rotation needed
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow>
+    <mesh position={[0, 0, -0.001]} receiveShadow>
       <planeGeometry args={[50, 50]} />
       <meshStandardMaterial color={color} roughness={0.8} metalness={0.2} />
     </mesh>
@@ -48,10 +49,10 @@ function SceneContent({ config, camera, children }: SceneProps) {
         dampingFactor={0.05}
       />
 
-      {/* Lighting */}
+      {/* Lighting - Z-up: height is Z coordinate */}
       <ambientLight intensity={ambientIntensity} />
       <directionalLight
-        position={[10, 10, 5]}
+        position={[10, 5, 10]}
         intensity={directionalIntensity}
         castShadow={shadows}
         shadow-mapSize-width={2048}
@@ -64,26 +65,31 @@ function SceneContent({ config, camera, children }: SceneProps) {
       />
       {/* Secondary fill light */}
       <directionalLight
-        position={[-5, 5, -5]}
+        position={[-5, -5, 5]}
         intensity={directionalIntensity * 0.3}
       />
       {/* Rim light */}
       <pointLight
-        position={[0, 5, -5]}
+        position={[0, -5, 5]}
         intensity={directionalIntensity * 0.5}
         color="#ffffff"
       />
 
-      {/* Environment for reflections */}
-      <Environment preset={environmentPreset} />
+      {/* Environment for reflections - rotated for Z-up */}
+      <Environment
+        preset={environmentPreset}
+        backgroundRotation={[Math.PI / 2, 0, 0]}
+        environmentRotation={[Math.PI / 2, 0, 0]}
+      />
 
       {/* Ground plane with shadow */}
       {groundPlane && <GroundPlane color={groundColor} />}
 
-      {/* Contact shadows for soft shadows on ground */}
+      {/* Contact shadows for soft shadows on ground - Z-up */}
       {shadows && !groundPlane && (
         <ContactShadows
           position={[0, 0, 0]}
+          rotation={[Math.PI / 2, 0, 0]}
           opacity={0.4}
           scale={10}
           blur={2}
@@ -93,10 +99,11 @@ function SceneContent({ config, camera, children }: SceneProps) {
         />
       )}
 
-      {/* Grid */}
+      {/* Grid - rotate from XZ plane (Y-up) to XY plane (Z-up) */}
       {config.grid.enabled && (
         <Grid
           args={[config.grid.size, config.grid.size]}
+          rotation={[Math.PI / 2, 0, 0]}
           cellSize={config.grid.size / config.grid.divisions}
           cellThickness={0.5}
           cellColor={config.grid.color}

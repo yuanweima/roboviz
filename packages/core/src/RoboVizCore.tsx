@@ -46,12 +46,16 @@ function vec3ToArray(v: Vector3Like): [number, number, number] {
   return [v.x, v.y, v.z];
 }
 
-// Default camera state
+// Default camera state (Z-up coordinate system)
+// Position is in Z-up: x=forward, y=left, z=up
 const defaultCamera: CameraState = {
-  position: { x: 3, y: 3, z: 3 },
+  position: { x: 3, y: -3, z: 3 },  // View from front-right-above in Z-up
   target: { x: 0, y: 0, z: 0 },
   fov: 50,
 };
+
+// Z-up vector for camera and controls
+const Z_UP: [number, number, number] = [0, 0, 1];
 
 // Default orbit controls options
 const defaultControls: OrbitControlsOptions = {
@@ -135,6 +139,7 @@ function InnerScene({
         autoRotate={mergedControls.autoRotate}
         enableRotate={!shouldDisableOrbitRotate}
         onChange={handleControlsChange}
+        up={Z_UP}
       />
     </>
   );
@@ -190,6 +195,7 @@ export function RoboVizCore({
         camera={{
           position: vec3ToArray(mergedCamera.position),
           fov: mergedCamera.fov,
+          up: Z_UP,
         }}
         shadows
         gl={{

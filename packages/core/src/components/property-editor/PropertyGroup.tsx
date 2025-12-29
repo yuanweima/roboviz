@@ -25,6 +25,7 @@ const DEFAULT_FIELD_COMPONENTS: Record<string, React.ComponentType<PropertyField
   text: TextField as any,
   boolean: BooleanField as any,
   enum: EnumField as any,
+  select: EnumField as any, // Alias for enum - supports dropdown selection
   position3d: Position3DField as any,
   pose3d: Pose3DField as any,
   'joint-array': JointArrayField as any,

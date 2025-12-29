@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Batch Planning Helpers Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0a0a1a;
+            color: #eee;
+        }
+        h1 { color: #ff6b9d; margin-bottom: 5px; }
+        h2 { color: #ff6b9d; margin-top: 0; font-size: 18px; }
+        h3 { color: #aaa; font-size: 14px; margin: 15px 0 10px 0; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: #12122a;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #2a2a4a;
+        }
+        .card.full-width {
+            grid-column: 1 / -1;
+        }
+        .card.highlight {
+            border-color: #ff6b9d;
+            box-shadow: 0 0 20px rgba(255, 107, 157, 0.1);
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.loading { background: #e6a23c22; color: #e6a23c; border: 1px solid #e6a23c44; }
+        .status.ready { background: #67c23a22; color: #67c23a; border: 1px solid #67c23a44; }
+        .status.error { background: #f56c6c22; color: #f56c6c; border: 1px solid #f56c6c44; }
+
+        button {
+            background: linear-gradient(135deg, #ff6b9d 0%, #c84b7a 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 107, 157, 0.4);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        button.success {
+            background: linear-gradient(135deg, #67c23a 0%, #4a9e2a 100%);
+        }
+        button.secondary {
+            background: #2a2a4a;
+            border: 1px solid #ff6b9d;
+        }
+
+        .output {
+            background: #0d0d1a;
+            color: #67c23a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 350px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #2a2a4a;
+        }
+
+        .code-block {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 3px solid #ff6b9d;
+            overflow-x: auto;
+        }
+        .code-block code {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            color: #a6e22e;
+            white-space: pre;
+        }
+        .code-block .comment { color: #75715e; }
+        .code-block .keyword { color: #66d9ef; }
+        .code-block .string { color: #e6db74; }
+        .code-block .number { color: #ae81ff; }
+        .code-block .function { color: #ff6b9d; }
+
+        .feature-tag {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin: 2px;
+        }
+        .feature-tag.new { background: #67c23a44; color: #67c23a; }
+        .feature-tag.helper { background: #ff6b9d44; color: #ff6b9d; }
+        .feature-tag.gpu { background: #e6a23c44; color: #e6a23c; }
+
+        .helper-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .helper-item {
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #2a2a4a;
+        }
+        .helper-item h4 {
+            color: #ff6b9d;
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+        .helper-item p {
+            color: #888;
+            font-size: 12px;
+            margin: 0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background: #0d0d1a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #2a2a4a;
+        }
+        .stat-box .value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ff6b9d;
+        }
+        .stat-box .label {
+            font-size: 10px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .test-result.pass {
+            background: #67c23a22;
+            border: 1px solid #67c23a44;
+            color: #67c23a;
+        }
+        .test-result.fail {
+            background: #f56c6c22;
+            border: 1px solid #f56c6c44;
+            color: #f56c6c;
+        }
+        .test-result.info {
+            background: #ff6b9d22;
+            border: 1px solid #ff6b9d44;
+            color: #ff6b9d;
+        }
+
+        .config-panel {
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .config-panel label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+            color: #aaa;
+            font-size: 13px;
+        }
+        .config-panel input[type="number"] {
+            width: 80px;
+            background: #0d0d1a;
+            color: #eee;
+            border: 1px solid #2a2a4a;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .config-panel input[type="checkbox"] {
+            accent-color: #ff6b9d;
+        }
+    </style>
+</head>
+<body>
+    <h1>GPU Batch Planning Helpers</h1>
+    <p class="subtitle">
+        Helper functions for implementing GPU-accelerated collision checking
+        <span class="feature-tag new">NEW</span>
+        <span class="feature-tag helper">Helper Functions</span>
+        <span class="feature-tag gpu">GPU Optimized</span>
+    </p>
+
+    <div id="status" class="status loading">Loading WASM module...</div>
+
+    <div class="grid">
+        <!-- Helper Functions Overview -->
+        <div class="card full-width highlight">
+            <h2>New GPU Helper Functions</h2>
+            <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
+                These helper functions simplify implementing batch collision checking for GPU-accelerated planning.
+            </p>
+
+            <div class="helper-list">
+                <div class="helper-item">
+                    <h4>BatchCollisionCheckerConfig</h4>
+                    <p>Configuration class with presets (fast/accurate) for batch checking</p>
+                </div>
+                <div class="helper-item">
+                    <h4>generateBatchCheckerTemplate()</h4>
+                    <p>Generates TypeScript code template for collision checker implementation</p>
+                </div>
+                <div class="helper-item">
+                    <h4>interpolateEdge()</h4>
+                    <p>Interpolates joint configurations between two points</p>
+                </div>
+                <div class="helper-item">
+                    <h4>interpolateEdgesBatch()</h4>
+                    <p>Batch interpolation for multiple edges - GPU optimized</p>
+                </div>
+                <div class="helper-item">
+                    <h4>aggregateBatchResults()</h4>
+                    <p>Aggregates per-sample collision results into per-edge results</p>
+                </div>
+                <div class="helper-item">
+                    <h4>GpuPlanningContext Presets</h4>
+                    <p>fast(), balanced(), quality() presets for Lazy-PRM configuration</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test: BatchCollisionCheckerConfig -->
+        <div class="card">
+            <h2>Test 1: BatchCollisionCheckerConfig</h2>
+            <p style="color: #888; font-size: 13px;">
+                Configuration presets and customization
+            </p>
+
+            <button onclick="testBatchConfig()">Run Test</button>
+
+            <div id="config-results"></div>
+            <div class="output" id="config-output">Click "Run Test" to see results...</div>
+        </div>
+
+        <!-- Test: generateBatchCheckerTemplate -->
+        <div class="card">
+            <h2>Test 2: Generate Batch Checker Template</h2>
+            <p style="color: #888; font-size: 13px;">
+                Generate TypeScript code for collision checker
+            </p>
+
+            <div class="config-panel">
+                <label>
+                    Samples per edge:
+                    <input type="number" id="template-samples" value="5" min="2" max="20">
+                </label>
+                <label>
+                    <input type="checkbox" id="template-self-collision" checked>
+                    Include self-collision check
+                </label>
+            </div>
+
+            <button onclick="testGenerateTemplate()">Generate Template</button>
+
+            <div id="template-results"></div>
+            <div class="output" id="template-output">Click "Generate Template" to see code...</div>
+        </div>
+
+        <!-- Test: interpolateEdge -->
+        <div class="card">
+            <h2>Test 3: Edge Interpolation</h2>
+            <p style="color: #888; font-size: 13px;">
+                Interpolate between two joint configurations
+            </p>
+
+            <div class="config-panel">
+                <label>
+                    Number of samples:
+                    <input type="number" id="interp-samples" value="5" min="2" max="20">
+                </label>
+            </div>
+
+            <button onclick="testInterpolateEdge()">Run Test</button>
+
+            <div id="interp-results"></div>
+            <div class="output" id="interp-output">Click "Run Test" to see results...</div>
+        </div>
+
+        <!-- Test: interpolateEdgesBatch -->
+        <div class="card">
+            <h2>Test 4: Batch Edge Interpolation</h2>
+            <p style="color: #888; font-size: 13px;">
+                GPU-optimized batch interpolation for multiple edges
+            </p>
+
+            <div class="config-panel">
+                <label>
+                    Number of edges:
+                    <input type="number" id="batch-edges" value="100" min="10" max="1000">
+                </label>
+                <label>
+                    Samples per edge:
+                    <input type="number" id="batch-samples" value="5" min="2" max="20">
+                </label>
+            </div>
+
+            <button onclick="testInterpolateEdgesBatch()">Run Test</button>
+
+            <div id="batch-results"></div>
+            <div class="output" id="batch-output">Click "Run Test" to see results...</div>
+        </div>
+
+        <!-- Test: aggregateBatchResults -->
+        <div class="card">
+            <h2>Test 5: Aggregate Batch Results</h2>
+            <p style="color: #888; font-size: 13px;">
+                Convert per-sample collision results to per-edge results
+            </p>
+
+            <button onclick="testAggregateResults()">Run Test</button>
+
+            <div id="aggregate-results"></div>
+            <div class="output" id="aggregate-output">Click "Run Test" to see results...</div>
+        </div>
+
+        <!-- Complete GPU Planning Workflow -->
+        <div class="card">
+            <h2>Test 6: Complete GPU Planning Workflow</h2>
+            <p style="color: #888; font-size: 13px;">
+                End-to-end GPU planning with Lazy-PRM
+            </p>
+
+            <button onclick="testCompleteWorkflow()">Run Full Workflow</button>
+
+            <div id="workflow-results"></div>
+            <div class="output" id="workflow-output">Click "Run Full Workflow" to see results...</div>
+        </div>
+
+        <!-- Generated TypeScript Code Display -->
+        <div class="card full-width">
+            <h2>Generated Batch Checker Code</h2>
+            <p style="color: #888; font-size: 13px;">
+                Copy this code to your TypeScript project to implement GPU batch collision checking
+            </p>
+
+            <div class="code-block" id="generated-code">
+                <code><span class="comment">// Click "Generate Template" above to see the generated code</span></code>
+            </div>
+        </div>
+
+        <!-- Performance Comparison -->
+        <div class="card full-width">
+            <h2>Performance Comparison</h2>
+            <p style="color: #888; font-size: 13px;">
+                Compare batch vs sequential interpolation performance
+            </p>
+
+            <button onclick="runPerformanceTest()">Run Performance Test</button>
+
+            <div class="stats-grid" id="perf-stats" style="display: none;">
+                <div class="stat-box">
+                    <div class="value" id="perf-sequential">-</div>
+                    <div class="label">Sequential (ms)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="perf-batch">-</div>
+                    <div class="label">Batch (ms)</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="perf-speedup">-</div>
+                    <div class="label">Speedup</div>
+                </div>
+                <div class="stat-box">
+                    <div class="value" id="perf-edges">-</div>
+                    <div class="label">Edges Processed</div>
+                </div>
+            </div>
+
+            <div class="output" id="perf-output">Click "Run Performance Test" to see results...</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, * as wasm from '../trajx_wasm.js';
+
+        window.wasm = wasm;
+
+        // Initialize
+        async function initialize() {
+            try {
+                await init();
+                const version = wasm.version();
+
+                document.getElementById('status').className = 'status ready';
+                document.getElementById('status').textContent = `WASM Ready! Version: ${version}`;
+
+                console.log('GPU Batch Planning Helpers demo initialized');
+            } catch (error) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `Failed: ${error.message}`;
+                console.error(error);
+            }
+        }
+
+        // Add result helper
+        function addResult(containerId, message, type = 'info') {
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = message;
+            container.appendChild(div);
+        }
+
+        // Test 1: BatchCollisionCheckerConfig
+        window.testBatchConfig = function() {
+            const container = 'config-results';
+            const output = document.getElementById('config-output');
+            document.getElementById(container).innerHTML = '';
+
+            output.textContent = 'Testing BatchCollisionCheckerConfig...\n\n';
+
+            try {
+                // Default config
+                const defaultConfig = new wasm.BatchCollisionCheckerConfig();
+                output.textContent += `Default config:\n`;
+                output.textContent += `  samples_per_edge: ${defaultConfig.samples_per_edge}\n`;
+                output.textContent += `  check_self_collision: ${defaultConfig.check_self_collision}\n`;
+                output.textContent += `  safety_margin: ${defaultConfig.safety_margin}\n\n`;
+
+                // Fast preset
+                const fastConfig = wasm.BatchCollisionCheckerConfig.fast();
+                output.textContent += `Fast preset:\n`;
+                output.textContent += `  samples_per_edge: ${fastConfig.samples_per_edge}\n`;
+                output.textContent += `  check_self_collision: ${fastConfig.check_self_collision}\n`;
+                output.textContent += `  safety_margin: ${fastConfig.safety_margin}\n\n`;
+
+                // Accurate preset
+                const accurateConfig = wasm.BatchCollisionCheckerConfig.accurate();
+                output.textContent += `Accurate preset:\n`;
+                output.textContent += `  samples_per_edge: ${accurateConfig.samples_per_edge}\n`;
+                output.textContent += `  check_self_collision: ${accurateConfig.check_self_collision}\n`;
+                output.textContent += `  safety_margin: ${accurateConfig.safety_margin}\n\n`;
+
+                // Custom config with builder pattern
+                const customConfig = new wasm.BatchCollisionCheckerConfig()
+                    .withSamplesPerEdge(7)
+                    .withSelfCollision(false)
+                    .withSafetyMargin(0.02);
+                output.textContent += `Custom config (builder pattern):\n`;
+                output.textContent += `  samples_per_edge: ${customConfig.samples_per_edge}\n`;
+                output.textContent += `  check_self_collision: ${customConfig.check_self_collision}\n`;
+                output.textContent += `  safety_margin: ${customConfig.safety_margin}\n`;
+
+                addResult(container, 'SUCCESS: All config presets working', 'pass');
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+            }
+        };
+
+        // Test 2: generateBatchCheckerTemplate
+        window.testGenerateTemplate = function() {
+            const container = 'template-results';
+            const output = document.getElementById('template-output');
+            document.getElementById(container).innerHTML = '';
+
+            const samples = parseInt(document.getElementById('template-samples').value);
+            const selfCollision = document.getElementById('template-self-collision').checked;
+
+            output.textContent = 'Generating batch checker template...\n\n';
+
+            try {
+                const config = new wasm.BatchCollisionCheckerConfig()
+                    .withSamplesPerEdge(samples)
+                    .withSelfCollision(selfCollision);
+
+                const template = wasm.generateBatchCheckerTemplate(config);
+
+                output.textContent += `Generated template with ${samples} samples per edge:\n\n`;
+                output.textContent += template;
+
+                // Also display in the code block
+                document.getElementById('generated-code').innerHTML = `<code>${escapeHtml(template)}</code>`;
+
+                addResult(container, `SUCCESS: Template generated with ${samples} samples`, 'pass');
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+            }
+        };
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Test 3: interpolateEdge
+        window.testInterpolateEdge = function() {
+            const container = 'interp-results';
+            const output = document.getElementById('interp-output');
+            document.getElementById(container).innerHTML = '';
+
+            const numSamples = parseInt(document.getElementById('interp-samples').value);
+
+            output.textContent = 'Testing interpolateEdge()...\n\n';
+
+            try {
+                const start = [0, 0, 0, 0, 0, 0];
+                const end = [1.0, 0.5, -0.5, 0.3, 0.2, 0.1];
+
+                const result = wasm.interpolateEdge(start, end, numSamples);
+
+                output.textContent += `Interpolating from:\n  start: [${start.join(', ')}]\n  end: [${end.join(', ')}]\n`;
+                output.textContent += `\nSamples (${numSamples}):\n`;
+
+                const dof = start.length;
+                for (let i = 0; i < numSamples; i++) {
+                    const sample = result.slice(i * dof, (i + 1) * dof);
+                    const t = i / (numSamples - 1);
+                    output.textContent += `  t=${t.toFixed(2)}: [${sample.map(v => v.toFixed(3)).join(', ')}]\n`;
+                }
+
+                output.textContent += `\nTotal values returned: ${result.length}\n`;
+                output.textContent += `Expected: ${numSamples * dof}\n`;
+
+                addResult(container, `SUCCESS: ${numSamples} samples generated`, 'pass');
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+            }
+        };
+
+        // Test 4: interpolateEdgesBatch
+        window.testInterpolateEdgesBatch = function() {
+            const container = 'batch-results';
+            const output = document.getElementById('batch-output');
+            document.getElementById(container).innerHTML = '';
+
+            const numEdges = parseInt(document.getElementById('batch-edges').value);
+            const samplesPerEdge = parseInt(document.getElementById('batch-samples').value);
+
+            output.textContent = 'Testing interpolateEdgesBatch()...\n\n';
+
+            try {
+                const dof = 6;
+
+                // Generate random edges
+                const edgesFlat = [];
+                for (let e = 0; e < numEdges; e++) {
+                    // Start point
+                    for (let j = 0; j < dof; j++) {
+                        edgesFlat.push((Math.random() - 0.5) * 2);
+                    }
+                    // End point
+                    for (let j = 0; j < dof; j++) {
+                        edgesFlat.push((Math.random() - 0.5) * 2);
+                    }
+                }
+
+                const startTime = performance.now();
+                const result = wasm.interpolateEdgesBatch(edgesFlat, dof, samplesPerEdge);
+                const elapsed = performance.now() - startTime;
+
+                output.textContent += `Batch interpolation:\n`;
+                output.textContent += `  Edges: ${numEdges}\n`;
+                output.textContent += `  DOF: ${dof}\n`;
+                output.textContent += `  Samples per edge: ${samplesPerEdge}\n`;
+                output.textContent += `  Time: ${elapsed.toFixed(3)}ms\n\n`;
+
+                const expectedSize = numEdges * samplesPerEdge * dof;
+                output.textContent += `Result size: ${result.length}\n`;
+                output.textContent += `Expected size: ${expectedSize}\n`;
+                output.textContent += `Match: ${result.length === expectedSize ? 'YES' : 'NO'}\n\n`;
+
+                // Show first few samples of first edge
+                output.textContent += `First edge samples:\n`;
+                for (let s = 0; s < Math.min(3, samplesPerEdge); s++) {
+                    const sample = result.slice(s * dof, (s + 1) * dof);
+                    output.textContent += `  sample ${s}: [${sample.map(v => v.toFixed(3)).join(', ')}]\n`;
+                }
+                if (samplesPerEdge > 3) {
+                    output.textContent += `  ... (${samplesPerEdge - 3} more samples)\n`;
+                }
+
+                addResult(container, `SUCCESS: ${numEdges} edges interpolated in ${elapsed.toFixed(2)}ms`, 'pass');
+                addResult(container, `Throughput: ${(numEdges / elapsed * 1000).toFixed(0)} edges/sec`, 'info');
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+            }
+        };
+
+        // Test 5: aggregateBatchResults
+        window.testAggregateResults = function() {
+            const container = 'aggregate-results';
+            const output = document.getElementById('aggregate-output');
+            document.getElementById(container).innerHTML = '';
+
+            output.textContent = 'Testing aggregateBatchResults()...\n\n';
+
+            try {
+                const samplesPerEdge = 5;
+                const numEdges = 10;
+
+                // Simulate collision results (true = collision, false = free)
+                // Each edge has samplesPerEdge samples
+                const collisionResults = [];
+                const expectedResults = [];
+
+                for (let e = 0; e < numEdges; e++) {
+                    // Randomly decide if this edge has a collision
+                    const hasCollision = Math.random() < 0.3;
+                    const collisionAt = hasCollision ? Math.floor(Math.random() * samplesPerEdge) : -1;
+
+                    for (let s = 0; s < samplesPerEdge; s++) {
+                        // true = collision at this sample
+                        collisionResults.push(s === collisionAt);
+                    }
+
+                    // Edge is free if no collision
+                    expectedResults.push(!hasCollision);
+                }
+
+                output.textContent += `Input: ${numEdges} edges × ${samplesPerEdge} samples = ${collisionResults.length} results\n\n`;
+
+                output.textContent += `Collision results (true=collision):\n`;
+                for (let e = 0; e < numEdges; e++) {
+                    const samples = collisionResults.slice(e * samplesPerEdge, (e + 1) * samplesPerEdge);
+                    output.textContent += `  Edge ${e}: [${samples.map(v => v ? 'X' : '.').join('')}]\n`;
+                }
+
+                const result = wasm.aggregateBatchResults(collisionResults, samplesPerEdge);
+
+                output.textContent += `\nAggregated results (true=free):\n`;
+                for (let e = 0; e < numEdges; e++) {
+                    const isFree = result[e];
+                    const expected = expectedResults[e];
+                    const match = isFree === expected;
+                    output.textContent += `  Edge ${e}: ${isFree ? 'FREE' : 'BLOCKED'} ${match ? '✓' : '✗'}\n`;
+                }
+
+                // Count matches
+                let matches = 0;
+                for (let e = 0; e < numEdges; e++) {
+                    if (result[e] === expectedResults[e]) matches++;
+                }
+
+                output.textContent += `\nCorrect: ${matches}/${numEdges}\n`;
+
+                if (matches === numEdges) {
+                    addResult(container, 'SUCCESS: All aggregation results correct', 'pass');
+                } else {
+                    addResult(container, `PARTIAL: ${matches}/${numEdges} correct`, 'fail');
+                }
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+            }
+        };
+
+        // Test 6: Complete GPU Planning Workflow
+        window.testCompleteWorkflow = function() {
+            const container = 'workflow-results';
+            const output = document.getElementById('workflow-output');
+            document.getElementById(container).innerHTML = '';
+
+            output.textContent = 'Testing complete GPU planning workflow...\n\n';
+
+            try {
+                // This demonstrates the full workflow without actual GPU hardware
+
+                output.textContent += `STEP 1: Create JointLimits\n`;
+                const lower = [-3.14, -2.0, -2.5, -3.14, -2.0, -3.14];
+                const upper = [3.14, 2.0, 2.5, 3.14, 2.0, 3.14];
+                const jointLimits = new wasm.JointLimits(lower, upper);
+                output.textContent += `  DOF: ${jointLimits.dof}\n\n`;  // dof is a getter property
+
+                output.textContent += `STEP 2: Create GpuPlanningContext with preset\n`;
+                const config = wasm.GpuPlanningContextConfig.balanced();
+                output.textContent += `  Preset: balanced\n`;
+                output.textContent += `  Samples: ${config.num_samples}\n`;
+                output.textContent += `  K-neighbors: ${config.k_neighbors}\n\n`;
+
+                // We can't actually create the planner without a Robot, but show the API
+                output.textContent += `STEP 3: Build batch collision checker (simulated)\n`;
+                const checkerConfig = wasm.BatchCollisionCheckerConfig.fast();
+                output.textContent += `  Samples per edge: ${checkerConfig.samples_per_edge}\n\n`;
+
+                output.textContent += `STEP 4: Demonstrate batch interpolation\n`;
+                const numEdges = 50;
+                const dof = 6;
+                const samplesPerEdge = 5;
+
+                // Generate edges
+                const edges = [];
+                for (let i = 0; i < numEdges; i++) {
+                    for (let j = 0; j < dof * 2; j++) {
+                        edges.push((Math.random() - 0.5) * 4);
+                    }
+                }
+
+                const interpStart = performance.now();
+                const samples = wasm.interpolateEdgesBatch(edges, dof, samplesPerEdge);
+                const interpTime = performance.now() - interpStart;
+
+                output.textContent += `  Interpolated ${numEdges} edges in ${interpTime.toFixed(2)}ms\n`;
+                output.textContent += `  Total samples: ${samples.length / dof}\n\n`;
+
+                output.textContent += `STEP 5: Simulate collision checking\n`;
+                // Simulate some collisions
+                const collisionResults = [];
+                for (let i = 0; i < numEdges * samplesPerEdge; i++) {
+                    collisionResults.push(Math.random() < 0.1);
+                }
+                const freeCount = collisionResults.filter(x => !x).length;
+                output.textContent += `  Simulated ${collisionResults.length} collision checks\n`;
+                output.textContent += `  Free samples: ${freeCount}/${collisionResults.length}\n\n`;
+
+                output.textContent += `STEP 6: Aggregate results\n`;
+                const edgeResults = wasm.aggregateBatchResults(collisionResults, samplesPerEdge);
+                const freeEdges = edgeResults.filter(x => x).length;
+                output.textContent += `  Free edges: ${freeEdges}/${numEdges}\n\n`;
+
+                output.textContent += `WORKFLOW COMPLETE!\n`;
+                output.textContent += `This demonstrates the helper functions for GPU planning.\n`;
+                output.textContent += `In production, use GpuPlanningContext.planPath() with your batch checker.\n`;
+
+                addResult(container, 'SUCCESS: Complete workflow demonstrated', 'pass');
+                addResult(container, `Processed ${numEdges} edges with ${samplesPerEdge} samples each`, 'info');
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+                addResult(container, `FAILED: ${error.message}`, 'fail');
+            }
+        };
+
+        // Performance comparison
+        window.runPerformanceTest = function() {
+            const output = document.getElementById('perf-output');
+            output.textContent = 'Running performance comparison...\n\n';
+
+            try {
+                const numEdges = 1000;
+                const dof = 6;
+                const samplesPerEdge = 5;
+
+                // Generate edges
+                const edges = [];
+                for (let i = 0; i < numEdges; i++) {
+                    const start = [];
+                    const end = [];
+                    for (let j = 0; j < dof; j++) {
+                        start.push((Math.random() - 0.5) * 4);
+                        end.push((Math.random() - 0.5) * 4);
+                    }
+                    edges.push({ start, end });
+                }
+
+                // Flatten for batch
+                const edgesFlat = [];
+                for (const edge of edges) {
+                    edgesFlat.push(...edge.start, ...edge.end);
+                }
+
+                // Sequential interpolation (using single edge function)
+                output.textContent += `Sequential interpolation (${numEdges} edges)...\n`;
+                const seqStart = performance.now();
+                const seqResults = [];
+                for (const edge of edges) {
+                    const result = wasm.interpolateEdge(edge.start, edge.end, samplesPerEdge);
+                    seqResults.push(result);
+                }
+                const seqTime = performance.now() - seqStart;
+
+                // Batch interpolation
+                output.textContent += `Batch interpolation (${numEdges} edges)...\n`;
+                const batchStart = performance.now();
+                const batchResult = wasm.interpolateEdgesBatch(edgesFlat, dof, samplesPerEdge);
+                const batchTime = performance.now() - batchStart;
+
+                const speedup = seqTime / batchTime;
+
+                output.textContent += `\nResults:\n`;
+                output.textContent += `  Sequential: ${seqTime.toFixed(2)}ms\n`;
+                output.textContent += `  Batch: ${batchTime.toFixed(2)}ms\n`;
+                output.textContent += `  Speedup: ${speedup.toFixed(2)}x\n`;
+                output.textContent += `  Edges processed: ${numEdges}\n`;
+                output.textContent += `  Total samples: ${numEdges * samplesPerEdge}\n`;
+
+                // Update stats
+                document.getElementById('perf-stats').style.display = 'grid';
+                document.getElementById('perf-sequential').textContent = seqTime.toFixed(1);
+                document.getElementById('perf-batch').textContent = batchTime.toFixed(1);
+                document.getElementById('perf-speedup').textContent = speedup.toFixed(1) + 'x';
+                document.getElementById('perf-edges').textContent = numEdges;
+
+            } catch (error) {
+                output.textContent += `\nERROR: ${error.message}\n`;
+            }
+        };
+
+        initialize();
+    </script>
+</body>
+</html>

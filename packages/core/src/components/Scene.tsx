@@ -36,18 +36,19 @@ function GridFloor() {
     return '#' + color.getHexString();
   }, [grid.color]);
 
+  // In Z-up coordinate system, grid needs to be rotated to lie on XY plane
   return (
     <group>
-      {/* Primary grid */}
+      {/* Primary grid - rotated to XY plane for Z-up */}
       <gridHelper
         args={[grid.size, grid.divisions, grid.color, secondaryColor]}
-        rotation={[0, 0, 0]}
+        rotation={[Math.PI / 2, 0, 0]}
       />
       {/* Finer secondary grid for detail */}
       <gridHelper
         args={[grid.size, grid.divisions * 5, secondaryColor, secondaryColor]}
-        rotation={[0, 0, 0]}
-        position={[0, -0.0005, 0]}
+        rotation={[Math.PI / 2, 0, 0]}
+        position={[0, 0, -0.0005]}
       />
     </group>
   );
@@ -61,7 +62,7 @@ function Lighting({ enhanced = true }: { enhanced?: boolean }) {
   const { lighting } = scene;
 
   if (!enhanced) {
-    // Basic lighting fallback
+    // Basic lighting fallback (Z-up positions)
     return (
       <>
         <ambientLight
@@ -69,11 +70,7 @@ function Lighting({ enhanced = true }: { enhanced?: boolean }) {
           color={lighting.ambient.color}
         />
         <directionalLight
-          position={[
-            lighting.directional.position.x,
-            lighting.directional.position.y,
-            lighting.directional.position.z,
-          ]}
+          position={[5, -5, 10]}
           intensity={lighting.directional.intensity}
           castShadow
           shadow-mapSize={[2048, 2048]}
@@ -87,7 +84,7 @@ function Lighting({ enhanced = true }: { enhanced?: boolean }) {
     );
   }
 
-  // Enhanced industrial lighting setup
+  // Enhanced industrial lighting setup (Z-up: x=forward, y=left, z=up)
   return (
     <>
       {/* Ambient fill - slightly warm for industrial feel */}
@@ -96,16 +93,17 @@ function Lighting({ enhanced = true }: { enhanced?: boolean }) {
         color="#f8f4f0"
       />
 
-      {/* Hemisphere light for natural sky/ground gradient */}
+      {/* Hemisphere light for natural sky/ground gradient (Z is up) */}
       <hemisphereLight
         color="#87ceeb"
         groundColor="#444444"
         intensity={0.4}
+        position={[0, 0, 1]}
       />
 
-      {/* Main key light - slightly warm */}
+      {/* Main key light - slightly warm (Z-up positions) */}
       <directionalLight
-        position={[8, 12, 6]}
+        position={[8, -6, 12]}
         intensity={lighting.directional.intensity * 1.1}
         color="#fffaf0"
         castShadow
@@ -120,21 +118,21 @@ function Lighting({ enhanced = true }: { enhanced?: boolean }) {
 
       {/* Fill light from opposite side - cooler */}
       <directionalLight
-        position={[-6, 8, -4]}
+        position={[-6, 4, 8]}
         intensity={0.3}
         color="#e0f0ff"
       />
 
       {/* Rim light for edge definition */}
       <directionalLight
-        position={[-2, 6, -8]}
+        position={[-2, 8, 6]}
         intensity={0.25}
         color="#ffffff"
       />
 
       {/* Front fill for robot face visibility */}
       <pointLight
-        position={[0, 3, 4]}
+        position={[4, 0, 3]}
         intensity={0.4}
         color="#ffffff"
         distance={10}
@@ -143,14 +141,14 @@ function Lighting({ enhanced = true }: { enhanced?: boolean }) {
 
       {/* Subtle accent lights at corners */}
       <pointLight
-        position={[3, 1, 3]}
+        position={[3, -3, 1]}
         intensity={0.15}
         color="#80a0ff"
         distance={6}
         decay={2}
       />
       <pointLight
-        position={[-3, 1, -3]}
+        position={[-3, 3, 1]}
         intensity={0.15}
         color="#ffa080"
         distance={6}
@@ -178,12 +176,12 @@ function IndustrialFloor({ reflective = true }: { reflective?: boolean }) {
     return <shadowMaterial opacity={0.4} />;
   }, [reflective]);
 
+  // In Z-up coordinate system, floor lies on XY plane (z=0)
   return (
     <group>
-      {/* Main floor plane */}
+      {/* Main floor plane - on XY plane for Z-up */}
       <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -0.002, 0]}
+        position={[0, 0, -0.002]}
         receiveShadow
       >
         <planeGeometry args={[50, 50]} />
@@ -192,8 +190,7 @@ function IndustrialFloor({ reflective = true }: { reflective?: boolean }) {
 
       {/* Floor border/edge accent */}
       <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -0.003, 0]}
+        position={[0, 0, -0.003]}
       >
         <ringGeometry args={[3.8, 4, 64]} />
         <meshStandardMaterial
@@ -205,8 +202,7 @@ function IndustrialFloor({ reflective = true }: { reflective?: boolean }) {
 
       {/* Center work area indicator */}
       <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -0.001, 0]}
+        position={[0, 0, -0.001]}
       >
         <ringGeometry args={[0.95, 1, 64]} />
         <meshStandardMaterial
@@ -218,12 +214,12 @@ function IndustrialFloor({ reflective = true }: { reflective?: boolean }) {
         />
       </mesh>
 
-      {/* Safety zone markers (subtle) */}
+      {/* Safety zone markers (subtle) - on XY plane */}
       {[0, Math.PI / 2, Math.PI, Math.PI * 1.5].map((angle, i) => (
         <mesh
           key={i}
-          rotation={[-Math.PI / 2, 0, angle]}
-          position={[Math.cos(angle) * 2, -0.001, Math.sin(angle) * 2]}
+          rotation={[0, 0, angle]}
+          position={[Math.cos(angle) * 2, Math.sin(angle) * 2, -0.001]}
         >
           <planeGeometry args={[0.3, 0.02]} />
           <meshStandardMaterial
@@ -239,10 +235,11 @@ function IndustrialFloor({ reflective = true }: { reflective?: boolean }) {
 
 /**
  * Legacy ground plane for backwards compatibility
+ * In Z-up, ground lies on XY plane
  */
 function Ground() {
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.001, 0]} receiveShadow>
+    <mesh position={[0, 0, -0.001]} receiveShadow>
       <planeGeometry args={[100, 100]} />
       <shadowMaterial opacity={0.3} />
     </mesh>

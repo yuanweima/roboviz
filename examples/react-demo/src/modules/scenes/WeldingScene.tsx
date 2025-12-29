@@ -112,17 +112,19 @@ function WeldingSparks({ position, active }: { position: [number, number, number
     const posArray = posAttr.array as Float32Array;
     for (let i = 0; i < particleCount; i++) {
       if (Math.random() < 0.1) {
+        // Z-up scene: use position directly
         posArray[i * 3] = position[0];
-        posArray[i * 3 + 1] = position[2]; // Z-up to Y-up
-        posArray[i * 3 + 2] = -position[1];
+        posArray[i * 3 + 1] = position[1];
+        posArray[i * 3 + 2] = position[2];
+        // Velocity: sparks fly upward (+Z) and outward
         velocities[i * 3] = (Math.random() - 0.5) * 0.15;
-        velocities[i * 3 + 1] = Math.random() * 0.15 + 0.03;
-        velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.15;
+        velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.15;
+        velocities[i * 3 + 2] = Math.random() * 0.15 + 0.03; // upward in Z
       } else {
         posArray[i * 3] += velocities[i * 3] * delta * 2;
         posArray[i * 3 + 1] += velocities[i * 3 + 1] * delta * 2;
         posArray[i * 3 + 2] += velocities[i * 3 + 2] * delta * 2;
-        velocities[i * 3 + 1] -= delta * 0.3;
+        velocities[i * 3 + 2] -= delta * 0.3; // gravity pulls down (-Z)
       }
     }
     posAttr.needsUpdate = true;
@@ -155,29 +157,29 @@ function WeldingWorkpiece({
 }) {
   return (
     <group>
-      {/* Base plate */}
-      <mesh position={[0.5, -0.025, 0]}>
-        <boxGeometry args={[0.4, 0.05, 0.4]} />
+      {/* Base plate - Z-up: height is Z coordinate, boxGeometry args are [width, depth, height] in Z-up */}
+      <mesh position={[0.5, 0, -0.025]}>
+        <boxGeometry args={[0.4, 0.4, 0.05]} />
         <meshStandardMaterial color="#8090a0" metalness={0.7} roughness={0.25} />
       </mesh>
-      {/* Vertical plates */}
-      <mesh position={[0.5, 0.15, -0.1]}>
-        <boxGeometry args={[0.3, 0.3, 0.02]} />
+      {/* Vertical plates - standing upright in Z-up */}
+      <mesh position={[0.5, -0.1, 0.15]}>
+        <boxGeometry args={[0.3, 0.02, 0.3]} />
         <meshStandardMaterial color="#95a5b5" metalness={0.65} roughness={0.3} />
       </mesh>
-      <mesh position={[0.5, 0.15, 0.1]}>
-        <boxGeometry args={[0.3, 0.3, 0.02]} />
+      <mesh position={[0.5, 0.1, 0.15]}>
+        <boxGeometry args={[0.3, 0.02, 0.3]} />
         <meshStandardMaterial color="#95a5b5" metalness={0.65} roughness={0.3} />
       </mesh>
 
-      {/* Seam lines */}
+      {/* Seam lines - Z-up scene, use coordinates directly */}
       {seams.map((seam) => {
-        // Convert Z-up to Y-up for Three.js
-        const start = new THREE.Vector3(seam.start[0], seam.start[2], -seam.start[1]);
-        const end = new THREE.Vector3(seam.end[0], seam.end[2], -seam.end[1]);
+        const start = new THREE.Vector3(...seam.start);
+        const end = new THREE.Vector3(...seam.end);
         const midPoint = start.clone().add(end).multiplyScalar(0.5);
         const length = start.distanceTo(end);
         const dir = end.clone().sub(start).normalize();
+        // Cylinder is Y-up by default, align it along the seam direction
         const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
 
         return (
@@ -556,9 +558,9 @@ function WeldingSceneContent({
         <WeldingWorkpiece seams={seams} selectedSeamId={selectedSeamId} onSeamSelect={onSeamSelect} />
         <WeldingSparks position={sparkPosition} active={isWelding} />
 
-        {/* Enhanced workpiece lighting */}
-        <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
-        <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
+        {/* Enhanced workpiece lighting - Z-up: height is Z coordinate */}
+        <pointLight position={[0.5, 0.5, 1.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
+        <pointLight position={[-0.5, -0.5, 1]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
       </RenderPipeline>
     </EnvironmentSystem>
   );
@@ -596,10 +598,11 @@ function WeldingDemoInner({ tcpDebug, onTcpDebugChange }: WeldingDemoInnerProps)
   const state = useRobotProcessState();
 
   // Seams (Z-up coordinates) - 使用扩展类型，支持编辑
+  // Seams are at the junction of base plate (top at Z=0) and vertical plates (at Y=±0.1)
   const [seams, setSeams] = useState<ExtendedWeldSeam[]>([
-    { id: 'seam1', name: '底部焊缝 1', start: [0.4, -0.09, 0.005], end: [0.6, -0.09, 0.005], approachHeight: 20, retractHeight: 30 },
-    { id: 'seam2', name: '底部焊缝 2', start: [0.4, 0.09, 0.005], end: [0.6, 0.09, 0.005], approachHeight: 20, retractHeight: 30 },
-    { id: 'seam3', name: '中心焊缝', start: [0.4, 0, 0.005], end: [0.6, 0, 0.005], approachHeight: 25, retractHeight: 35 },
+    { id: 'seam1', name: '底部焊缝 1', start: [0.35, -0.09, 0.005], end: [0.65, -0.09, 0.005], approachHeight: 20, retractHeight: 30 },
+    { id: 'seam2', name: '底部焊缝 2', start: [0.35, 0.09, 0.005], end: [0.65, 0.09, 0.005], approachHeight: 20, retractHeight: 30 },
+    { id: 'seam3', name: '中心焊缝', start: [0.35, 0, 0.005], end: [0.65, 0, 0.005], approachHeight: 25, retractHeight: 35 },
   ]);
 
   // 获取当前选中的焊缝
@@ -616,9 +619,10 @@ function WeldingDemoInner({ tcpDebug, onTcpDebugChange }: WeldingDemoInnerProps)
   // 焊缝预览变化时更新 Ghost
   const handleSeamPreviewChange = useCallback((preview: Partial<ExtendedWeldSeam> | null) => {
     if (preview?.start) {
+      // 180° around X to point tool Z down (Z-up scene)
       ghost.setTarget({
         position: preview.start as [number, number, number],
-        quaternion: [1, 0, 0, 0],
+        quaternion: [0, 1, 0, 0],
       });
     }
   }, [ghost]);
@@ -632,11 +636,11 @@ function WeldingDemoInner({ tcpDebug, onTcpDebugChange }: WeldingDemoInnerProps)
     const seam = seams.find(s => s.id === selectedSeamId);
     if (!seam) return;
 
-    // TCP Z-axis pointing down toward workpiece
+    // TCP Z-axis pointing down toward workpiece (Z-up scene)
     // For a tool with TCP Z pointing forward (+Z), we need 180° rotation around X
     // to flip Z from +Z to -Z (pointing down in world coordinates)
-    // Quaternion for 180° around X: [1, 0, 0, 0] (same as GrindingScene)
-    const downQuat: [number, number, number, number] = [1, 0, 0, 0];
+    // Quaternion for 180° around X: [w, x, y, z] = [0, 1, 0, 0]
+    const downQuat: [number, number, number, number] = [0, 1, 0, 0];
 
     const waypoints = [];
     const numPoints = 20;
@@ -691,10 +695,11 @@ function WeldingDemoInner({ tcpDebug, onTcpDebugChange }: WeldingDemoInnerProps)
     setSelectedSeamId(id);
     const seam = seams.find(s => s.id === id);
     if (seam) {
-      // 180° around X to point tool Z down toward workpiece (same as trajectory)
+      // 180° around X to point tool Z down toward workpiece (Z-up scene)
+      // Quaternion for 180° around X: [w, x, y, z] = [0, 1, 0, 0]
       ghost.setTarget({
         position: seam.start,
-        quaternion: [1, 0, 0, 0],
+        quaternion: [0, 1, 0, 0],
       });
     }
     addLog('info', `Selected: ${id}`);

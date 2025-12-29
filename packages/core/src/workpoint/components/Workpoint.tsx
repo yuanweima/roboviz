@@ -53,11 +53,12 @@ function SimplifiedIcon({
   color: string;
   size: number;
 }) {
+  // Cone points along +Z in Z-up scene
   return (
     <Cone
       args={[size * 0.25, size * 0.6, 6]}
       position={[0, 0, size * 0.3]}
-      rotation={[Math.PI / 2, 0, 0]}
+      rotation={[-Math.PI / 2, 0, 0]}
     >
       <meshBasicMaterial color={color} />
     </Cone>
@@ -85,12 +86,12 @@ function WorkpointIcon({
 
   switch (type) {
     case 'camera':
-      // Camera icon: simple cone pointing in viewing direction
+      // Camera icon: simple cone pointing in viewing direction (+Z in Z-up)
       return (
         <Cone
           args={[size * 0.3, size * 0.8, 8]}
           position={[0, 0, size * 0.4]}
-          rotation={[Math.PI / 2, 0, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
         >
           <meshStandardMaterial color={color} />
         </Cone>
@@ -102,7 +103,7 @@ function WorkpointIcon({
       // This shows the tool approaching from above the surface
       return (
         <group>
-          <Cone args={[size * 0.3, size * 1.2, 8]} position={[0, 0, size * 0.6]} rotation={[Math.PI / 2, 0, 0]}>
+          <Cone args={[size * 0.3, size * 1.2, 8]} position={[0, 0, size * 0.6]} rotation={[-Math.PI / 2, 0, 0]}>
             <meshStandardMaterial color={color} />
           </Cone>
           {/* Spark/weld point indicator at surface (origin) */}
@@ -151,12 +152,12 @@ function WorkpointIcon({
 
     case 'normal':
     default:
-      // Default: cone pointing in Z direction
+      // Default: cone pointing in +Z direction
       return (
         <Cone
           args={[size * 0.3, size * 0.8, 8]}
           position={[0, 0, size * 0.4]}
-          rotation={[Math.PI / 2, 0, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
         >
           <meshStandardMaterial color={color} />
         </Cone>
@@ -211,11 +212,11 @@ function CoordinateAxes({ size, opacity = 1 }: { size: number; opacity?: number 
 }
 
 /**
- * Selection ring component
+ * Selection ring component - on XY plane for Z-up
  */
 function SelectionRing({ size, color }: { size: number; color: string }) {
   return (
-    <mesh rotation={[Math.PI / 2, 0, 0]}>
+    <mesh>
       <ringGeometry args={[size * 0.8, size * 1.0, 32]} />
       <meshBasicMaterial color={color} transparent opacity={0.5} side={THREE.DoubleSide} />
     </mesh>

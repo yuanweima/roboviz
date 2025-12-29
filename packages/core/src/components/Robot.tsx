@@ -15,7 +15,7 @@ import type { RobotState, RobotInfo, Vector3Like, Pose } from '../types';
 import { toVector3 } from '../types';
 import { isURDFLink, findLastURDFLink } from '../types/urdf';
 import { EndEffectorProvider } from './EndEffector';
-import { CoordinateTransform, type Pose3D } from '../coordinates';
+import type { Pose3D } from '../coordinates';
 import { useRobotLOD } from '../rendering/optimization/useRobotLOD';
 
 /** Euler angles tuple [x, y, z] in radians */
@@ -356,8 +356,9 @@ function EndEffectorMarker({ robot }: { robot: URDFRobot }) {
 /**
  * Robot component
  */
-// Rotation to convert Z-up to Y-up (rotate -90 degrees around X axis)
-const Z_UP_TO_Y_UP_ROTATION = new THREE.Euler(-Math.PI / 2, 0, 0);
+// Rotation to convert Y-up URDF models to Z-up scene
+// (Only needed if upAxis='Y' is specified for rare Y-up URDF models)
+const Y_UP_TO_Z_UP_ROTATION = new THREE.Euler(Math.PI / 2, 0, 0);
 
 export function Robot({
   state: propState,
@@ -543,7 +544,7 @@ export function Robot({
       lastLink.getWorldPosition(worldPos);
       lastLink.getWorldQuaternion(worldQuat);
 
-      // Call Y-up callback (legacy, Three.js coordinates)
+      // Call Y-up callback (legacy - now scene is Z-up, so this is actually Z-up coordinates)
       if (hasYUpCallback) {
         onEndEffectorUpdateRef.current!({
           position: { x: worldPos.x, y: worldPos.y, z: worldPos.z },
@@ -551,14 +552,12 @@ export function Robot({
         });
       }
 
-      // Call Z-up callback (robotics standard)
+      // Call Z-up callback (scene is now Z-up, so no conversion needed)
       if (hasZUpCallback) {
-        // Convert Y-up to Z-up coordinates
-        const zUpPose = CoordinateTransform.poseToZUp({
+        onEndEffectorUpdateZupRef.current!({
           position: [worldPos.x, worldPos.y, worldPos.z],
           quaternion: [worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w],
         });
-        onEndEffectorUpdateZupRef.current!(zUpPose);
       }
     }
   });
@@ -628,8 +627,9 @@ export function Robot({
 
   if (!robot) return null;
 
-  // Apply coordinate system conversion if needed (Z-up to Y-up)
-  const needsRotation = upAxis === 'Z';
+  // Scene is Z-up. URDF models are typically Z-up, so no rotation needed when upAxis='Z'.
+  // Only rotate if upAxis='Y' (rare Y-up URDF models need rotation to fit Z-up scene).
+  const needsRotation = upAxis === 'Y';
 
   // Compute final position and quaternion
   // Priority: basePoseZup > position/rotation/quaternion props > state
@@ -637,17 +637,16 @@ export function Robot({
   let finalQuaternion: THREE.Quaternion;
 
   if (basePoseZup) {
-    // Convert Z-up pose to Y-up for Three.js rendering
-    const yUpPose = CoordinateTransform.poseToYUp(basePoseZup);
-    finalPosition = yUpPose.position;
+    // Scene is Z-up, use basePoseZup directly
+    finalPosition = basePoseZup.position;
     finalQuaternion = new THREE.Quaternion(
-      yUpPose.quaternion[0],
-      yUpPose.quaternion[1],
-      yUpPose.quaternion[2],
-      yUpPose.quaternion[3]
+      basePoseZup.quaternion[0],
+      basePoseZup.quaternion[1],
+      basePoseZup.quaternion[2],
+      basePoseZup.quaternion[3]
     );
   } else if (positionProp || quaternionProp || rotationProp) {
-    // Use Y-up props directly
+    // Use props directly (scene is Z-up)
     finalPosition = positionProp
       ? (Array.isArray(positionProp)
           ? positionProp as [number, number, number]
@@ -703,8 +702,8 @@ export function Robot({
         scale={finalScale as [number, number, number] | undefined}
         onClick={handleClick}
       >
-        {/* Apply Z-up to Y-up rotation if needed */}
-        <group rotation={needsRotation ? Z_UP_TO_Y_UP_ROTATION : undefined}>
+        {/* Robot model - scene is Z-up, URDF is typically Z-up, so no rotation needed */}
+        <group rotation={needsRotation ? Y_UP_TO_Z_UP_ROTATION : undefined}>
           <primitive object={robot} />
         </group>
 

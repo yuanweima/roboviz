@@ -155,8 +155,8 @@ function WaypointMarker({
         />
       </mesh>
 
-      {/* Direction indicator (small cone) */}
-      <mesh position={[0, 0, effectiveSize * 1.5]} rotation={[Math.PI / 2, 0, 0]}>
+      {/* Direction indicator (small cone) - points along +Z in Z-up scene */}
+      <mesh position={[0, 0, effectiveSize * 1.5]} rotation={[-Math.PI / 2, 0, 0]}>
         <coneGeometry args={[effectiveSize * 0.4, effectiveSize * 0.8, 8]} />
         <meshStandardMaterial
           color={color}
@@ -165,9 +165,9 @@ function WaypointMarker({
         />
       </mesh>
 
-      {/* Selection ring */}
+      {/* Selection ring - on XY plane for Z-up */}
       {isSelected && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh>
           <torusGeometry args={[effectiveSize * 1.8, effectiveSize * 0.15, 8, 32]} />
           <meshBasicMaterial color={color} transparent opacity={0.5} />
         </mesh>

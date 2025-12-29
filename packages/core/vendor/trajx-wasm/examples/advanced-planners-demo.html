@@ -874,7 +874,12 @@
                     document.getElementById(`comp-${planner}-nodes`).textContent = result.nodesExplored;
                     document.getElementById(`comp-${planner}-waypoints`).textContent = result.success ? result.waypointCount : '-';
                 } catch (err) {
+                    console.error(`${planner} error:`, err);
                     document.getElementById(`comp-${planner}-success`).textContent = 'Error';
+                    document.getElementById(`comp-${planner}-time`).textContent = '-';
+                    document.getElementById(`comp-${planner}-length`).textContent = '-';
+                    document.getElementById(`comp-${planner}-nodes`).textContent = '-';
+                    document.getElementById(`comp-${planner}-waypoints`).textContent = '-';
                 }
             }
 

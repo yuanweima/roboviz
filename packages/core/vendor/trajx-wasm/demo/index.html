@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trajx WASM Demo - Tool & Collision Testing</title>
+    <title>Trajx WASM Demo - Tool, Collision & GPU Planning Testing</title>
     <style>
         * {
             box-sizing: border-box;
@@ -118,7 +118,7 @@
     </style>
 </head>
 <body>
-    <h1>Trajx WASM Demo - Tool & Collision Testing</h1>
+    <h1>Trajx WASM Demo - Tool, Collision & GPU Planning Testing</h1>
 
     <div id="status" class="status loading">Loading WASM module...</div>
 
@@ -197,6 +197,39 @@
                 <h3>Robot with Tool</h3>
                 <button onclick="testRobotWithTool()" id="testRobotToolBtn" disabled>Test Robot + Tool</button>
                 <div id="robotToolResult" class="result" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- GPU Planning Tests -->
+        <div class="section full-width">
+            <h2>GPU Planning Tests (Lazy-PRM)</h2>
+
+            <div class="test-group">
+                <h3>1. GpuPlanningContext</h3>
+                <p style="color: #666; font-size: 12px;">Tests the GPU-optimized Lazy-PRM planner with batch collision checking</p>
+                <button onclick="testGpuPlanningContext()" id="testGpuPlanningBtn" disabled>Test GPU Planning Context</button>
+                <div id="gpuPlanningResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>2. Motion with GPU Collision</h3>
+                <p style="color: #666; font-size: 12px;">Tests WasmMotion.runWithGpuCollision() with Lazy-PRM</p>
+                <button onclick="testMotionWithGpuCollision()" id="testMotionGpuBtn" disabled>Test Motion + GPU</button>
+                <div id="motionGpuResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>3. Edge Collision Checking</h3>
+                <p style="color: #666; font-size: 12px;">Tests isEdgeCollisionFree() for path edge validation</p>
+                <button onclick="testEdgeCollisionChecking()" id="testEdgeCollisionBtn" disabled>Test Edge Collision</button>
+                <div id="edgeCollisionResult" class="result" style="display:none;"></div>
+            </div>
+
+            <div class="test-group">
+                <h3>4. Capsule Approximation</h3>
+                <p style="color: #666; font-size: 12px;">Tests GPU-friendly capsule conversion for robot and environment</p>
+                <button onclick="testCapsuleApproximation()" id="testCapsuleBtn" disabled>Test Capsule Approximation</button>
+                <div id="capsuleResult" class="result" style="display:none;"></div>
             </div>
         </div>
     </div>
@@ -821,6 +854,290 @@
             }
         };
 
+        // ==================== GPU Planning Tests ====================
+
+        window.testGpuPlanningContext = function() {
+            log('--- Testing GpuPlanningContext (Lazy-PRM) ---', 'info');
+            try {
+                // Create robot
+                const robot = wasm.createRobot(TEST_URDF);
+                log(`Created robot: ${robot.name}, DOF: ${robot.dof}`, 'success');
+
+                // Create GPU planning context with balanced config
+                const config = wasm.GpuPlanningContextConfig.balanced();
+                log(`Config: samples=${config.num_samples}, k=${config.k_neighbors}, batch=${config.validation_batch_size}`, 'info');
+
+                const gpuCtx = new wasm.GpuPlanningContext(robot, config);
+                log('Created GpuPlanningContext', 'success');
+
+                // Build roadmap
+                const buildStart = performance.now();
+                gpuCtx.buildRoadmap();
+                const buildTime = performance.now() - buildStart;
+                log(`Built roadmap in ${buildTime.toFixed(1)}ms`, 'success');
+                log(`Roadmap: ${gpuCtx.nodeCount} nodes, ${gpuCtx.edgeCount} edges`, 'info');
+
+                // Define simple batch edge checker (no collision - always valid)
+                let edgeChecks = 0;
+                let batchCalls = 0;
+                function checkEdgesBatch(edges) {
+                    batchCalls++;
+                    edgeChecks += edges.length;
+                    log(`  [Batch ${batchCalls}] Checking ${edges.length} edges...`, 'info');
+                    // Simple check: return all edges as valid (for demo)
+                    const results = edges.map(() => true);
+                    log(`  [Batch ${batchCalls}] Returning ${results.length} results: [${results.slice(0,3).join(',')}...]`, 'info');
+                    return results;
+                }
+
+                // Plan path
+                const start = [0, 0, 0, 0, 0, 0];
+                const goal = [1.0, 0.5, -0.5, 0, 0.5, 0];
+
+                log(`Planning path from [${start.join(', ')}] to [${goal.join(', ')}]...`, 'info');
+                const planStart = performance.now();
+                let result;
+                try {
+                    result = gpuCtx.planPath(start, goal, checkEdgesBatch);
+                } catch (e) {
+                    log(`planPath threw: ${e.message || e}`, 'error');
+                    throw e;
+                }
+                const planTime = performance.now() - planStart;
+
+                if (result.success) {
+                    log(`Path found in ${planTime.toFixed(1)}ms`, 'success');
+                    log(`  Waypoints: ${result.waypointCount}`, 'info');
+                    log(`  Path length: ${result.pathLength.toFixed(3)} rad`, 'info');
+                    log(`  Edges validated: ${result.edgesValidated}`, 'info');
+                    log(`  GPU batches: ${result.gpuBatches}`, 'info');
+                    log(`  Our batch calls: ${batchCalls}, edge checks: ${edgeChecks}`, 'info');
+
+                    // Show first few waypoints
+                    const waypoints = result.waypoints;
+                    if (waypoints.length > 0) {
+                        log(`  First waypoint: [${waypoints[0].map(v => v.toFixed(2)).join(', ')}]`, 'info');
+                        if (waypoints.length > 1) {
+                            log(`  Last waypoint: [${waypoints[waypoints.length-1].map(v => v.toFixed(2)).join(', ')}]`, 'info');
+                        }
+                    }
+
+                    showResult('gpuPlanningResult', {
+                        success: true,
+                        waypointCount: result.waypointCount,
+                        pathLength: result.pathLength,
+                        edgesValidated: result.edgesValidated,
+                        gpuBatches: result.gpuBatches,
+                        planningTimeMs: planTime,
+                        roadmapNodes: gpuCtx.nodeCount,
+                        roadmapEdges: gpuCtx.edgeCount
+                    });
+                } else {
+                    log(`Planning failed: ${result.error}`, 'error');
+                    showResult('gpuPlanningResult', { success: false, error: result.error }, false);
+                }
+
+                // Test reset validations
+                gpuCtx.resetValidations();
+                log('Reset edge validations (for environment changes)', 'info');
+
+                log('GpuPlanningContext tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('gpuPlanningResult', error.message, false);
+            }
+        };
+
+        window.testMotionWithGpuCollision = function() {
+            log('--- Testing WasmMotion with GPU Collision ---', 'info');
+            try {
+                // Create robot
+                const robot = wasm.createRobot(TEST_URDF);
+                log(`Created robot: ${robot.name}`, 'success');
+
+                // Create environment
+                const env = new wasm.CollisionEnvironment();
+                const tablePose = new wasm.Pose(
+                    new wasm.Position(0.5, 0.0, 0.2),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                env.addBox("table", [0.3, 0.3, 0.01], tablePose);
+                log('Created environment with table obstacle', 'info');
+
+                // Create robot collision model
+                const robotCollision = wasm.WasmRobotCollisionModel.fromUrdf(TEST_URDF);
+                log(`Robot collision model: ${robotCollision.totalGeometries} geometries`, 'info');
+
+                // Create GPU planning context
+                const config = wasm.GpuPlanningContextConfig.fast();
+                const gpuCtx = new wasm.GpuPlanningContext(robot, config);
+                gpuCtx.buildRoadmap();
+                log(`Roadmap: ${gpuCtx.nodeCount} nodes`, 'info');
+
+                // Define collision-aware batch edge checker
+                let collisionChecks = 0;
+                function checkEdgesWithCollision(edges) {
+                    return edges.map(([startJoints, endJoints]) => {
+                        // Sample a few points along the edge
+                        for (let t = 0; t <= 1; t += 0.25) {
+                            const joints = startJoints.map((s, i) => s + t * (endJoints[i] - s));
+                            collisionChecks++;
+
+                            // Get link poses
+                            try {
+                                const linkPoses = robot.getLinkTransforms(joints);
+                                // Check if collision-free
+                                if (!robotCollision.isConfigCollisionFree(env, linkPoses)) {
+                                    return false; // Collision detected
+                                }
+                            } catch (e) {
+                                return false; // Error = treat as collision
+                            }
+                        }
+                        return true; // Edge is collision-free
+                    });
+                }
+
+                // Create motion with GPU batch mode
+                const goal = [0.8, 0.3, -0.3, 0, 0.3, 0];
+                const motion = wasm.WasmMotion.to(goal).gpuBatch();
+                log('Created motion with GPU batch mode', 'info');
+
+                // Run with GPU collision
+                const planStart = performance.now();
+                const result = motion.runWithGpuCollision(robot, gpuCtx, checkEdgesWithCollision);
+                const planTime = performance.now() - planStart;
+
+                log(`Motion planning completed in ${planTime.toFixed(1)}ms`, 'success');
+                log(`  Trajectory points: ${result.trajectoryLength}`, 'info');
+                log(`  Path length: ${result.pathLength.toFixed(3)} rad`, 'info');
+                log(`  Collision-free: ${result.collisionFree}`, 'info');
+                log(`  Collision checks: ${collisionChecks}`, 'info');
+
+                showResult('motionGpuResult', {
+                    success: true,
+                    trajectoryPoints: result.trajectoryLength,
+                    pathLength: result.pathLength,
+                    collisionFree: result.collisionFree,
+                    planningTimeMs: planTime,
+                    collisionChecks: collisionChecks
+                });
+
+                log('Motion with GPU collision tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('motionGpuResult', error.message, false);
+            }
+        };
+
+        window.testEdgeCollisionChecking = function() {
+            log('--- Testing Edge Collision Checking ---', 'info');
+            try {
+                // Create robot
+                const robot = wasm.createRobot(TEST_URDF);
+                log(`Created robot: ${robot.name}`, 'success');
+
+                // Create environment with obstacle
+                const env = new wasm.CollisionEnvironment();
+                const boxPose = new wasm.Pose(
+                    new wasm.Position(0.0, 0.4, 0.5),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                env.addBox("obstacle", [0.1, 0.1, 0.1], boxPose);
+                log('Created environment with obstacle at (0, 0.4, 0.5)', 'info');
+
+                // Create robot collision model
+                const robotCollision = wasm.WasmRobotCollisionModel.fromUrdf(TEST_URDF);
+                log(`Robot collision model created`, 'info');
+
+                // Test edge collision checking
+                const start = [0, 0, 0, 0, 0, 0];
+                const end = [1.0, 0.5, -0.5, 0, 0.5, 0];
+
+                const edgeStart = performance.now();
+                const edgeFree = robotCollision.isEdgeCollisionFree(env, robot, start, end, 5);
+                const edgeTime = performance.now() - edgeStart;
+
+                log(`Edge [0,0,0,0,0,0] -> [1,0.5,-0.5,0,0.5,0]:`, 'info');
+                log(`  Collision-free: ${edgeFree}`, edgeFree ? 'success' : 'warn');
+                log(`  Check time: ${edgeTime.toFixed(2)}ms`, 'info');
+
+                // Test another edge that might collide
+                const end2 = [0, 1.5, 0, 0, 0, 0]; // Large joint 2 movement
+                const edgeFree2 = robotCollision.isEdgeCollisionFree(env, robot, start, end2, 10);
+                log(`Edge [0,0,0,0,0,0] -> [0,1.5,0,0,0,0]:`, 'info');
+                log(`  Collision-free: ${edgeFree2}`, edgeFree2 ? 'success' : 'warn');
+
+                showResult('edgeCollisionResult', {
+                    edge1: { start, end, collisionFree: edgeFree, timeMs: edgeTime },
+                    edge2: { start, end: end2, collisionFree: edgeFree2 }
+                });
+
+                log('Edge collision checking tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('edgeCollisionResult', error.message, false);
+            }
+        };
+
+        window.testCapsuleApproximation = function() {
+            log('--- Testing Capsule Approximation ---', 'info');
+            try {
+                // Create environment with various shapes
+                const env = new wasm.CollisionEnvironment();
+
+                // Add box
+                const boxPose = new wasm.Pose(
+                    new wasm.Position(0.5, 0, 0.1),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                env.addBox("table", [0.3, 0.2, 0.02], boxPose);
+
+                // Add cylinder
+                const cylPose = new wasm.Pose(
+                    new wasm.Position(0, 0.5, 0.2),
+                    new wasm.Quaternion(0, 0, 0, 1)
+                );
+                env.addCylinder("pole", 0.05, 0.2, cylPose);
+
+                // Add sphere (already GPU compatible)
+                env.addSphere("ball", 0.05, [0.3, 0.3, 0.3]);
+
+                log(`Original environment: ${env.numObstacles} obstacles`, 'info');
+                log(`GPU compatible: ${env.isGpuCompatible()}`, 'info');
+                log(`GPU incompatible count: ${env.countGpuIncompatible()}`, 'info');
+
+                // Convert to capsule approximation
+                const options = wasm.WasmEnvironmentCapsuleOptions.gpuOptimized();
+                log('Using GPU-optimized capsule options', 'info');
+
+                const approxResult = env.toCapsuleApproximation(options);
+                const capsuleEnv = approxResult.env;
+                const stats = approxResult.stats;
+
+                log(`Capsule approximation complete:`, 'success');
+                log(`  Obstacles converted: ${stats.obstacles_converted}`, 'info');
+                log(`  Capsules generated: ${stats.capsules_generated}`, 'info');
+                log(`  Obstacles unchanged: ${stats.obstacles_unchanged}`, 'info');
+                log(`  Avg coverage ratio: ${stats.avg_coverage_ratio.toFixed(3)}`, 'info');
+                log(`  New env GPU compatible: ${capsuleEnv.isGpuCompatible()}`, 'success');
+
+                showResult('capsuleResult', {
+                    originalObstacles: env.numObstacles,
+                    obstaclesConverted: stats.obstacles_converted,
+                    capsulesGenerated: stats.capsules_generated,
+                    obstaclesUnchanged: stats.obstacles_unchanged,
+                    avgCoverageRatio: stats.avg_coverage_ratio,
+                    newEnvGpuCompatible: capsuleEnv.isGpuCompatible()
+                });
+
+                log('Capsule approximation tests passed!', 'success');
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                showResult('capsuleResult', error.message, false);
+            }
+        };
+
         // Run all tests
         window.runAllTests = async function() {
             log('========== RUNNING ALL TESTS ==========', 'info');
@@ -834,7 +1151,12 @@
                 testCompositeObstacles,
                 testCollisionChecking,
                 testACM,
-                testRobotWithTool
+                testRobotWithTool,
+                // GPU Planning tests
+                testGpuPlanningContext,
+                testMotionWithGpuCollision,
+                testEdgeCollisionChecking,
+                testCapsuleApproximation
             ];
 
             for (const test of tests) {

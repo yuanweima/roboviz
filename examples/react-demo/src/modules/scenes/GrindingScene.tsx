@@ -249,21 +249,22 @@ function GrindingDust({ position, active }: { position: [number, number, number]
     for (let i = 0; i < particleCount; i++) {
       lifetimes[i] -= delta * 0.8;
       if (lifetimes[i] <= 0 || Math.random() < 0.03) {
-        // Reset particle at tool position (convert Z-up to Y-up)
+        // Z-up scene: use position directly
         posArray[i * 3] = position[0] + (Math.random() - 0.5) * 0.03;
-        posArray[i * 3 + 1] = position[2]; // Z-up to Y-up
-        posArray[i * 3 + 2] = -position[1];
+        posArray[i * 3 + 1] = position[1] + (Math.random() - 0.5) * 0.03;
+        posArray[i * 3 + 2] = position[2];
+        // Velocity: dust flies upward (+Z) and outward
         velocities[i * 3] = (Math.random() - 0.5) * 0.1;
-        velocities[i * 3 + 1] = Math.random() * 0.06 + 0.02;
-        velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.1;
+        velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.1;
+        velocities[i * 3 + 2] = Math.random() * 0.06 + 0.02; // upward in Z
         lifetimes[i] = 1;
       } else {
         posArray[i * 3] += velocities[i * 3] * delta * 2;
         posArray[i * 3 + 1] += velocities[i * 3 + 1] * delta * 2;
         posArray[i * 3 + 2] += velocities[i * 3 + 2] * delta * 2;
         velocities[i * 3] *= 0.98;
-        velocities[i * 3 + 1] -= delta * 0.15; // Gravity
-        velocities[i * 3 + 2] *= 0.98;
+        velocities[i * 3 + 1] *= 0.98;
+        velocities[i * 3 + 2] -= delta * 0.15; // Gravity pulls down (-Z)
       }
     }
     posAttr.needsUpdate = true;
@@ -546,10 +547,10 @@ function GrindingSceneContent({
 
         <GrindingDust position={dustPosition} active={isGrinding} />
 
-        {/* Enhanced workpiece lighting */}
-        <pointLight position={[0.5, 1.5, 0.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
-        <pointLight position={[-0.5, 1, -0.5]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
-        <spotLight position={[0.5, 1, 0]} angle={0.5} intensity={0.5} color="#ffffff" />
+        {/* Enhanced workpiece lighting - Z-up: height is Z coordinate */}
+        <pointLight position={[0.5, 0.5, 1.5]} intensity={0.6} color="#ffffff" distance={5} decay={2} />
+        <pointLight position={[-0.5, -0.5, 1]} intensity={0.3} color="#e0f0ff" distance={4} decay={2} />
+        <spotLight position={[0.5, 0, 1]} angle={0.5} intensity={0.5} color="#ffffff" />
       </RenderPipeline>
     </EnvironmentSystem>
   );
@@ -584,29 +585,37 @@ function generateGrindingPath(
 
   let quaternion: [number, number, number, number];
 
+  // Z-up scene: GrindingWheel TCP Z points along flange +Z (tool extends forward)
+  // We need to rotate tool so its Z-axis points into the surface (opposite of normal)
+  // Quaternion format: [x, y, z, w] (Three.js convention)
+
   if (region.face === 'top') {
-    // Top face: normal is +Z, tool should point -Z (down)
-    // 180° around X axis
-    quaternion = [1, 0, 0, 0];
+    // Top face: normal is +Z, tool should point -Z (down into surface)
+    // 180° around X axis rotates tool Z from +Z to -Z
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+    quaternion = [q.x, q.y, q.z, q.w];
   } else if (region.face === 'front') {
-    // Front face: normal is -Y, tool should point +Y
-    // 90° around X axis (rotates Z to -Y, then flip)
+    // Front face: normal is -Y, tool should point +Y (into surface)
+    // -90° around X axis rotates tool Z from +Z to +Y
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
     quaternion = [q.x, q.y, q.z, q.w];
   } else if (region.face === 'back') {
-    // Back face: normal is +Y, tool should point -Y
+    // Back face: normal is +Y, tool should point -Y (into surface)
+    // 90° around X axis rotates tool Z from +Z to -Y
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
     quaternion = [q.x, q.y, q.z, q.w];
   } else if (region.face === 'left') {
-    // Left face: normal is -X, tool should point +X
+    // Left face: normal is -X, tool should point +X (into surface)
+    // 90° around Y axis rotates tool Z from +Z to +X
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
     quaternion = [q.x, q.y, q.z, q.w];
   } else if (region.face === 'right') {
-    // Right face: normal is +X, tool should point -X
+    // Right face: normal is +X, tool should point -X (into surface)
+    // -90° around Y axis rotates tool Z from +Z to -X
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
     quaternion = [q.x, q.y, q.z, q.w];
   } else {
-    quaternion = [1, 0, 0, 0];
+    quaternion = [0, 0, 0, 1]; // identity
   }
 
   let time = 0;
@@ -860,24 +869,32 @@ function GrindingDemoInner({ tcpDebug, onTcpDebugChange }: GrindingDemoInnerProp
         region.center[2] + approachOffset.z,
       ];
 
-      // Calculate quaternion for tool orientation
+      // Calculate quaternion for tool orientation (same logic as generateGrindingPath)
+      // Z-up scene: GrindingWheel TCP Z points along flange +Z
+      // We need to rotate so tool Z points into surface (opposite of normal)
       let quaternion: [number, number, number, number];
       if (region.face === 'top') {
-        quaternion = [1, 0, 0, 0];
+        // 180° around X axis rotates tool Z from +Z to -Z
+        const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+        quaternion = [q.x, q.y, q.z, q.w];
       } else if (region.face === 'front') {
+        // -90° around X axis rotates tool Z from +Z to +Y
         const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
         quaternion = [q.x, q.y, q.z, q.w];
       } else if (region.face === 'back') {
+        // 90° around X axis rotates tool Z from +Z to -Y
         const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
         quaternion = [q.x, q.y, q.z, q.w];
       } else if (region.face === 'left') {
+        // 90° around Y axis rotates tool Z from +Z to +X
         const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
         quaternion = [q.x, q.y, q.z, q.w];
       } else if (region.face === 'right') {
+        // -90° around Y axis rotates tool Z from +Z to -X
         const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
         quaternion = [q.x, q.y, q.z, q.w];
       } else {
-        quaternion = [1, 0, 0, 0];
+        quaternion = [0, 0, 0, 1];
       }
 
       ghost.setTarget({ position, quaternion });

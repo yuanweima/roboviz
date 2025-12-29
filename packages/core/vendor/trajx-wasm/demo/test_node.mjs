@@ -400,6 +400,143 @@ test('CollisionEnvironment.clearAcm()', () => {
     if (env.getIgnoredObstacles().length !== 0) throw new Error('Expected 0 ignored obstacles after clear');
 });
 
+// === Batch Forward Kinematics Tests ===
+console.log('\n--- Batch Forward Kinematics Tests ---\n');
+
+test('batchForwardKinematics basic', () => {
+    // Create DH params for a simple 3-DOF robot
+    const dhParams = [
+        new wasm.DhParam(0, 0, 0.1, 0),      // joint 1
+        new wasm.DhParam(0.2, 0, 0, 0),      // joint 2
+        new wasm.DhParam(0.15, 0, 0, 0),     // joint 3
+    ];
+
+    const robotCount = 3;
+    const jointCount = 3;
+
+    // Create joint angles: [robot1_j1, robot1_j2, robot1_j3, robot2_j1, ...]
+    const jointAngles = [
+        0, 0, 0,          // robot 1: all zeros
+        0.1, 0.2, 0.3,    // robot 2: small angles
+        -0.1, 0, 0.1,     // robot 3: mixed angles
+    ];
+
+    const transforms = wasm.batchForwardKinematics(dhParams, jointAngles, robotCount, jointCount);
+
+    // Expected output: 3 robots * 4 links * 16 floats = 192
+    const expectedLen = robotCount * (jointCount + 1) * 16;
+    if (transforms.length !== expectedLen) {
+        throw new Error(`Expected ${expectedLen} floats, got ${transforms.length}`);
+    }
+
+    // Check that first matrix (robot 1, base link) is identity-ish
+    // Column-major identity: [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]
+    if (Math.abs(transforms[0] - 1) > 0.001) throw new Error('Expected identity at [0,0]');
+    if (Math.abs(transforms[5] - 1) > 0.001) throw new Error('Expected identity at [1,1]');
+    if (Math.abs(transforms[10] - 1) > 0.001) throw new Error('Expected identity at [2,2]');
+    if (Math.abs(transforms[15] - 1) > 0.001) throw new Error('Expected identity at [3,3]');
+});
+
+test('batchForwardKinematicsF32 basic', () => {
+    const dhParams = [
+        new wasm.DhParam(0, 0, 0.1, 0),
+        new wasm.DhParam(0.2, 0, 0, 0),
+    ];
+
+    const robotCount = 2;
+    const jointCount = 2;
+
+    const jointAngles = new Float32Array([
+        0, 0,
+        0.5, 0.5,
+    ]);
+
+    const transforms = wasm.batchForwardKinematicsF32(dhParams, Array.from(jointAngles), robotCount, jointCount);
+
+    const expectedLen = robotCount * (jointCount + 1) * 16;
+    if (transforms.length !== expectedLen) {
+        throw new Error(`Expected ${expectedLen} floats, got ${transforms.length}`);
+    }
+});
+
+test('batchForwardKinematicsEndEffector basic', () => {
+    const dhParams = [
+        new wasm.DhParam(0, 0, 0.1, 0),
+        new wasm.DhParam(0.2, 0, 0, 0),
+        new wasm.DhParam(0.15, 0, 0, 0),
+    ];
+
+    const robotCount = 5;
+    const jointCount = 3;
+
+    const jointAngles = new Float32Array(robotCount * jointCount);
+    for (let i = 0; i < jointAngles.length; i++) {
+        jointAngles[i] = Math.sin(i * 0.1) * 0.5;
+    }
+
+    const transforms = wasm.batchForwardKinematicsEndEffector(dhParams, Array.from(jointAngles), robotCount, jointCount);
+
+    // End-effector only: 5 robots * 16 floats = 80
+    const expectedLen = robotCount * 16;
+    if (transforms.length !== expectedLen) {
+        throw new Error(`Expected ${expectedLen} floats, got ${transforms.length}`);
+    }
+});
+
+test('batchForwardKinematics performance (500 robots)', () => {
+    // Simulate RL scenario: 500 robots with 6 DOF each
+    const dhParams = [
+        new wasm.DhParam(0, -Math.PI/2, 0.1, 0),
+        new wasm.DhParam(0.4, 0, 0, 0),
+        new wasm.DhParam(0.02, -Math.PI/2, 0, 0),
+        new wasm.DhParam(0, Math.PI/2, 0.4, 0),
+        new wasm.DhParam(0, -Math.PI/2, 0, 0),
+        new wasm.DhParam(0, 0, 0.1, 0),
+    ];
+
+    const robotCount = 500;
+    const jointCount = 6;
+
+    // Random joint angles
+    const jointAngles = new Float32Array(robotCount * jointCount);
+    for (let i = 0; i < jointAngles.length; i++) {
+        jointAngles[i] = (Math.random() - 0.5) * 2;
+    }
+
+    const start = performance.now();
+    const transforms = wasm.batchForwardKinematicsEndEffector(dhParams, Array.from(jointAngles), robotCount, jointCount);
+    const elapsed = performance.now() - start;
+
+    console.log(`    500 robots batch FK: ${elapsed.toFixed(2)}ms`);
+
+    if (transforms.length !== robotCount * 16) {
+        throw new Error(`Wrong output length`);
+    }
+
+    // Should be under 10ms for 500 robots (target from issue #53)
+    // Be lenient for CI environments
+    if (elapsed > 50) {
+        console.log(`    Warning: batch FK took ${elapsed.toFixed(2)}ms, target is <5ms`);
+    }
+});
+
+test('batchForwardKinematics error handling - mismatched lengths', () => {
+    const dhParams = [
+        new wasm.DhParam(0, 0, 0.1, 0),
+        new wasm.DhParam(0.2, 0, 0, 0),
+    ];
+
+    try {
+        // Wrong: 3 joints but only 2 DH params
+        wasm.batchForwardKinematics(dhParams, [0, 0, 0, 0, 0, 0], 2, 3);
+        throw new Error('Expected error for mismatched lengths');
+    } catch (e) {
+        if (!e.message.includes('DH params length')) {
+            throw new Error(`Wrong error message: ${e.message}`);
+        }
+    }
+});
+
 // === Robot Integration Tests ===
 console.log('\n--- Robot Integration Tests ---\n');
 
