@@ -263,7 +263,8 @@ const JointRow: React.FC<JointRowProps> = ({
     fontSize: 12,
     fontFamily: 'var(--font-mono, monospace)',
     textAlign: 'right',
-    backgroundColor: disabled ? 'var(--pe-disabled-bg, #f3f4f6)' : 'white',
+    backgroundColor: disabled ? 'var(--pe-disabled-bg, #3a3a4e)' : 'var(--pe-input-bg, #2a2a3e)',
+    color: 'var(--pe-text, #e5e7eb)',
     outline: 'none',
   };
 
@@ -286,7 +287,7 @@ const JointRow: React.FC<JointRowProps> = ({
     left: 0,
     right: 0,
     height: 4,
-    backgroundColor: 'var(--pe-slider-track, #e5e7eb)',
+    backgroundColor: 'var(--pe-slider-track, #3a3a5a)',
     borderRadius: 2,
   };
 

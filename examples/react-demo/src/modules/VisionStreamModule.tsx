@@ -30,47 +30,93 @@ interface SimulatedPointCloud {
 }
 
 // ============================================================================
-// Simulated Stream Generators
+// Pre-loaded Sample Frames (simulates loading images from file)
 // ============================================================================
 
 /**
- * Generate a simulated camera frame with moving patterns
+ * Pre-generated sample frames cache - avoids per-frame computation
+ * Single static frame per resolution - maximum performance
  */
-function generateSimulatedFrame(
-  width: number,
-  height: number,
-  frameNumber: number
-): SimulatedFrame {
-  const data = new Uint8Array(width * height * 4); // RGBA
+const sampleFramesCache: Map<string, Uint8Array> = new Map();
+
+/**
+ * Generate a single sample frame at initialization (called once per resolution)
+ * Creates a static industrial camera-like image
+ */
+function initSampleFrame(width: number, height: number): Uint8Array {
+  const data = new Uint8Array(width * height * 4);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * 4;
 
-      // Create a moving gradient pattern
-      const phase = frameNumber * 0.05;
-      const r = Math.floor(128 + 127 * Math.sin(x * 0.02 + phase));
-      const g = Math.floor(128 + 127 * Math.sin(y * 0.02 + phase * 0.7));
-      const b = Math.floor(128 + 127 * Math.sin((x + y) * 0.015 + phase * 1.3));
+      // Base industrial blue-gray background with gradient
+      const gradientFactor = 1 - (y / height) * 0.25;
+      let r = Math.floor(75 * gradientFactor);
+      let g = Math.floor(95 * gradientFactor);
+      let b = Math.floor(115 * gradientFactor);
 
-      // Add a moving circle
-      const cx = width / 2 + Math.sin(phase * 2) * width * 0.3;
-      const cy = height / 2 + Math.cos(phase * 2) * height * 0.2;
-      const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-      const circleIntensity = Math.max(0, 1 - dist / 50);
+      // Grid overlay (conveyor belt / work surface)
+      const gridSize = 24;
+      if ((x % gridSize < 1) || (y % gridSize < 1)) {
+        r = Math.min(255, r + 25);
+        g = Math.min(255, g + 25);
+        b = Math.min(255, b + 30);
+      }
 
-      data[idx] = Math.min(255, r + circleIntensity * 100);
-      data[idx + 1] = Math.min(255, g + circleIntensity * 50);
+      // Static red box (workpiece)
+      const boxCenterX = width * 0.35;
+      const boxCenterY = height * 0.5;
+      const boxSize = 35;
+      if (Math.abs(x - boxCenterX) < boxSize && Math.abs(y - boxCenterY) < boxSize) {
+        r = 185;
+        g = 65;
+        b = 55;
+      }
+
+      // Static green cylinder
+      const cylX = width * 0.65;
+      const cylY = height * 0.45;
+      const cylRadius = 22;
+      const dx = x - cylX;
+      const dy = y - cylY;
+      if (dx * dx + dy * dy < cylRadius * cylRadius) {
+        r = 60;
+        g = 165;
+        b = 80;
+      }
+
+      data[idx] = r;
+      data[idx + 1] = g;
       data[idx + 2] = b;
-      data[idx + 3] = 255; // Alpha
+      data[idx + 3] = 255;
     }
+  }
+
+  return data;
+}
+
+/**
+ * Get a sample frame - returns the cached static frame
+ * This simulates receiving frames from a camera stream
+ */
+function getSampleFrame(
+  width: number,
+  height: number,
+  _frameNumber: number
+): SimulatedFrame {
+  const key = `${width}x${height}`;
+
+  // Initialize frame for this resolution if not already done
+  if (!sampleFramesCache.has(key)) {
+    sampleFramesCache.set(key, initSampleFrame(width, height));
   }
 
   return {
     width,
     height,
-    data,
-    timestamp: Date.now(),
+    data: sampleFramesCache.get(key)!,
+    timestamp: performance.now(),
   };
 }
 
@@ -317,7 +363,7 @@ function ImageStreamDisplay({
           color: '#aaa',
         }}
       >
-        Camera: Simulated Industrial Camera
+        Camera: Pre-loaded Sample Frames
       </div>
 
       {!isStreaming && !frame && (
@@ -523,8 +569,10 @@ export function VisionStreamModule() {
   // Animation refs
   const cameraFrameRef = useRef(0);
   const cloudFrameRef = useRef(0);
-  const cameraIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const cloudIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cameraAnimationRef = useRef<number | null>(null);
+  const cloudAnimationRef = useRef<number | null>(null);
+  const lastCameraFrameTimeRef = useRef(0);
+  const lastCloudFrameTimeRef = useRef(0);
   const fpsTimestampsRef = useRef<number[]>([]);
   const cloudTimestampsRef = useRef<number[]>([]);
 
@@ -556,64 +604,90 @@ export function VisionStreamModule() {
     return [w, h];
   }, [cameraControls.resolution]);
 
-  // Start camera stream
+  // Start camera stream using requestAnimationFrame for smooth rendering
   const startCameraStream = useCallback(() => {
-    if (cameraIntervalRef.current) return;
+    if (cameraAnimationRef.current) return;
 
     addLog('info', `Starting camera stream at ${cameraControls.resolution} @ ${cameraControls.targetFps}fps`);
     setIsCameraStreaming(true);
+    lastCameraFrameTimeRef.current = performance.now();
 
-    cameraIntervalRef.current = setInterval(() => {
-      const frame = generateSimulatedFrame(resWidth, resHeight, cameraFrameRef.current++);
-      setCameraFrame(frame);
+    const frameInterval = 1000 / cameraControls.targetFps;
 
-      // Update FPS calculation
-      const now = Date.now();
-      fpsTimestampsRef.current.push(now);
-      fpsTimestampsRef.current = fpsTimestampsRef.current.filter((t) => t > now - 1000);
-      setCameraFps(fpsTimestampsRef.current.length);
-    }, 1000 / cameraControls.targetFps);
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - lastCameraFrameTimeRef.current;
+
+      if (elapsed >= frameInterval) {
+        lastCameraFrameTimeRef.current = currentTime - (elapsed % frameInterval);
+
+        const frame = getSampleFrame(resWidth, resHeight, cameraFrameRef.current++);
+        setCameraFrame(frame);
+
+        // Update FPS calculation
+        const now = performance.now();
+        fpsTimestampsRef.current.push(now);
+        fpsTimestampsRef.current = fpsTimestampsRef.current.filter((t) => t > now - 1000);
+        setCameraFps(fpsTimestampsRef.current.length);
+      }
+
+      cameraAnimationRef.current = requestAnimationFrame(animate);
+    };
+
+    cameraAnimationRef.current = requestAnimationFrame(animate);
   }, [resWidth, resHeight, cameraControls.targetFps, cameraControls.resolution, addLog]);
 
   // Stop camera stream
   const stopCameraStream = useCallback(() => {
-    if (cameraIntervalRef.current) {
-      clearInterval(cameraIntervalRef.current);
-      cameraIntervalRef.current = null;
+    if (cameraAnimationRef.current) {
+      cancelAnimationFrame(cameraAnimationRef.current);
+      cameraAnimationRef.current = null;
     }
     setIsCameraStreaming(false);
     setCameraFps(0);
     addLog('info', 'Camera stream stopped');
   }, [addLog]);
 
-  // Start point cloud stream
+  // Start point cloud stream using requestAnimationFrame
   const startCloudStream = useCallback(() => {
-    if (cloudIntervalRef.current) return;
+    if (cloudAnimationRef.current) return;
 
     addLog('info', `Starting point cloud stream: ${cloudControls.pointCount} points @ ${cloudControls.updateRate}Hz`);
     setIsCloudStreaming(true);
+    lastCloudFrameTimeRef.current = performance.now();
 
-    cloudIntervalRef.current = setInterval(() => {
-      const cloud = generateSimulatedPointCloud(
-        cloudControls.pointCount,
-        cloudFrameRef.current++,
-        cloudControls.pattern as 'box' | 'sphere' | 'spiral'
-      );
-      setPointCloud(cloud);
+    const frameInterval = 1000 / cloudControls.updateRate;
 
-      // Update rate calculation
-      const now = Date.now();
-      cloudTimestampsRef.current.push(now);
-      cloudTimestampsRef.current = cloudTimestampsRef.current.filter((t) => t > now - 1000);
-      setCloudUpdateRate(cloudTimestampsRef.current.length);
-    }, 1000 / cloudControls.updateRate);
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - lastCloudFrameTimeRef.current;
+
+      if (elapsed >= frameInterval) {
+        lastCloudFrameTimeRef.current = currentTime - (elapsed % frameInterval);
+
+        const cloud = generateSimulatedPointCloud(
+          cloudControls.pointCount,
+          cloudFrameRef.current++,
+          cloudControls.pattern as 'box' | 'sphere' | 'spiral'
+        );
+        setPointCloud(cloud);
+
+        // Update rate calculation
+        const now = performance.now();
+        cloudTimestampsRef.current.push(now);
+        cloudTimestampsRef.current = cloudTimestampsRef.current.filter((t) => t > now - 1000);
+        setCloudUpdateRate(cloudTimestampsRef.current.length);
+      }
+
+      cloudAnimationRef.current = requestAnimationFrame(animate);
+    };
+
+    cloudAnimationRef.current = requestAnimationFrame(animate);
   }, [cloudControls.pointCount, cloudControls.updateRate, cloudControls.pattern, addLog]);
 
   // Stop point cloud stream
   const stopCloudStream = useCallback(() => {
-    if (cloudIntervalRef.current) {
-      clearInterval(cloudIntervalRef.current);
-      cloudIntervalRef.current = null;
+    if (cloudAnimationRef.current) {
+      cancelAnimationFrame(cloudAnimationRef.current);
+      cloudAnimationRef.current = null;
     }
     setIsCloudStreaming(false);
     setCloudUpdateRate(0);
@@ -623,8 +697,8 @@ export function VisionStreamModule() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (cameraIntervalRef.current) clearInterval(cameraIntervalRef.current);
-      if (cloudIntervalRef.current) clearInterval(cloudIntervalRef.current);
+      if (cameraAnimationRef.current) cancelAnimationFrame(cameraAnimationRef.current);
+      if (cloudAnimationRef.current) cancelAnimationFrame(cloudAnimationRef.current);
     };
   }, []);
 
@@ -633,8 +707,8 @@ export function VisionStreamModule() {
       <div className="module-header">
         <h2>Vision Streaming Demo</h2>
         <p>
-          Real-time camera image streaming and 3D point cloud visualization.
-          Demonstrates the new streaming APIs from @aspect/roboviz-core.
+          Camera stream using pre-loaded sample frames and 3D point cloud visualization.
+          Demonstrates the streaming APIs from @aspect/roboviz-core.
         </p>
       </div>
 

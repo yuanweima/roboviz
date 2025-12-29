@@ -142,7 +142,7 @@ function StateDisplay() {
 // Headless content with controls
 function HeadlessContent() {
   const { addRobot, setRobotJoints, robots } = useRoboViz();
-  const [robotId, setRobotId] = useState<string | null>(null);
+  const robotIdRef = useRef<string | null>(null);
   const [angles, setAngles] = useState<number[]>([0, 0, 0, 0, 0, 0]);
   const { addLog } = useAppStore();
 
@@ -152,7 +152,7 @@ function HeadlessContent() {
       urdf: 'virtual://robot', // Virtual robot - no actual URDF
       jointAngles: [0, 0, 0, 0, 0, 0],
     });
-    setRobotId(id);
+    robotIdRef.current = id;
     addLog('info', `Headless robot created: ${id}`);
   }, [addRobot, addLog]);
 
@@ -166,6 +166,7 @@ function HeadlessContent() {
 
   useControls('Headless Control', {
     'Random Pose': button(() => {
+      const robotId = robotIdRef.current;
       if (!robotId) return;
       const newAngles = [
         (Math.random() - 0.5) * Math.PI,
@@ -178,6 +179,7 @@ function HeadlessContent() {
       setRobotJoints(robotId, newAngles);
     }),
     'Animate': button(() => {
+      const robotId = robotIdRef.current;
       if (!robotId) return;
       let t = 0;
       const interval = setInterval(() => {
@@ -197,6 +199,7 @@ function HeadlessContent() {
       }, 50);
     }),
     'Home': button(() => {
+      const robotId = robotIdRef.current;
       if (!robotId) return;
       setRobotJoints(robotId, [0, 0, 0, 0, 0, 0]);
     }),
@@ -387,27 +390,26 @@ export function HeadlessModule() {
 
         {/* Imperative Headless */}
         <ImperativeHeadlessDemo />
-      </div>
 
-      {/* Code examples */}
-      <div
-        style={{
-          marginTop: '24px',
-          padding: '16px',
-          background: '#0d0d1a',
-          borderRadius: '8px',
-        }}
-      >
-        <h4 style={{ margin: '0 0 12px 0', color: '#4ecdc4' }}>Headless Mode Usage</h4>
-        <pre
+        {/* Code examples */}
+        <div
           style={{
-            margin: 0,
-            fontFamily: 'monospace',
-            fontSize: '12px',
-            color: '#aaa',
+            marginTop: '24px',
+            padding: '16px',
+            background: '#0d0d1a',
+            borderRadius: '8px',
           }}
         >
-          {`// React Component
+          <h4 style={{ margin: '0 0 12px 0', color: '#4ecdc4' }}>Headless Mode Usage</h4>
+          <pre
+            style={{
+              margin: 0,
+              fontFamily: 'monospace',
+              fontSize: '12px',
+              color: '#aaa',
+            }}
+          >
+            {`// React Component
 <RoboVizHeadless config={{ ... }}>
   <MyCustomRenderer />
 </RoboVizHeadless>
@@ -431,7 +433,8 @@ viz.subscribe((state) => {
 // Use case: Unit testing
 // Use case: Custom WebGL/Canvas renderer
 // Use case: State persistence`}
-        </pre>
+          </pre>
+        </div>
       </div>
     </div>
   );
