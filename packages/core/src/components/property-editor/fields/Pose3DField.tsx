@@ -169,7 +169,7 @@ export const Pose3DField: React.FC<Pose3DFieldProps> = ({
     display: 'flex',
     flexDirection: 'column',
     gap: 0,
-    border: '1px solid var(--pe-border, #e5e7eb)',
+    border: '1px solid var(--pe-border, #3a3a5a)',
     borderRadius: 6,
     overflow: 'hidden',
   };
@@ -179,8 +179,8 @@ export const Pose3DField: React.FC<Pose3DFieldProps> = ({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '8px 12px',
-    backgroundColor: 'var(--pe-header-bg, #f9fafb)',
-    borderBottom: '1px solid var(--pe-border, #e5e7eb)',
+    backgroundColor: 'var(--pe-header-bg, #252540)',
+    borderBottom: '1px solid var(--pe-border, #3a3a5a)',
   };
 
   return (
@@ -200,7 +200,8 @@ export const Pose3DField: React.FC<Pose3DFieldProps> = ({
               border: '1px solid var(--pe-border, #d1d5db)',
               borderRadius: 4,
               fontSize: 11,
-              backgroundColor: 'white',
+              backgroundColor: 'var(--pe-input-bg, #2a2a3e)',
+              color: 'var(--pe-text, #e5e7eb)',
             }}
           >
             {coordinateFrames.map((frame) => (
@@ -385,7 +386,7 @@ interface SectionProps {
 }
 
 const Section: React.FC<SectionProps> = ({ title, expanded, onToggle, icon, extra, children }) => (
-  <div style={{ borderBottom: '1px solid var(--pe-border, #e5e7eb)' }}>
+  <div style={{ borderBottom: '1px solid var(--pe-border, #3a3a5a)' }}>
     <button
       type="button"
       onClick={onToggle}
@@ -396,20 +397,20 @@ const Section: React.FC<SectionProps> = ({ title, expanded, onToggle, icon, extr
         gap: 8,
         padding: '8px 12px',
         border: 'none',
-        backgroundColor: 'var(--pe-section-bg, #fafafa)',
+        backgroundColor: 'var(--pe-section-bg, #1e1e38)',
         cursor: 'pointer',
         textAlign: 'left',
       }}
     >
       <ChevronIcon expanded={expanded} />
       {icon}
-      <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: 'var(--pe-text, #374151)' }}>
+      <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: 'var(--pe-text, #e5e7eb)' }}>
         {title}
       </span>
       {extra}
     </button>
     {expanded && (
-      <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--pe-content-bg, #1a1a2e)' }}>
         {children}
       </div>
     )}
@@ -531,8 +532,8 @@ const GizmoButton: React.FC<GizmoButtonProps> = ({ mode, active, onClick, disabl
       justifyContent: 'center',
       border: '1px solid var(--pe-border, #d1d5db)',
       borderRadius: 4,
-      backgroundColor: active ? 'var(--pe-primary, #3b82f6)' : 'white',
-      color: active ? 'white' : 'var(--pe-text, #374151)',
+      backgroundColor: active ? 'var(--pe-primary, #3b82f6)' : 'var(--pe-input-bg, #2a2a3e)',
+      color: active ? 'white' : 'var(--pe-text, #e5e7eb)',
       cursor: disabled ? 'not-allowed' : 'pointer',
     }}
     title={mode === 'translate' ? 'Move' : 'Rotate'}

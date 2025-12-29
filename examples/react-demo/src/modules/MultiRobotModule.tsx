@@ -31,18 +31,19 @@ interface RobotInstance {
 
 // Scene component
 function MultiRobotScene() {
+  // Z-up coordinate system: [X, Y, Z] where Z is height
   const [robots, setRobots] = useState<RobotInstance[]>([
     {
       id: 'robot_left',
-      position: [-0.8, 0, 0],
-      rotation: [0, Math.PI / 4, 0],
+      position: [0, -0.8, 0], // Left side (negative Y)
+      rotation: [0, 0, -Math.PI / 4], // Rotate around Z axis to face center
       jointAngles: [0, -0.3, 0.6, 0, -0.3, 0],
       color: '#ff6b6b',
     },
     {
       id: 'robot_right',
-      position: [0.8, 0, 0],
-      rotation: [0, -Math.PI / 4, 0],
+      position: [0, 0.8, 0], // Right side (positive Y)
+      rotation: [0, 0, Math.PI / 4], // Rotate around Z axis to face center
       jointAngles: [0, -0.3, 0.6, 0, -0.3, 0],
       color: '#4ecdc4',
     },
@@ -138,17 +139,19 @@ function MultiRobotScene() {
       }
 
       const colors = ['#ff6b6b', '#4ecdc4', '#ffe66d', '#a855f7'];
+      // Z-up coordinate system: [X, Y, Z] where Z is height
       const positions: [number, number, number][] = [
-        [-0.8, 0, 0],
-        [0.8, 0, 0],
-        [0, 0, -0.8],
-        [0, 0, 0.8],
+        [0, -0.8, 0],   // Left (negative Y)
+        [0, 0.8, 0],    // Right (positive Y)
+        [-0.8, 0, 0],   // Back (negative X)
+        [0.8, 0, 0],    // Front (positive X)
       ];
+      // Rotation around Z axis to face center
       const rotations: [number, number, number][] = [
-        [0, Math.PI / 4, 0],
-        [0, -Math.PI / 4, 0],
-        [0, 0, 0],
-        [0, Math.PI, 0],
+        [0, 0, -Math.PI / 4],  // Left robot facing center-right
+        [0, 0, Math.PI / 4],   // Right robot facing center-left
+        [0, 0, Math.PI],       // Back robot facing forward
+        [0, 0, 0],             // Front robot facing backward
       ];
 
       const newRobot: RobotInstance = {
@@ -189,10 +192,11 @@ function MultiRobotScene() {
             color={robot.color}
           />
           {/* ✨ Using the new WorkspaceVisual helper component */}
+          {/* Z-up: position is [X, Y, Z], workspace on XY plane at Z=0.02 */}
           {controls.showWorkspaces && (
             <WorkspaceVisual
               radius={0.8}
-              position={[robot.position[0], 0.02, robot.position[2]]}
+              position={[robot.position[0], robot.position[1], 0.02]}
               color={robot.color}
               opacity={0.1}
               showBoundary
@@ -202,13 +206,14 @@ function MultiRobotScene() {
       ))}
 
       {/* ✨ Using the new CoordinationLine helper component */}
+      {/* Z-up: line at height Z=0.5 */}
       {showCoordination &&
         robots.length >= 2 &&
         robots.slice(0, -1).map((robot, i) => (
           <CoordinationLine
             key={`coord_${i}`}
-            start={[robot.position[0], 0.5, robot.position[2]]}
-            end={[robots[i + 1].position[0], 0.5, robots[i + 1].position[2]]}
+            start={[robot.position[0], robot.position[1], 0.5]}
+            end={[robots[i + 1].position[0], robots[i + 1].position[1], 0.5]}
             color="#00ffff"
             dashed
           />

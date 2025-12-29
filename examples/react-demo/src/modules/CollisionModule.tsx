@@ -40,7 +40,7 @@ interface ObstacleItem {
   color: string;
 }
 
-// 默认安全区域
+// 默认安全区域 (Z-up coordinate system)
 const DEFAULT_SAFETY_ZONES: SafetyZoneType[] = [
   {
     id: 'warning-zone',
@@ -49,7 +49,8 @@ const DEFAULT_SAFETY_ZONES: SafetyZoneType[] = [
     params: { radius: 0.6, height: 0.5 },
     level: 'warning',
     transform: {
-      position: { x: 0, y: 0.25, z: 0 },
+      // Z-up: cylinder centered at z=0.25 (half height above ground)
+      position: { x: 0, y: 0, z: 0.25 },
       rotation: { w: 1, x: 0, y: 0, z: 0 },
     },
     visualization: {
@@ -69,7 +70,8 @@ const DEFAULT_SAFETY_ZONES: SafetyZoneType[] = [
     params: { radius: 0.35, height: 0.6 },
     level: 'danger',
     transform: {
-      position: { x: 0, y: 0.3, z: 0 },
+      // Z-up: cylinder centered at z=0.3 (half height above ground)
+      position: { x: 0, y: 0, z: 0.3 },
       rotation: { w: 1, x: 0, y: 0, z: 0 },
     },
     visualization: {
@@ -223,19 +225,20 @@ function CollisionSceneContent({
 
 export function CollisionModule() {
   const [jointAngles, setJointAngles] = useState<number[]>([0, -0.3, 0.6, 0, -0.3, 0]);
+  // Z-up coordinate system: z is height
   const [obstacles, setObstacles] = useState<ObstacleItem[]>([
     {
       id: 'obs1',
       shape: 'box',
       dimensions: { x: 0.15, y: 0.15, z: 0.15 },
-      position: { x: 0.4, y: 0.08, z: 0.3 },
+      position: { x: 0.4, y: 0.3, z: 0.08 },
       color: '#ff4444',
     },
     {
       id: 'obs2',
       shape: 'sphere',
       dimensions: { x: 0.1, y: 0.1, z: 0.1 },
-      position: { x: -0.3, y: 0.1, z: 0.4 },
+      position: { x: -0.3, y: 0.4, z: 0.1 },
       color: '#4444ff',
     },
   ]);
@@ -317,7 +320,7 @@ export function CollisionModule() {
     },
   });
 
-  // 障碍物控制
+  // 障碍物控制 (Z-up coordinate system)
   useControls('Obstacles', {
     'Add Box': button(() => {
       const size = 0.1 + Math.random() * 0.1;
@@ -327,8 +330,8 @@ export function CollisionModule() {
         dimensions: { x: size, y: size, z: size },
         position: {
           x: (Math.random() - 0.5) * 0.8,
-          y: 0.05 + Math.random() * 0.15,
-          z: 0.2 + Math.random() * 0.4,
+          y: 0.2 + Math.random() * 0.4,
+          z: 0.05 + Math.random() * 0.15, // z is height
         },
         color: '#ff6b35',
       };
@@ -343,8 +346,8 @@ export function CollisionModule() {
         dimensions: { x: radius, y: radius, z: radius },
         position: {
           x: (Math.random() - 0.5) * 0.8,
-          y: radius + Math.random() * 0.2,
-          z: 0.2 + Math.random() * 0.4,
+          y: 0.2 + Math.random() * 0.4,
+          z: radius + Math.random() * 0.2, // z is height
         },
         color: '#35a7ff',
       };
@@ -357,11 +360,11 @@ export function CollisionModule() {
       const newObs: ObstacleItem = {
         id: `obs_${Date.now()}`,
         shape: 'cylinder',
-        dimensions: { x: radius, y: height, z: radius },
+        dimensions: { x: radius, y: radius, z: height }, // z dimension is height for cylinder
         position: {
           x: (Math.random() - 0.5) * 0.8,
-          y: height / 2,
-          z: 0.2 + Math.random() * 0.4,
+          y: 0.2 + Math.random() * 0.4,
+          z: height / 2, // z is height, cylinder centered at half height
         },
         color: '#35ff6b',
       };

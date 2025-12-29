@@ -53,14 +53,31 @@ const PRESET_POSES: Record<string, { angles: number[]; status: GhostStatus; labe
   },
 };
 
-// Sample trajectory keyframes
-const SAMPLE_TRAJECTORY = [
-  { jointAngles: [0, 0, 0, 0, 0, 0], status: 'valid' as GhostStatus, label: 'Start' },
-  { jointAngles: [0.3, -0.1, 0.2, 0, 0.1, 0], status: 'valid' as GhostStatus },
-  { jointAngles: [0.6, -0.2, 0.4, 0, 0.2, 0], status: 'valid' as GhostStatus },
-  { jointAngles: [0.9, -0.3, 0.6, 0.1, 0.3, 0.2], status: 'warning' as GhostStatus },
-  { jointAngles: [1.2, -0.4, 0.8, 0.2, 0.4, 0.4], status: 'valid' as GhostStatus, label: 'End' },
-];
+// Generate trajectory keyframes from current position to target
+function generateTrajectory(
+  start: number[],
+  end: number[],
+  steps: number = 5
+): { jointAngles: number[]; status: GhostStatus; label?: string }[] {
+  const keyframes: { jointAngles: number[]; status: GhostStatus; label?: string }[] = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    // Linear interpolation between start and end
+    const jointAngles = start.map((s, j) => s + (end[j] - s) * t);
+
+    // Check if any joint is near its limit (simplified check)
+    const nearLimit = jointAngles.some((a) => Math.abs(a) > 1.4);
+
+    keyframes.push({
+      jointAngles,
+      status: nearLimit ? 'warning' : 'valid',
+      label: i === 0 ? 'Start' : i === steps ? 'End' : undefined,
+    });
+  }
+
+  return keyframes;
+}
 
 export function GhostRobotModule() {
   const { addLog } = useAppStore();
@@ -137,10 +154,12 @@ export function GhostRobotModule() {
     },
   }));
 
-  // Action buttons
+  // Action buttons - use Leva's get function to read current preset value at click time
   useControls('Actions', {
-    'Animate to Target': button(() => {
-      const target = PRESET_POSES[selectedPreset].angles;
+    'Animate to Target': button((get) => {
+      // Use get() to read the current preset value from Leva at click time
+      const currentPreset = get('Ghost Robot.preset') as string;
+      const target = PRESET_POSES[currentPreset].angles;
       const start = [...currentJoints];
       let t = 0;
       const interval = setInterval(() => {
@@ -164,7 +183,7 @@ export function GhostRobotModule() {
           J3: interpolated[2],
         });
       }, 50);
-      addLog('info', `Animating to ${selectedPreset}`);
+      addLog('info', `Animating to ${currentPreset}`);
     }),
     'Reset Current': button(() => {
       setCurrentJoints([0, 0, 0, 0, 0, 0]);
@@ -175,6 +194,11 @@ export function GhostRobotModule() {
 
   // Get selected preset
   const targetPose = PRESET_POSES[selectedPreset];
+
+  // Generate trajectory from current position to selected target
+  const trajectoryKeyframes = useMemo(() => {
+    return generateTrajectory(currentJoints, targetPose.angles, 5);
+  }, [currentJoints, targetPose.angles]);
 
   // Calculate a simple end effector position for trajectory line
   // (In real application, this would come from FK calculation)
@@ -237,11 +261,11 @@ export function GhostRobotModule() {
               />
             )}
 
-            {/* Trajectory ghost robots */}
+            {/* Trajectory ghost robots - dynamically generated from current to target */}
             {showTrajectory && (
               <GhostRobotTrajectory
                 urdfPath={URDF_PATH}
-                keyframes={SAMPLE_TRAJECTORY}
+                keyframes={trajectoryKeyframes}
                 position={{ x: 0, y: 0, z: 0 }}
                 opacity={trajectoryControls.trajectoryOpacity}
                 showTrajectoryLines={trajectoryControls.showLines}

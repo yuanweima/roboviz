@@ -54,15 +54,17 @@ export function WorkspaceVisual({
     ? (Array.isArray(position)
         ? position
         : [position.x, position.y, position.z])
-    : [0, 0.01, 0]; // Slightly above ground by default
+    : [0, 0, 0.01]; // Slightly above ground by default (Z-up coordinate system)
 
   // Determine final color based on reachable state
   const finalColor = reachable !== undefined
     ? (reachable ? reachableColor : unreachableColor)
     : color;
 
-  // Base rotation for horizontal placement
-  const baseRotation: [number, number, number] = rotation ?? [-Math.PI / 2, 0, 0];
+  // CircleGeometry is in XY plane with normal pointing +Z
+  // In Z-up coordinate system, this means it's already horizontal (facing up)
+  // No rotation needed by default
+  const baseRotation: [number, number, number] = rotation ?? [0, 0, 0];
 
   if (use3D) {
     // 3D sphere visualization
@@ -222,9 +224,10 @@ export function SharedWorkspace({
     return null;
   }
 
+  // CircleGeometry is in XY plane with normal pointing +Z, already horizontal in Z-up
   return (
     <group position={center}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh>
         <circleGeometry args={[sharedRadius, 32]} />
         <meshBasicMaterial
           color={color}

@@ -187,17 +187,17 @@ export const NumberField: React.FC<NumberFieldProps> = ({
         ? 'var(--pe-highlight, #3b82f6)'
         : isFocused
         ? 'var(--pe-focus, #3b82f6)'
-        : 'var(--pe-border, #d1d5db)'
+        : 'var(--pe-border, #3a3a5a)'
     }`,
     borderRadius: 4,
     fontSize: 13,
     fontFamily: 'var(--font-mono, monospace)',
     backgroundColor: disabled
-      ? 'var(--pe-disabled-bg, #f3f4f6)'
-      : 'var(--pe-input-bg, white)',
+      ? 'var(--pe-disabled-bg, #3a3a4e)'
+      : 'var(--pe-input-bg, #2a2a3e)',
     color: disabled
-      ? 'var(--pe-disabled-text, #9ca3af)'
-      : 'var(--pe-text, #1f2937)',
+      ? 'var(--pe-disabled-text, #6b7280)'
+      : 'var(--pe-text, #e5e7eb)',
     cursor: isDragging ? 'ew-resize' : disabled ? 'not-allowed' : 'text',
     outline: 'none',
     textAlign: 'right',
@@ -214,7 +214,7 @@ export const NumberField: React.FC<NumberFieldProps> = ({
     width: '100%',
     height: 4,
     appearance: 'none',
-    backgroundColor: 'var(--pe-slider-track, #e5e7eb)',
+    backgroundColor: 'var(--pe-slider-track, #3a3a5a)',
     borderRadius: 2,
     cursor: disabled ? 'not-allowed' : 'pointer',
   };

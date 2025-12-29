@@ -20,6 +20,12 @@
 }
 
 /* App Layout */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -54,7 +60,7 @@
 
 /* Main Content */
 .main {
-  flex: 1;
+  flex: 1 1 0;
   display: flex;
   overflow: hidden;
 }
@@ -249,33 +255,38 @@
 }
 
 /* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a5a;
+}
+
 .sidebar::-webkit-scrollbar {
   width: 6px;
 }
 
-.sidebar::-webkit-scrollbar-track {
-  background: var(--bg-tertiary);
-}
-
-.sidebar::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
-}
-
-.sidebar::-webkit-scrollbar-thumb:hover {
-  background: #3a3a5a;
-}
-
 /* Main Layout */
 .main-layout {
-  flex: 1;
+  flex: 1 1 0;
   display: flex;
   overflow: hidden;
 }
 
 .main-content {
-  flex: 1;
-  overflow: hidden;
+  flex: 1 1 0;
+  overflow: auto;
 }
 
 /* Module Container */
@@ -306,6 +317,34 @@
   flex: 1;
   position: relative;
   background: var(--bg-primary);
+  min-height: 400px;
+}
+
+.module-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.module-status span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.module-status span.active {
+  color: var(--success-color);
+}
+
+.module-content {
+  flex: 1;
+  padding: 16px 24px;
+  overflow: auto;
 }
 
 /* Performance Stats */
@@ -344,11 +383,14 @@
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
+  flex-shrink: 0;
 }
 
 .sidebar-nav {
   flex: 1;
   padding: 8px;
+  overflow-y: auto;
 }
 
 .nav-item {

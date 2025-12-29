@@ -46,7 +46,8 @@ const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';
 
 // Cable anchor - fixed point in world (e.g., cable tray on wall)
 // Z-up coordinates: [x, y, z_height]
-const CABLE_ANCHOR: [number, number, number] = [-0.5, 0, 0.4];
+// Cable anchor point in front of the robot (+X direction) to avoid cable going through robot
+const CABLE_ANCHOR: [number, number, number] = [0.6, -0.4, 0.3];
 
 // Cable preset options
 const CABLE_PRESETS: { value: CablePresetType; label: string; maxDeg: number }[] = [
@@ -59,7 +60,7 @@ const CABLE_PRESETS: { value: CablePresetType; label: string; maxDeg: number }[]
 type MotionMode = 'manual' | 'auto-naive' | 'auto-cable-aware';
 
 // ============================================================================
-// 3D Cable Component - Realistic cable from anchor to TCP
+// 3D Cable Component - Realistic cable routed along robot arm
 // ============================================================================
 
 interface Cable3DProps {
@@ -75,22 +76,26 @@ function Cable3D({ anchorPoint, tcpPosition, twist, maxTwist, warningThreshold }
   const isCritical = ratio >= 1;
   const isWarning = ratio >= warningThreshold;
 
-  // Cable color based on twist level
+  // Cable color based on twist level - more vivid colors for better visibility
   const cableColor = useMemo(() => {
-    if (isCritical) return new THREE.Color('#ff2222');
-    if (isWarning) return new THREE.Color('#ff8800');
-    if (ratio > 0.5) return new THREE.Color('#ffcc00');
-    return new THREE.Color('#22aa44');
+    if (isCritical) return new THREE.Color('#ff0000'); // Bright red
+    if (isWarning) return new THREE.Color('#ff6600'); // Orange
+    if (ratio > 0.5) return new THREE.Color('#ffaa00'); // Yellow
+    return new THREE.Color('#00cc66'); // Green
   }, [ratio, isCritical, isWarning]);
 
-  // Generate cable path
+  // Generate cable path - simple catenary curve that droops naturally
+  // We avoid complex routing through links as it can cause penetration issues
   const cablePath = useMemo(() => {
     const start = new THREE.Vector3(...anchorPoint);
     const end = new THREE.Vector3(...tcpPosition);
+
+    // Use catenary (hanging cable) physics for natural droop
+    // The cable hangs down due to gravity (Z-down in this context)
     return generateCatenaryPath(start, end, {
-      segments: 40,
-      sagFactor: 0.2,
-      cableLength: 1.5,
+      segments: 50,
+      sagFactor: 0.35, // More droop to stay clear of robot
+      gravityDirection: new THREE.Vector3(0, 0, -1), // Z-down
     });
   }, [anchorPoint, tcpPosition]);
 
@@ -100,63 +105,66 @@ function Cable3D({ anchorPoint, tcpPosition, twist, maxTwist, warningThreshold }
     return new THREE.CatmullRomCurve3(cablePath);
   }, [cablePath]);
 
-  // Generate twist spiral markers along cable
-  const twistMarkers = useMemo(() => {
-    if (ratio < 0.2 || cablePath.length < 3) return [];
 
-    const markers: THREE.Vector3[] = [];
-    const numTurns = Math.abs(twist) / (Math.PI * 2);
-    const markerCount = Math.min(Math.floor(numTurns * 4), 20);
-
-    for (let i = 0; i < markerCount; i++) {
-      const t = (i + 1) / (markerCount + 1);
-      const idx = Math.floor(t * (cablePath.length - 1));
-      if (idx < cablePath.length) {
-        markers.push(cablePath[idx].clone());
-      }
+  // Pulsing effect for critical state
+  const [pulsePhase, setPulsePhase] = useState(0);
+  useFrame((_, delta) => {
+    if (isCritical) {
+      setPulsePhase((p) => (p + delta * 8) % (Math.PI * 2));
     }
-    return markers;
-  }, [cablePath, twist, ratio]);
+  });
 
   if (!curve) return null;
 
+  const pulseIntensity = isCritical ? 0.3 + 0.2 * Math.sin(pulsePhase) : 0;
+
   return (
     <group>
-      {/* Main cable tube */}
+      {/* Main cable tube - thicker for visibility */}
       <mesh>
-        <tubeGeometry args={[curve, 40, 0.012, 12, false]} />
+        <tubeGeometry args={[curve, 64, 0.015, 16, false]} />
         <meshStandardMaterial
           color={cableColor}
-          roughness={0.5}
-          metalness={0.3}
+          roughness={0.4}
+          metalness={0.2}
           emissive={cableColor}
-          emissiveIntensity={isCritical ? 0.4 : isWarning ? 0.2 : 0.05}
+          emissiveIntensity={isCritical ? 0.5 + pulseIntensity : isWarning ? 0.3 : 0.1}
         />
       </mesh>
 
-      {/* Cable connector at anchor */}
+      {/* Cable connector at anchor - larger and more visible */}
       <mesh position={anchorPoint}>
-        <cylinderGeometry args={[0.025, 0.03, 0.04, 12]} />
-        <meshStandardMaterial color="#555" metalness={0.8} roughness={0.2} />
+        <cylinderGeometry args={[0.03, 0.035, 0.05, 16]} />
+        <meshStandardMaterial color="#666" metalness={0.9} roughness={0.1} />
       </mesh>
 
-      {/* Twist indicator rings */}
-      {twistMarkers.map((pos, i) => (
-        <mesh key={i} position={pos}>
-          <torusGeometry args={[0.02, 0.004, 8, 16]} />
-          <meshStandardMaterial
-            color={cableColor}
-            emissive={cableColor}
-            emissiveIntensity={0.5}
-          />
-        </mesh>
-      ))}
+      {/* Cable connector at TCP */}
+      <mesh position={tcpPosition}>
+        <cylinderGeometry args={[0.025, 0.03, 0.04, 16]} />
+        <meshStandardMaterial color="#666" metalness={0.9} roughness={0.1} />
+      </mesh>
 
-      {/* Warning glow when critical */}
+      {/* Warning glow when critical - larger and pulsing */}
       {isCritical && (
         <mesh>
-          <tubeGeometry args={[curve, 20, 0.025, 8, false]} />
-          <meshBasicMaterial color="#ff0000" transparent opacity={0.15 + 0.1 * Math.sin(Date.now() / 100)} />
+          <tubeGeometry args={[curve, 32, 0.04, 8, false]} />
+          <meshBasicMaterial
+            color="#ff0000"
+            transparent
+            opacity={0.2 + pulseIntensity}
+          />
+        </mesh>
+      )}
+
+      {/* Warning glow when warning level */}
+      {isWarning && !isCritical && (
+        <mesh>
+          <tubeGeometry args={[curve, 32, 0.03, 8, false]} />
+          <meshBasicMaterial
+            color="#ff6600"
+            transparent
+            opacity={0.15}
+          />
         </mesh>
       )}
     </group>
@@ -247,6 +255,101 @@ function TwistGauge({ twist, maxTwist, warningThreshold }: TwistGaugeProps) {
 }
 
 // ============================================================================
+// Flange Tool - Shows rotation clearly with asymmetric marker
+// ============================================================================
+
+// TCP pose type including position and quaternion
+interface TcpPose {
+  position: [number, number, number];
+  quaternion: [number, number, number, number]; // [x, y, z, w]
+}
+
+interface FlangeToolProps {
+  pose: TcpPose;
+  twist: number;
+  maxTwist: number;
+}
+
+function FlangeTool({ pose, twist, maxTwist }: FlangeToolProps) {
+  const ratio = Math.abs(twist) / maxTwist;
+  const isCritical = ratio >= 1;
+  const isWarning = ratio >= 0.8;
+
+  // Color for the marker based on twist level
+  const markerColor = useMemo(() => {
+    if (isCritical) return '#ff0000';
+    if (isWarning) return '#ff6600';
+    if (ratio > 0.5) return '#ffaa00';
+    return '#00cc66';
+  }, [ratio, isCritical, isWarning]);
+
+  // Create quaternion from pose
+  const quaternion = useMemo(() => {
+    return new THREE.Quaternion(
+      pose.quaternion[0],
+      pose.quaternion[1],
+      pose.quaternion[2],
+      pose.quaternion[3]
+    );
+  }, [pose.quaternion]);
+
+  return (
+    <group position={pose.position} quaternion={quaternion}>
+      {/* Flange base plate */}
+      <mesh position={[0, 0, 0.01]}>
+        <cylinderGeometry args={[0.04, 0.04, 0.02, 24]} />
+        <meshStandardMaterial color="#555" metalness={0.8} roughness={0.2} />
+      </mesh>
+
+      {/* Main rod/pole extending from flange */}
+      <mesh position={[0, 0, 0.08]}>
+        <cylinderGeometry args={[0.012, 0.012, 0.12, 16]} />
+        <meshStandardMaterial color="#888" metalness={0.7} roughness={0.3} />
+      </mesh>
+
+      {/* Asymmetric marker - L-shaped bracket to show rotation clearly */}
+      <group position={[0, 0, 0.1]}>
+        {/* Horizontal arm of L */}
+        <mesh position={[0.04, 0, 0]}>
+          <boxGeometry args={[0.06, 0.015, 0.015]} />
+          <meshStandardMaterial
+            color={markerColor}
+            emissive={markerColor}
+            emissiveIntensity={isCritical ? 0.5 : 0.2}
+          />
+        </mesh>
+
+        {/* Vertical arm of L - offset to make it clearly asymmetric */}
+        <mesh position={[0.065, 0.025, 0]}>
+          <boxGeometry args={[0.015, 0.035, 0.015]} />
+          <meshStandardMaterial
+            color={markerColor}
+            emissive={markerColor}
+            emissiveIntensity={isCritical ? 0.5 : 0.2}
+          />
+        </mesh>
+
+        {/* Arrow tip to indicate direction */}
+        <mesh position={[0.08, 0.045, 0]} rotation={[0, 0, Math.PI / 4]}>
+          <coneGeometry args={[0.015, 0.025, 4]} />
+          <meshStandardMaterial
+            color={markerColor}
+            emissive={markerColor}
+            emissiveIntensity={isCritical ? 0.5 : 0.2}
+          />
+        </mesh>
+      </group>
+
+      {/* Cable attachment point - where cable connects */}
+      <mesh position={[0, 0, 0.15]}>
+        <sphereGeometry args={[0.018, 16, 16]} />
+        <meshStandardMaterial color="#666" metalness={0.9} roughness={0.1} />
+      </mesh>
+    </group>
+  );
+}
+
+// ============================================================================
 // Robot Animation Controller
 // ============================================================================
 
@@ -255,18 +358,21 @@ interface RobotControllerProps {
   speed: number;
   isPlaying: boolean;
   onJointsChange: (joints: number[]) => void;
-  onTcpChange: (tcp: [number, number, number]) => void;
+  onTcpPoseChange: (pose: TcpPose) => void;
   onTwistChange: (twist: number) => void;
   preset: CablePresetType;
+  maxTwist: number; // Max twist limit from cable config
 }
 
 function RobotController({
-  mode, speed, isPlaying, onJointsChange, onTcpChange, onTwistChange, preset
+  mode, speed, isPlaying, onJointsChange, onTcpPoseChange, onTwistChange, preset, maxTwist
 }: RobotControllerProps) {
   const [joints, setJoints] = useState([0, 0, 0, 0, 0, 0]);
   const timeRef = useRef(0);
   const twistAccumRef = useRef(0);
   const lastJ6Ref = useRef(0);
+  const j6AccumRef = useRef(0); // Accumulated J6 for manual mode
+  const j6DirectionRef = useRef(1); // 1 = forward, -1 = reverse
 
   // Load URDF for FK
   const [urdfContent, setUrdfContent] = useState<string | null>(null);
@@ -280,12 +386,15 @@ function RobotController({
   const { ready: solverReady, fk } = useHybridSolver({
     robotId: ROBOT_ID + '-fk',
     urdfContent,
+    coordinateSystem: 'Z-up', // Match scene coordinate system
   });
 
   // Reset twist when preset changes
   useEffect(() => {
     twistAccumRef.current = 0;
     lastJ6Ref.current = joints[5];
+    j6AccumRef.current = 0;
+    j6DirectionRef.current = 1;
     onTwistChange(0);
   }, [preset]);
 
@@ -299,14 +408,27 @@ function RobotController({
 
     if (mode === 'manual') {
       // Manual mode: demonstrate J6 rotation causing twist
+      // J6 accumulates rotation until approaching twist limit, then reverses
       const t = timeRef.current;
+      const j6Speed = 1.5 * delta * speed;
+
+      // Check if we're approaching the twist limit (use 95% as the reversal point)
+      const currentTwist = twistAccumRef.current;
+      if (Math.abs(currentTwist) >= maxTwist * 0.95) {
+        // Reverse direction when near limit
+        j6DirectionRef.current = -Math.sign(currentTwist);
+      }
+
+      // Accumulate J6 rotation
+      j6AccumRef.current += j6Speed * j6DirectionRef.current;
+
       newJoints = [
         Math.sin(t * 0.5) * 0.3,           // J1: slight base rotation
         -0.3 + Math.sin(t * 0.3) * 0.2,    // J2: shoulder
         0.5 + Math.sin(t * 0.4) * 0.2,     // J3: elbow
         Math.sin(t * 0.6) * 0.5,           // J4: wrist 1
         0.3 + Math.sin(t * 0.7) * 0.3,     // J5: wrist 2
-        t * 1.5,                            // J6: continuous rotation - CAUSES TWIST!
+        j6AccumRef.current,                 // J6: controlled rotation that reverses at limits
       ];
     } else if (mode === 'auto-naive') {
       // Naive planning: just go to target, ignoring cable
@@ -355,12 +477,16 @@ function RobotController({
     twistAccumRef.current += j6Delta;
     onTwistChange(twistAccumRef.current);
 
-    // Compute TCP
+    // Compute TCP pose (position + orientation)
     if (solverReady && fk) {
       const result = fk(newJoints);
       if (result) {
         const p = result.pose.position;
-        onTcpChange([p.x, p.y, p.z]);
+        const q = result.pose.orientation;
+        onTcpPoseChange({
+          position: [p.x, p.y, p.z],
+          quaternion: [q.x, q.y, q.z, q.w],
+        });
       }
     }
   });
@@ -390,8 +516,11 @@ function SceneContent({
   onTwistChange: (twist: number) => void;
 }) {
   const [joints, setJoints] = useState([0, 0, 0, 0, 0, 0]);
-  // Z-up coordinates: [x, y, z_height]
-  const [tcpPosition, setTcpPosition] = useState<[number, number, number]>([0.5, 0, 0.6]);
+  // TCP pose with position and orientation
+  const [tcpPose, setTcpPose] = useState<TcpPose>({
+    position: [0.5, 0, 0.6],
+    quaternion: [0, 0, 0, 1],
+  });
   const [twist, setTwist] = useState(0);
 
   const { maxTotalTwist, warningThreshold } = useTrajxCableConfig({ preset });
@@ -401,6 +530,27 @@ function SceneContent({
     onTwistChange(t);
   }, [onTwistChange]);
 
+  const handleTcpPoseChange = useCallback((pose: TcpPose) => {
+    setTcpPose(pose);
+  }, []);
+
+  // Calculate cable endpoint - offset from TCP along the tool axis
+  const cableEndpoint = useMemo((): [number, number, number] => {
+    const q = new THREE.Quaternion(
+      tcpPose.quaternion[0],
+      tcpPose.quaternion[1],
+      tcpPose.quaternion[2],
+      tcpPose.quaternion[3]
+    );
+    // Offset along local Z axis (tool direction) to reach cable attachment point
+    const offset = new THREE.Vector3(0, 0, 0.15).applyQuaternion(q);
+    return [
+      tcpPose.position[0] + offset.x,
+      tcpPose.position[1] + offset.y,
+      tcpPose.position[2] + offset.z,
+    ];
+  }, [tcpPose]);
+
   return (
     <>
       {/* Robot */}
@@ -409,23 +559,31 @@ function SceneContent({
         speed={speed}
         isPlaying={isPlaying}
         onJointsChange={setJoints}
-        onTcpChange={setTcpPosition}
+        onTcpPoseChange={handleTcpPoseChange}
         onTwistChange={handleTwistChange}
         preset={preset}
+        maxTwist={maxTotalTwist}
       />
 
-      {/* Cable from anchor to TCP */}
+      {/* Flange tool with asymmetric marker to show rotation */}
+      <FlangeTool
+        pose={tcpPose}
+        twist={twist}
+        maxTwist={maxTotalTwist}
+      />
+
+      {/* Cable from anchor to flange tool attachment point */}
       <Cable3D
         anchorPoint={CABLE_ANCHOR}
-        tcpPosition={tcpPosition}
+        tcpPosition={cableEndpoint}
         twist={twist}
         maxTwist={maxTotalTwist}
         warningThreshold={warningThreshold}
       />
 
-      {/* Cable anchor mount on "wall" - Z-up: [x, y, z_height], box [width, depth, height] */}
-      <mesh position={[-0.6, 0, 0.4]}>
-        <boxGeometry args={[0.2, 0.15, 0.15]} />
+      {/* Cable anchor mount - positioned in front of robot */}
+      <mesh position={[0.6, -0.4, 0.15]}>
+        <boxGeometry args={[0.15, 0.15, 0.3]} />
         <meshStandardMaterial color="#444" metalness={0.6} roughness={0.4} />
       </mesh>
 

@@ -488,103 +488,105 @@ export function PropertyEditorModule() {
         </p>
       </div>
 
-      {/* Current config summary */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 16,
-          marginBottom: 16,
-          padding: 12,
-          backgroundColor: 'rgba(255,255,255,0.05)',
-          borderRadius: 8,
-          flexWrap: 'wrap',
-          fontSize: 12,
-        }}
-      >
-        <div>
-          <span style={{ color: '#888' }}>Name: </span>
-          <span style={{ fontWeight: 600 }}>{config.name}</span>
-        </div>
-        <div>
-          <span style={{ color: '#888' }}>Model: </span>
-          <span>{config.model}</span>
-        </div>
-        <div>
-          <span style={{ color: '#888' }}>Enabled: </span>
-          <span style={{ color: config.enabled ? '#22c55e' : '#dc2626' }}>
-            {config.enabled ? 'Yes' : 'No'}
-          </span>
-        </div>
-        <div>
-          <span style={{ color: '#888' }}>Speed: </span>
-          <span>{displayValues.speed}</span>
-        </div>
-        <div>
-          <span style={{ color: '#888' }}>Collision: </span>
-          <span style={{ color: config.collisionEnabled ? '#22c55e' : '#888' }}>
-            {config.collisionEnabled ? 'On' : 'Off'}
-          </span>
-        </div>
-      </div>
-
-      {/* Property Editor */}
-      <div
-        style={{
-          backgroundColor: '#1e1e2e',
-          borderRadius: 8,
-          overflow: 'hidden',
-          border: '1px solid #333',
-        }}
-      >
-        <PropertyEditor
-          schema={ROBOT_SCHEMA}
-          value={config as unknown as Record<string, unknown>}
-          onChange={handleChange as unknown as (value: Record<string, unknown>) => void}
-          onSubmit={handleSubmit as unknown as (value: Record<string, unknown>) => void}
-          onReset={handleReset}
-          onValidationChange={handleValidationChange}
-          autoSave={autoSave}
-          autoSaveDelay={500}
-          showValidation={true}
-          validateOn="change"
-          compact={compact}
-          hideActions={autoSave}
+      <div className="module-content">
+        {/* Current config summary */}
+        <div
           style={{
-            backgroundColor: 'var(--pe-bg, #1e1e2e)',
-            color: 'var(--pe-text, #e5e7eb)',
+            display: 'flex',
+            gap: 16,
+            marginBottom: 16,
+            padding: 12,
+            backgroundColor: 'rgba(255,255,255,0.05)',
+            borderRadius: 8,
+            flexWrap: 'wrap',
+            fontSize: 12,
           }}
-        />
+        >
+          <div>
+            <span style={{ color: '#888' }}>Name: </span>
+            <span style={{ fontWeight: 600 }}>{config.name}</span>
+          </div>
+          <div>
+            <span style={{ color: '#888' }}>Model: </span>
+            <span>{config.model}</span>
+          </div>
+          <div>
+            <span style={{ color: '#888' }}>Enabled: </span>
+            <span style={{ color: config.enabled ? '#22c55e' : '#dc2626' }}>
+              {config.enabled ? 'Yes' : 'No'}
+            </span>
+          </div>
+          <div>
+            <span style={{ color: '#888' }}>Speed: </span>
+            <span>{displayValues.speed}</span>
+          </div>
+          <div>
+            <span style={{ color: '#888' }}>Collision: </span>
+            <span style={{ color: config.collisionEnabled ? '#22c55e' : '#888' }}>
+              {config.collisionEnabled ? 'On' : 'Off'}
+            </span>
+          </div>
+        </div>
+
+        {/* Property Editor */}
+        <div
+          style={{
+            backgroundColor: '#1e1e2e',
+            borderRadius: 8,
+            overflow: 'hidden',
+            border: '1px solid #333',
+          }}
+        >
+          <PropertyEditor
+            schema={ROBOT_SCHEMA}
+            value={config as unknown as Record<string, unknown>}
+            onChange={handleChange as unknown as (value: Record<string, unknown>) => void}
+            onSubmit={handleSubmit as unknown as (value: Record<string, unknown>) => void}
+            onReset={handleReset}
+            onValidationChange={handleValidationChange}
+            autoSave={autoSave}
+            autoSaveDelay={500}
+            showValidation={true}
+            validateOn="change"
+            compact={compact}
+            hideActions={autoSave}
+            style={{
+              backgroundColor: 'var(--pe-bg, #1e1e2e)',
+              color: 'var(--pe-text, #e5e7eb)',
+            }}
+          />
+        </div>
+
+        {/* Field types reference */}
+        <div
+          style={{
+            marginTop: 16,
+            padding: 12,
+            backgroundColor: 'rgba(255,255,255,0.03)',
+            borderRadius: 8,
+            fontSize: 12,
+            color: '#888',
+          }}
+        >
+          <strong>Available Field Types:</strong>
+          <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+            <FieldTypeBadge type="number" />
+            <FieldTypeBadge type="text" />
+            <FieldTypeBadge type="boolean" />
+            <FieldTypeBadge type="enum" />
+            <FieldTypeBadge type="position3d" />
+            <FieldTypeBadge type="pose3d" />
+            <FieldTypeBadge type="joint-array" />
+          </div>
+        </div>
       </div>
 
-      {/* Current state display */}
+      {/* Current state display - fixed at bottom */}
       <div className="module-status">
         <span>Mode: {autoSave ? 'Auto-save' : 'Manual'}</span>
         <span>Layout: {compact ? 'Compact' : 'Normal'}</span>
         <span>Joints: {config.jointAngles.length}</span>
         <span>Position: {displayValues.position}</span>
-      </div>
-
-      {/* Field types reference */}
-      <div
-        style={{
-          marginTop: 16,
-          padding: 12,
-          backgroundColor: 'rgba(255,255,255,0.03)',
-          borderRadius: 8,
-          fontSize: 12,
-          color: '#888',
-        }}
-      >
-        <strong>Available Field Types:</strong>
-        <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-          <FieldTypeBadge type="number" />
-          <FieldTypeBadge type="text" />
-          <FieldTypeBadge type="boolean" />
-          <FieldTypeBadge type="enum" />
-          <FieldTypeBadge type="position3d" />
-          <FieldTypeBadge type="pose3d" />
-          <FieldTypeBadge type="joint-array" />
-        </div>
       </div>
     </div>
   );

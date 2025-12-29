@@ -201,42 +201,50 @@ export function SafetyZone({
   const handlePointerOver = () => onHover?.(zone, true);
   const handlePointerOut = () => onHover?.(zone, false);
 
+  // For cylinder and capsule in Z-up coordinate system, we need to rotate them
+  // since Three.js creates them with Y as the height axis
+  const needsZUpRotation = zone.type === 'cylinder' || zone.type === 'capsule';
+  const zUpRotation: [number, number, number] = needsZUpRotation ? [Math.PI / 2, 0, 0] : [0, 0, 0];
+
   return (
     <group position={position} quaternion={quaternion}>
-      {/* Fill mesh */}
-      <mesh
-        ref={meshRef}
-        onClick={handleClick}
-        onPointerOver={handlePointerOver}
-        onPointerOut={handlePointerOut}
-      >
-        <GeometryMesh type={zone.type} params={zone.params} />
-        <meshBasicMaterial
-          color={isTriggered ? colors.danger : baseColor}
-          transparent
-          opacity={vis.fillOpacity}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
+      {/* Inner group for Z-up rotation adjustment */}
+      <group rotation={zUpRotation}>
+        {/* Fill mesh */}
+        <mesh
+          ref={meshRef}
+          onClick={handleClick}
+          onPointerOver={handlePointerOver}
+          onPointerOut={handlePointerOut}
+        >
+          <GeometryMesh type={zone.type} params={zone.params} />
+          <meshBasicMaterial
+            color={isTriggered ? colors.danger : baseColor}
+            transparent
+            opacity={vis.fillOpacity}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
 
-      {/* Wireframe */}
-      {vis.wireframe && (
-        <lineSegments ref={wireframeRef}>
-          <edgesGeometry
-            args={[
-              (() => {
-                const geom = createGeometry(zone.type, zone.params);
-                return geom;
-              })(),
-            ]}
-          />
-          <lineBasicMaterial
-            color={isTriggered ? colors.stop : vis.wireframeColor}
-            linewidth={1}
-          />
-        </lineSegments>
-      )}
+        {/* Wireframe */}
+        {vis.wireframe && (
+          <lineSegments ref={wireframeRef}>
+            <edgesGeometry
+              args={[
+                (() => {
+                  const geom = createGeometry(zone.type, zone.params);
+                  return geom;
+                })(),
+              ]}
+            />
+            <lineBasicMaterial
+              color={isTriggered ? colors.stop : vis.wireframeColor}
+              linewidth={1}
+            />
+          </lineSegments>
+        )}
+      </group>
     </group>
   );
 }

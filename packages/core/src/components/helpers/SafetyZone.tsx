@@ -60,15 +60,16 @@ export function SafetyZoneVisual({
   const warningRadius = outerRadius ?? innerRadius * 1.5;
   const dangerZoneRadius = dangerRadius ?? warningRadius * 1.2;
 
-  // Convert position to array
+  // Convert position to array (Z-up coordinate system)
   const pos: [number, number, number] = position
     ? (Array.isArray(position)
         ? position
         : [position.x, position.y, position.z])
-    : [0, 0.01, 0]; // Slightly above ground by default
+    : [0, 0, 0.01]; // Slightly above ground by default (Z-up)
 
-  // Base rotation for horizontal placement
-  const baseRotation: [number, number, number] = rotation ?? [-Math.PI / 2, 0, 0];
+  // In Z-up coordinate system, ringGeometry is already horizontal (XY plane facing +Z)
+  // No rotation needed by default
+  const baseRotation: [number, number, number] = rotation ?? [0, 0, 0];
 
   if (use3D && height > 0) {
     // 3D cylinder visualization
