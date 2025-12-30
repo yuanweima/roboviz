@@ -1,43 +1,46 @@
 /**
- * Motion Planning Scene - GPU-Accelerated Path Planning Demo
+ * Motion Planning Scene - Algorithm Comparison Demo
  *
- * 展示完整的 GPU 运动规划流水线：
+ * 无 GPU 加速的运动规划演示场景，支持多算法对比：
  *
  * 核心功能:
- * 1. 多种规划算法 - BiRRT, RRT*, PRM, Task-Space RRT
- * 2. 实时碰撞检测 - 基于障碍物的碰撞回调
- * 3. 路径后处理 - Shortcutting + Smoothing
- * 4. 轨迹生成 - 时间参数化轨迹
- * 5. 3D 可视化 - 路径、障碍物、机器人动画
+ * 1. 多算法对比 - BiRRT, RRT*, PRM, Task-Space RRT 同时运行
+ * 2. 碰撞世界管理 - 使用 useCollisionWorld 管理障碍物 + RobotCapsuleModel
+ * 3. IK 驱动工作点 - 可拖拽的起点/终点
+ * 4. TrajectoryFK 路径可视化 - 真实 FK 计算的末端轨迹
+ * 5. 性能统计 - 时间、节点数、路径长度对比
  *
- * 使用场景:
- * - 运动规划算法对比
- * - 碰撞避障演示
- * - 轨迹优化展示
- * - 工业路径规划
+ * Z-up 坐标系: X=forward, Y=left, Z=up
+ *
+ * @see GPUMotionPlanningScene for GPU-accelerated version
+ * @see docs/kinematics-api.md for API documentation
  */
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { RoboViz, PropertyEditor, type PropertySchema } from '@aspect/roboviz-react';
-import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import type { ThreeEvent } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
+import { RoboViz } from '@aspect/roboviz-react';
+import { TransformControls, Line } from '@react-three/drei';
 import {
-  ProcessProvider,
-  RobotProcessProvider,
-  ProcessScene,
-  EndEffector,
-  useRobotProcessState,
+  Robot,
+  GhostRobot,
+  useTrajx,
+  usePoseIK,
+  useCollisionWorld,
+  useHybridSolver,
+  CollisionWorldRenderer,
   usePlanningPipeline,
-  PathVisualizer,
-  ObstacleVisualizer,
-  PlanningControlPanel,
-  type PlanningObstacle,
-  type PathWaypoint,
+  TrajectoryFK,
+  type GhostStatus,
+  type WorkspaceAnalysis,
   type PlannerType,
+  type PlanningResult,
+  type TrajectoryData,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 
 // ============================================================================
-// Theme & Constants
+// Constants
 // ============================================================================
 
 const THEME = {
@@ -55,241 +58,134 @@ const THEME = {
 };
 
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';
+const ROBOT_ID = 'planning-robot';
 
-// Robot joint limits (Fanuc LR Mate 200iD/7L)
-const JOINT_LIMITS = {
-  lower: [-2.97, -1.57, -2.36, -3.49, -2.18, -6.28],
-  upper: [2.97, 2.79, 4.54, 3.49, 2.18, 6.28],
+// ============================================================================
+// Types
+// ============================================================================
+
+interface Workpoint {
+  id: string;
+  name: string;
+  type: 'start' | 'goal';
+  position: [number, number, number];
+  joints?: number[];
+}
+
+interface AlgorithmResult {
+  planner: PlannerType;
+  result: PlanningResult | null;
+  isRunning: boolean;
+  color: string;
+  trajectoryData?: TrajectoryData;  // For TrajectoryFK visualization
+}
+
+// ============================================================================
+// Robot Configuration
+// ============================================================================
+
+const ROBOT_DOF = 6;
+// Use slightly conservative limits to avoid FK errors at boundaries
+const ROBOT_JOINT_LIMITS = {
+  lower: [-2.9, -1.5, -2.3, -4.7, -2.4, -6.2],
+  upper: [2.9, 2.6, 4.5, 4.7, 2.4, 6.2],
 };
 
-// Default velocity/acceleration limits for trajectory generation
-const TRAJECTORY_CONFIG = {
-  maxVelocity: [2.0, 2.0, 2.0, 3.0, 3.0, 3.0],
-  maxAcceleration: [4.0, 4.0, 4.0, 6.0, 6.0, 6.0],
-  timeStep: 0.01,
+const HOME_JOINTS = [0, 0, 0, 0, 0, 0];
+
+/**
+ * Tool orientation - tool pointing down (-Z direction in world frame)
+ * Quaternion: 90° rotation around Y axis [x, y, z, w]
+ * This makes the tool point downward, which is the natural orientation for most tasks
+ */
+const TOOL_FORWARD_QUATERNION: [number, number, number, number] = [0, 0.707, 0, 0.707];
+
+const TOOL_OFFSET = {
+  position: [0, 0, 0] as [number, number, number],
+  quaternion: [0, 0, 0, 1] as [number, number, number, number],
 };
 
 // ============================================================================
-// Default Obstacles
+// Initial Data
 // ============================================================================
 
-const DEFAULT_OBSTACLES: PlanningObstacle[] = [
+const INITIAL_COLLISION_OBJECTS: Array<{
+  name: string;
+  position: [number, number, number];
+  type: 'box' | 'sphere' | 'cylinder' | 'capsule';
+  params: Record<string, number>;
+  color: string;
+}> = [
   {
-    id: 'table',
-    name: 'Work Table',
+    name: 'Table',
+    position: [0.5, 0, -0.02],
     type: 'box',
-    position: [0.5, 0, -0.15],
-    dimensions: [0.6, 0.8, 0.02],
-    enabled: true,
-    color: '#555555',
+    params: { width: 0.6, height: 0.02, depth: 0.8 },
+    color: '#555555'
   },
   {
-    id: 'pillar1',
-    name: 'Pillar 1',
-    type: 'cylinder',
-    position: [0.3, 0.3, 0.15],
-    dimensions: [0.05, 0.3],
-    enabled: true,
-    color: '#666666',
-  },
-  {
-    id: 'pillar2',
-    name: 'Pillar 2',
-    type: 'cylinder',
-    position: [0.6, -0.2, 0.15],
-    dimensions: [0.05, 0.3],
-    enabled: true,
-    color: '#666666',
-  },
-  {
-    id: 'box1',
-    name: 'Workpiece 1',
+    name: 'Wall',
+    position: [0.4, 0, 0.2],
     type: 'box',
-    position: [0.4, 0.15, 0.05],
-    dimensions: [0.1, 0.1, 0.1],
-    enabled: true,
-    color: '#888888',
+    params: { width: 0.05, height: 0.3, depth: 0.4 },
+    color: '#e53e3e'
   },
   {
-    id: 'sphere1',
-    name: 'Obstacle Sphere',
+    name: 'Pillar',
+    position: [0.5, 0.25, 0.15],
+    type: 'cylinder',
+    params: { radius: 0.04, height: 0.3 },
+    color: '#666666'
+  },
+  {
+    name: 'Sphere',
+    position: [0.45, -0.15, 0.25],
     type: 'sphere',
-    position: [0.5, -0.1, 0.2],
-    dimensions: [0.08],
-    enabled: true,
-    color: '#777777',
+    params: { radius: 0.06 },
+    color: '#3182ce'
   },
 ];
 
-// Default start/goal configurations
-const DEFAULT_START = [0, 0, 0, 0, 0, 0];
-const DEFAULT_GOAL = [1.2, 0.5, -0.8, 0, 0.8, 0];
+const INITIAL_WORKPOINTS: Workpoint[] = [
+  { id: 'wp-start', name: 'Start', type: 'start', position: [0.35, 0.30, 0.35] },
+  { id: 'wp-goal', name: 'Goal', type: 'goal', position: [0.35, -0.30, 0.35] },
+];
 
-// ============================================================================
-// PropertyEditor Schema
-// ============================================================================
-
-const SETTINGS_SCHEMA: PropertySchema = {
-  groups: [
-    {
-      id: 'endpoints',
-      label: 'Start / Goal Configuration',
-      collapsible: true,
-      fields: [
-        {
-          key: 'useInteractiveGoal',
-          type: 'boolean',
-          label: 'Interactive Goal',
-          description: 'Click in 3D scene to set goal',
-        },
-        {
-          key: 'showGhost',
-          type: 'boolean',
-          label: 'Show Goal Ghost',
-        },
-      ],
-    },
-    {
-      id: 'obstacles',
-      label: 'Obstacles',
-      collapsible: true,
-      fields: [
-        {
-          key: 'showObstacles',
-          type: 'boolean',
-          label: 'Show Obstacles',
-        },
-        {
-          key: 'obstacleOpacity',
-          type: 'number',
-          label: 'Opacity',
-          min: 0.1,
-          max: 1,
-          step: 0.1,
-          showSlider: true,
-        },
-      ],
-    },
-    {
-      id: 'visualization',
-      label: 'Path Visualization',
-      collapsible: true,
-      fields: [
-        {
-          key: 'showPath',
-          type: 'boolean',
-          label: 'Show Path',
-        },
-        {
-          key: 'showWaypoints',
-          type: 'boolean',
-          label: 'Show Waypoints',
-        },
-        {
-          key: 'animatePath',
-          type: 'boolean',
-          label: 'Animate Robot',
-        },
-        {
-          key: 'animationSpeed',
-          type: 'number',
-          label: 'Animation Speed',
-          min: 0.1,
-          max: 5,
-          step: 0.1,
-          showSlider: true,
-        },
-      ],
-    },
-    {
-      id: 'pipeline',
-      label: 'Pipeline Settings',
-      collapsible: true,
-      defaultCollapsed: true,
-      fields: [
-        {
-          key: 'enablePostProcessing',
-          type: 'boolean',
-          label: 'Enable Post-Processing',
-        },
-        {
-          key: 'shortcutIterations',
-          type: 'number',
-          label: 'Shortcut Iterations',
-          min: 0,
-          max: 500,
-          step: 10,
-        },
-        {
-          key: 'smoothIterations',
-          type: 'number',
-          label: 'Smooth Iterations',
-          min: 0,
-          max: 200,
-          step: 10,
-        },
-      ],
-    },
-  ],
+const WORKPOINT_COLORS = {
+  start: '#22c55e',
+  goal: '#ef4444',
 };
 
-const DEFAULT_SETTINGS = {
-  useInteractiveGoal: false,
-  showGhost: true,
-  showObstacles: true,
-  obstacleOpacity: 0.6,
-  showPath: true,
-  showWaypoints: true,
-  animatePath: true,
-  animationSpeed: 1.0,
-  enablePostProcessing: true,
-  shortcutIterations: 100,
-  smoothIterations: 50,
+// Algorithm colors for visualization
+const ALGORITHM_COLORS: Record<PlannerType, string> = {
+  'birrt': '#22c55e',      // Green
+  'rrt-star': '#3b82f6',   // Blue
+  'prm': '#f59e0b',        // Orange
+  'task-space-rrt': '#a855f7', // Purple
+};
+
+const ALGORITHM_NAMES: Record<PlannerType, string> = {
+  'birrt': 'BiRRT',
+  'rrt-star': 'RRT*',
+  'prm': 'PRM',
+  'task-space-rrt': 'Task-Space RRT',
 };
 
 // ============================================================================
-// FK Computation Helper (simplified - in production use trajx)
+// Robot Bounding Spheres for Collision Checking
 // ============================================================================
 
 /**
- * Simplified FK for visualization - computes approximate TCP position
- * In production, use the actual robot FK from trajx-wasm
- */
-function computeApproximateTcpPosition(joints: number[]): [number, number, number] {
-  // This is a simplified model - actual FK should come from trajx-wasm
-  const [j1, j2, j3, j4, j5, j6] = joints;
-
-  // Approximate link lengths (Fanuc LR Mate 200iD/7L)
-  const L1 = 0.33; // base to shoulder
-  const L2 = 0.26; // shoulder to elbow
-  const L3 = 0.26; // elbow to wrist
-  const L4 = 0.08; // wrist to tcp
-
-  const c1 = Math.cos(j1);
-  const s1 = Math.sin(j1);
-  const c2 = Math.cos(j2);
-  const s2 = Math.sin(j2);
-  const c23 = Math.cos(j2 + j3);
-  const s23 = Math.sin(j2 + j3);
-
-  const x = c1 * (L2 * c2 + L3 * c23) + L4 * c1 * c23;
-  const y = s1 * (L2 * c2 + L3 * c23) + L4 * s1 * c23;
-  const z = L1 + L2 * s2 + L3 * s23 + L4 * s23;
-
-  return [x, y, z];
-}
-
-/**
- * Get robot bounding spheres for collision checking
+ * Compute approximate bounding spheres for robot links
+ * Used for simple collision checking in planning pipeline
  */
 function getRobotBoundingSpheres(
   joints: number[]
 ): Array<{ position: [number, number, number]; radius: number }> {
   const [j1, j2, j3] = joints;
-
-  const L1 = 0.33;
-  const L2 = 0.26;
-  const L3 = 0.26;
+  const L1 = 0.33;  // Base height
+  const L2 = 0.26;  // Upper arm length
+  const L3 = 0.26;  // Forearm length
 
   const c1 = Math.cos(j1);
   const s1 = Math.sin(j1);
@@ -299,80 +195,597 @@ function getRobotBoundingSpheres(
   const s23 = Math.sin(j2 + j3);
 
   return [
-    // Base
-    { position: [0, 0, L1 * 0.5], radius: 0.08 },
-    // Link 2
+    { position: [0, 0, L1 * 0.5], radius: 0.08 },  // Base
     {
-      position: [
-        c1 * L2 * 0.5 * c2,
-        s1 * L2 * 0.5 * c2,
-        L1 + L2 * 0.5 * s2,
-      ] as [number, number, number],
-      radius: 0.06,
+      position: [c1 * L2 * 0.5 * c2, s1 * L2 * 0.5 * c2, L1 + L2 * 0.5 * s2] as [number, number, number],
+      radius: 0.06,  // Upper arm
     },
-    // Link 3
     {
-      position: [
-        c1 * (L2 * c2 + L3 * 0.5 * c23),
-        s1 * (L2 * c2 + L3 * 0.5 * c23),
-        L1 + L2 * s2 + L3 * 0.5 * s23,
-      ] as [number, number, number],
-      radius: 0.05,
+      position: [c1 * (L2 * c2 + L3 * 0.5 * c23), s1 * (L2 * c2 + L3 * 0.5 * c23), L1 + L2 * s2 + L3 * 0.5 * s23] as [number, number, number],
+      radius: 0.05,  // Forearm
     },
-    // TCP area
     {
-      position: computeApproximateTcpPosition(joints),
-      radius: 0.04,
+      // End effector position (approximate)
+      position: [c1 * (L2 * c2 + L3 * c23), s1 * (L2 * c2 + L3 * c23), L1 + L2 * s2 + L3 * s23] as [number, number, number],
+      radius: 0.04,  // Wrist
     },
   ];
 }
 
 // ============================================================================
-// Animation Component
+// Draggable Workpoint Component
 // ============================================================================
 
-function PathAnimator({
-  path,
-  isPlaying,
-  speed,
-  onPositionChange,
-}: {
-  path: PathWaypoint[];
-  isPlaying: boolean;
-  speed: number;
-  onPositionChange: (position: number, joints: number[]) => void;
-}) {
-  const positionRef = useRef(0);
-  const lastTimeRef = useRef(0);
+interface DraggableWorkpointProps {
+  position: [number, number, number];
+  color: string;
+  isSelected: boolean;
+  onDragEnd: (pos: [number, number, number]) => void;
+  onDrag?: (pos: [number, number, number]) => void;
+  onClick: () => void;
+}
 
-  useFrame((state, delta) => {
-    if (!isPlaying || path.length < 2) return;
+function DraggableWorkpoint({ position, color, isSelected, onDragEnd, onDrag, onClick }: DraggableWorkpointProps) {
+  const groupRef = useRef<THREE.Group>(null!);
+  const controlsRef = useRef<any>(null);
+  const [ready, setReady] = useState(false);
+  const isDraggingRef = useRef(false);
 
-    // Calculate total duration from path timing or estimate
-    const totalDuration = path[path.length - 1].time || path.length * 0.1;
+  useEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.position.set(...position);
+      setReady(true);
+    }
+  }, []);
 
-    positionRef.current += (delta * speed) / totalDuration;
+  useEffect(() => {
+    if (groupRef.current && !isDraggingRef.current) {
+      groupRef.current.position.set(...position);
+    }
+  }, [position]);
 
-    if (positionRef.current >= 1) {
-      positionRef.current = 0;
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const handleDraggingChanged = (e: { value: boolean }) => {
+      isDraggingRef.current = e.value;
+      if (!e.value && groupRef.current) {
+        onDragEnd(groupRef.current.position.toArray() as [number, number, number]);
+      }
+    };
+
+    const handleObjectChange = () => {
+      if (isDraggingRef.current && groupRef.current && onDrag) {
+        onDrag(groupRef.current.position.toArray() as [number, number, number]);
+      }
+    };
+
+    controls.addEventListener('dragging-changed', handleDraggingChanged);
+    controls.addEventListener('objectChange', handleObjectChange);
+    return () => {
+      controls.removeEventListener('dragging-changed', handleDraggingChanged);
+      controls.removeEventListener('objectChange', handleObjectChange);
+    };
+  }, [onDragEnd, onDrag]);
+
+  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    onClick();
+  }, [onClick]);
+
+  const radius = isSelected ? 0.025 : 0.02;
+  const emissiveIntensity = isSelected ? 0.5 : 0.2;
+
+  // Validate position before rendering
+  const isPositionValid = position.every(p => isFinite(p));
+  if (!isPositionValid) return null;
+
+  return (
+    <>
+      <group ref={groupRef} onClick={handleClick}>
+        <mesh>
+          <sphereGeometry args={[radius, 16, 16]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={emissiveIntensity} />
+        </mesh>
+        {isSelected && ready && (
+          <>
+            <Line points={[[0, 0, 0], [0.06, 0, 0]]} color="#ff0000" lineWidth={2} />
+            <Line points={[[0, 0, 0], [0, 0.06, 0]]} color="#00ff00" lineWidth={2} />
+            <Line points={[[0, 0, 0], [0, 0, 0.06]]} color="#0000ff" lineWidth={2} />
+          </>
+        )}
+      </group>
+      {ready && isSelected && groupRef.current && (
+        <TransformControls ref={controlsRef} object={groupRef.current} mode="translate" size={0.5} />
+      )}
+    </>
+  );
+}
+
+// ============================================================================
+// Algorithm Comparison Panel
+// ============================================================================
+
+interface AlgorithmComparisonPanelProps {
+  results: AlgorithmResult[];
+  selectedAlgorithms: PlannerType[];
+  onToggleAlgorithm: (planner: PlannerType) => void;
+  onRunComparison: () => void;
+  onClearResults: () => void;
+  isRunning: boolean;
+  canRun: boolean;
+}
+
+function AlgorithmComparisonPanel({
+  results,
+  selectedAlgorithms,
+  onToggleAlgorithm,
+  onRunComparison,
+  onClearResults,
+  isRunning,
+  canRun,
+}: AlgorithmComparisonPanelProps) {
+  const allPlanners: PlannerType[] = ['birrt', 'rrt-star', 'prm', 'task-space-rrt'];
+
+  return (
+    <div style={{ background: THEME.panel, borderRadius: 8, padding: 12, fontSize: 11 }}>
+      <div style={{ fontWeight: 600, color: THEME.text, marginBottom: 10 }}>
+        Algorithm Comparison
+      </div>
+
+      {/* Algorithm selection */}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 10, color: THEME.textSecondary, marginBottom: 6 }}>
+          Select algorithms to compare:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {allPlanners.map(planner => (
+            <label
+              key={planner}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: 'pointer',
+                padding: '4px 6px',
+                borderRadius: 4,
+                background: selectedAlgorithms.includes(planner) ? `${ALGORITHM_COLORS[planner]}20` : 'transparent',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={selectedAlgorithms.includes(planner)}
+                onChange={() => onToggleAlgorithm(planner)}
+                disabled={isRunning}
+                style={{ accentColor: ALGORITHM_COLORS[planner] }}
+              />
+              <span style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                background: ALGORITHM_COLORS[planner],
+              }} />
+              <span style={{ color: THEME.text }}>{ALGORITHM_NAMES[planner]}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button
+          onClick={onRunComparison}
+          disabled={!canRun || isRunning || selectedAlgorithms.length === 0}
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            borderRadius: 4,
+            border: 'none',
+            background: canRun && !isRunning && selectedAlgorithms.length > 0 ? THEME.primary : THEME.surface,
+            color: canRun && !isRunning && selectedAlgorithms.length > 0 ? 'white' : THEME.textSecondary,
+            cursor: canRun && !isRunning && selectedAlgorithms.length > 0 ? 'pointer' : 'not-allowed',
+            fontWeight: 600,
+          }}
+        >
+          {isRunning ? 'Running...' : 'Run Comparison'}
+        </button>
+        <button
+          onClick={onClearResults}
+          disabled={isRunning}
+          style={{
+            padding: '8px 12px',
+            borderRadius: 4,
+            border: `1px solid ${THEME.primary}40`,
+            background: 'transparent',
+            color: THEME.text,
+            cursor: isRunning ? 'not-allowed' : 'pointer',
+          }}
+        >
+          Clear
+        </button>
+      </div>
+
+      {/* Results table */}
+      {results.some(r => r.result) && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 10, color: THEME.textSecondary, marginBottom: 6 }}>
+            Results:
+          </div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr auto auto auto',
+            gap: 4,
+            fontSize: 10,
+          }}>
+            {/* Header */}
+            <div style={{ color: THEME.textSecondary, fontWeight: 600 }}>Algorithm</div>
+            <div style={{ color: THEME.textSecondary, fontWeight: 600, textAlign: 'right' }}>Time</div>
+            <div style={{ color: THEME.textSecondary, fontWeight: 600, textAlign: 'right' }}>Points</div>
+            <div style={{ color: THEME.textSecondary, fontWeight: 600, textAlign: 'right' }}>Status</div>
+
+            {/* Data rows */}
+            {results.map(({ planner, result, isRunning: running }) => (
+              <React.Fragment key={planner}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: ALGORITHM_COLORS[planner],
+                  }} />
+                  <span style={{ color: THEME.text }}>{ALGORITHM_NAMES[planner]}</span>
+                </div>
+                <div style={{ textAlign: 'right', color: THEME.text }}>
+                  {running ? '...' : result?.success ? `${result.totalTimeMs.toFixed(0)}ms` : '-'}
+                </div>
+                <div style={{ textAlign: 'right', color: THEME.text }}>
+                  {running ? '...' : result?.success ? result.path.length : '-'}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  {running ? (
+                    <span style={{ color: THEME.warning }}>Running</span>
+                  ) : result?.success ? (
+                    <span style={{ color: THEME.success }}>OK</span>
+                  ) : result ? (
+                    <span style={{ color: THEME.danger }}>Failed</span>
+                  ) : (
+                    <span style={{ color: THEME.textSecondary }}>-</span>
+                  )}
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+
+          {/* Best algorithm highlight */}
+          {(() => {
+            const successResults = results.filter(r => r.result?.success);
+            if (successResults.length === 0) return null;
+
+            const fastest = successResults.reduce((a, b) =>
+              (a.result?.totalTimeMs || Infinity) < (b.result?.totalTimeMs || Infinity) ? a : b
+            );
+            const shortest = successResults.reduce((a, b) =>
+              (a.result?.path.length || Infinity) < (b.result?.path.length || Infinity) ? a : b
+            );
+
+            return (
+              <div style={{ marginTop: 8, padding: 8, background: THEME.surface, borderRadius: 4 }}>
+                <div style={{ fontSize: 10, color: THEME.textSecondary, marginBottom: 4 }}>Summary:</div>
+                <div style={{ fontSize: 10, color: THEME.text }}>
+                  Fastest: <span style={{ color: ALGORITHM_COLORS[fastest.planner], fontWeight: 600 }}>
+                    {ALGORITHM_NAMES[fastest.planner]}
+                  </span> ({fastest.result?.totalTimeMs.toFixed(0)}ms)
+                </div>
+                <div style={{ fontSize: 10, color: THEME.text }}>
+                  Shortest path: <span style={{ color: ALGORITHM_COLORS[shortest.planner], fontWeight: 600 }}>
+                    {ALGORITHM_NAMES[shortest.planner]}
+                  </span> ({shortest.result?.path.length} pts)
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Workspace Metrics Panel
+// ============================================================================
+
+interface WorkspaceMetricsPanelProps {
+  workspace: WorkspaceAnalysis | null;
+  isNearSingular: boolean;
+  ghostStatus: GhostStatus;
+  computing: boolean;
+  selectedWp: Workpoint | null;
+}
+
+function WorkspaceMetricsPanel({ workspace, isNearSingular, ghostStatus, computing, selectedWp }: WorkspaceMetricsPanelProps) {
+  const getManipulabilityColor = (value: number) => {
+    if (value >= 0.15) return THEME.success;
+    if (value >= 0.05) return THEME.warning;
+    return THEME.danger;
+  };
+
+  const statusColors: Record<GhostStatus, string> = {
+    valid: THEME.success,
+    warning: THEME.warning,
+    error: THEME.danger,
+    neutral: THEME.textSecondary,
+  };
+
+  return (
+    <div style={{ background: THEME.panel, borderRadius: 8, padding: 12, fontSize: 11 }}>
+      <div style={{ fontWeight: 600, color: THEME.text, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+        {selectedWp ? `${selectedWp.name} Workspace` : 'Workspace Analysis'}
+        {computing && <span style={{ color: THEME.textSecondary, fontSize: 10, fontWeight: 400 }}>(computing...)</span>}
+      </div>
+
+      {selectedWp && (
+        <div style={{ marginBottom: 8, padding: 6, background: THEME.surface, borderRadius: 4 }}>
+          <div style={{ fontSize: 10, color: THEME.textSecondary }}>Position:</div>
+          <div style={{ color: THEME.text }}>
+            [{selectedWp.position.map(p => p.toFixed(3)).join(', ')}]
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ color: THEME.textSecondary }}>IK Status:</span>
+        <span style={{ color: statusColors[ghostStatus], fontWeight: 600 }}>{ghostStatus.toUpperCase()}</span>
+      </div>
+
+      {isNearSingular && (
+        <div style={{
+          background: `${THEME.warning}20`,
+          border: `1px solid ${THEME.warning}`,
+          borderRadius: 4,
+          padding: '4px 8px',
+          marginBottom: 8,
+          color: THEME.warning,
+          fontSize: 10,
+          fontWeight: 600,
+        }}>
+          Near Singularity
+        </div>
+      )}
+
+      {workspace && (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ color: THEME.textSecondary }}>Manipulability:</span>
+            <span style={{ color: getManipulabilityColor(workspace.manipulability), fontWeight: 600 }}>
+              {workspace.manipulability.toFixed(4)}
+            </span>
+          </div>
+          <div style={{ height: 4, background: THEME.surface, borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              width: `${Math.min(workspace.manipulability * 200, 100)}%`,
+              background: getManipulabilityColor(workspace.manipulability),
+              borderRadius: 2,
+            }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Scene Content
+// ============================================================================
+
+interface SceneContentProps {
+  workpoints: Workpoint[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onUpdatePosition: (id: string, pos: [number, number, number]) => void;
+  onDragPosition?: (id: string, pos: [number, number, number]) => void;
+  ghostJoints: number[] | null;
+  ghostStatus: GhostStatus;
+  robotJoints: number[];
+  collisionObjects: ReturnType<typeof useCollisionWorld>['objects'];
+  algorithmResults: AlgorithmResult[];
+  showPaths: boolean;
+  playbackTime?: number;  // Current playback time for TrajectoryFK
+  selectedPlaybackPlanner?: PlannerType | null;  // Which algorithm's path is being played
+}
+
+function SceneContent({
+  workpoints,
+  selectedId,
+  onSelect,
+  onUpdatePosition,
+  onDragPosition,
+  ghostJoints,
+  ghostStatus,
+  robotJoints,
+  collisionObjects,
+  algorithmResults,
+  showPaths,
+  playbackTime,
+  selectedPlaybackPlanner,
+}: SceneContentProps) {
+  // Connection line between workpoints
+  const connectionPoints = useMemo(() => {
+    return workpoints
+      .filter(wp => wp.position.every(p => isFinite(p)))
+      .map(wp => new THREE.Vector3(...wp.position));
+  }, [workpoints]);
+
+  const handleBackgroundClick = useCallback(() => onSelect(null), [onSelect]);
+
+  return (
+    <>
+      {/* Robot */}
+      <Robot id={ROBOT_ID} urdfPath={URDF_PATH} jointAngles={robotJoints} showAxes={false} />
+
+      {/* Ghost Robot for selected workpoint */}
+      {ghostJoints && (
+        <GhostRobot
+          id="ghost"
+          urdfPath={URDF_PATH}
+          jointAngles={ghostJoints}
+          opacity={0.4}
+          status={ghostStatus}
+          upAxis="Z"
+        />
+      )}
+
+      {/* Collision Objects */}
+      <CollisionWorldRenderer
+        objects={collisionObjects}
+        selectedId={null}
+        editingEnabled={false}
+        onSelect={() => {}}
+      />
+
+      {/* Workpoints */}
+      {workpoints.map(wp => {
+        const isSelected = wp.id === selectedId;
+        const color = isSelected ? '#ffffff' : WORKPOINT_COLORS[wp.type];
+
+        return (
+          <DraggableWorkpoint
+            key={wp.id}
+            position={wp.position}
+            color={color}
+            isSelected={isSelected}
+            onDragEnd={pos => onUpdatePosition(wp.id, pos)}
+            onDrag={isSelected && onDragPosition ? pos => onDragPosition(wp.id, pos) : undefined}
+            onClick={() => onSelect(wp.id)}
+          />
+        );
+      })}
+
+      {/* Connection line between workpoints */}
+      {connectionPoints.length >= 2 && (
+        <Line points={connectionPoints} color={THEME.primary} lineWidth={2} dashed dashSize={0.04} gapSize={0.02} />
+      )}
+
+      {/* Algorithm paths - using TrajectoryFK for real FK-based path visualization */}
+      {showPaths && algorithmResults.map(({ planner, result, trajectoryData, color }) => {
+        if (!result?.success || !trajectoryData || trajectoryData.positions.length < 2) return null;
+
+        // Determine if this is the currently playing path
+        const isPlayingThis = selectedPlaybackPlanner === planner;
+
+        return (
+          <TrajectoryFK
+            key={planner}
+            robotId={ROBOT_ID}
+            robotName="Fanuc_LR_Mate_200iD_7L"
+            trajectoryData={trajectoryData}
+            showPath={true}
+            pathWidth={isPlayingThis ? 4 : 2}
+            showWaypoints={false}  // Don't show individual waypoints for cleaner visualization
+            colorByStatus={false}
+            pathColor={color}
+            showManipulability={false}
+            currentTime={isPlayingThis ? playbackTime : undefined}
+            showCurrentPosition={isPlayingThis}
+          />
+        );
+      })}
+
+      {/* Lighting */}
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[5, 5, 5]} intensity={0.8} />
+      <directionalLight position={[-3, 3, 3]} intensity={0.4} />
+
+      {/* Ground */}
+      <mesh position={[0, 0, -0.03]} rotation={[0, 0, 0]} onClick={handleBackgroundClick}>
+        <planeGeometry args={[3, 3]} />
+        <meshStandardMaterial color="#1a1a2e" />
+      </mesh>
+    </>
+  );
+}
+
+// ============================================================================
+// Playback Controller
+// ============================================================================
+
+const PLAYBACK_DURATION = 3.0;  // Total playback duration in seconds
+
+interface PlaybackControllerProps {
+  trajectoryData: TrajectoryData | null;
+  onJointsUpdate: (joints: number[]) => void;
+  onTimeUpdate: (time: number) => void;  // Report current time for TrajectoryFK
+  playbackState: {
+    setIsPlaying: (v: boolean) => void;
+    setIndex: (v: number) => void;
+    reset: () => void;
+  };
+}
+
+function PlaybackController({
+  trajectoryData,
+  onJointsUpdate,
+  onTimeUpdate,
+  playbackState,
+}: PlaybackControllerProps) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const timeRef = useRef(0);
+
+  useEffect(() => {
+    playbackState.setIsPlaying = setIsPlaying;
+    playbackState.setIndex = setCurrentIndex;
+    playbackState.reset = () => {
+      timeRef.current = 0;
+      setCurrentIndex(0);
+      onTimeUpdate(0);
+    };
+  }, [playbackState, onTimeUpdate]);
+
+  useFrame((_, delta) => {
+    if (!isPlaying || !trajectoryData || trajectoryData.positions.length === 0) return;
+
+    const duration = trajectoryData.duration > 0 ? trajectoryData.duration : PLAYBACK_DURATION;
+    timeRef.current += delta;
+
+    // Clamp to duration
+    const currentTime = Math.min(timeRef.current, duration);
+    const progress = currentTime / duration;
+
+    // Update time for TrajectoryFK current position indicator
+    onTimeUpdate(currentTime);
+
+    // Calculate index in positions array
+    const exactIndex = progress * (trajectoryData.positions.length - 1);
+    const newIndex = Math.min(Math.floor(exactIndex), trajectoryData.positions.length - 1);
+
+    if (newIndex !== currentIndex) {
+      setCurrentIndex(newIndex);
     }
 
-    // Find current waypoint
-    const idx = Math.min(
-      Math.floor(positionRef.current * (path.length - 1)),
-      path.length - 2
-    );
-    const t = (positionRef.current * (path.length - 1)) % 1;
+    // Interpolate between waypoints
+    const lowerIndex = Math.floor(exactIndex);
+    const upperIndex = Math.min(lowerIndex + 1, trajectoryData.positions.length - 1);
+    const t = exactIndex - lowerIndex;
 
-    // Interpolate joints
-    const joints = path[idx].joints.map(
-      (j, i) => j + t * (path[idx + 1].joints[i] - j)
-    );
+    const lowerJoints = trajectoryData.positions[lowerIndex];
+    const upperJoints = trajectoryData.positions[upperIndex];
 
-    // Throttle updates
-    if (state.clock.elapsedTime - lastTimeRef.current > 0.016) {
-      onPositionChange(positionRef.current, joints);
-      lastTimeRef.current = state.clock.elapsedTime;
+    // Interpolate and clamp to joint limits
+    const interpolatedJoints = lowerJoints.map((v, i) => {
+      const interpolated = v + t * (upperJoints[i] - v);
+      const lower = ROBOT_JOINT_LIMITS.lower[i] ?? -Math.PI;
+      const upper = ROBOT_JOINT_LIMITS.upper[i] ?? Math.PI;
+      return Math.max(lower, Math.min(upper, interpolated));
+    });
+
+    onJointsUpdate(interpolatedJoints);
+
+    if (currentTime >= duration) {
+      setIsPlaying(false);
+      timeRef.current = 0;
+      onTimeUpdate(0);
     }
   });
 
@@ -380,542 +793,572 @@ function PathAnimator({
 }
 
 // ============================================================================
-// Scene Content Component
+// Main Component
 // ============================================================================
 
-function SceneContent({
-  obstacles,
-  path,
-  pathPositions,
-  settings,
-  playbackPosition,
-  selectedObstacleId,
-  onObstacleClick,
-}: {
-  obstacles: PlanningObstacle[];
-  path: PathWaypoint[];
-  pathPositions: Array<[number, number, number]>;
-  settings: typeof DEFAULT_SETTINGS;
-  playbackPosition: number;
-  selectedObstacleId: string | null;
-  onObstacleClick: (obs: PlanningObstacle) => void;
-}) {
-  return (
-    <>
-      <ProcessScene
-        urdfPath={URDF_PATH}
-        showGhost={settings.showGhost}
-        showTrajectory={false}
-      >
-        <EndEffector showAxes={true}>
-          <mesh>
-            <coneGeometry args={[0.015, 0.04, 8]} />
-            <meshStandardMaterial color={THEME.accent} />
-          </mesh>
-        </EndEffector>
-      </ProcessScene>
-
-      {/* Obstacles */}
-      <ObstacleVisualizer
-        obstacles={obstacles}
-        options={{
-          showObstacles: settings.showObstacles,
-          opacity: settings.obstacleOpacity,
-          wireframe: false,
-          collisionColor: THEME.danger,
-        }}
-        selectedId={selectedObstacleId}
-        onObstacleClick={onObstacleClick}
-      />
-
-      {/* Planned Path */}
-      {path.length > 0 && (
-        <PathVisualizer
-          pathPositions={pathPositions}
-          options={{
-            showPath: settings.showPath,
-            pathColor: THEME.primary,
-            pathWidth: 2,
-            showWaypoints: settings.showWaypoints,
-            waypointSize: 0.008,
-            showEndpoints: true,
-            animatePath: settings.animatePath,
-            animationSpeed: settings.animationSpeed,
-            showVelocityProfile: false,
-          }}
-          playbackPosition={playbackPosition}
-        />
-      )}
-
-      {/* Lighting - Z-up: height is Z coordinate */}
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[5, 5, 5]} intensity={0.8} castShadow />
-      <pointLight position={[-2, 2, 3]} intensity={0.3} color="#e0e0ff" />
-
-      {/* Ground plane - Z-up: PlaneGeometry is already on XY plane, no rotation needed */}
-      <mesh position={[0, 0, -0.16]} receiveShadow>
-        <planeGeometry args={[3, 3]} />
-        <meshStandardMaterial color="#1a1a2e" metalness={0.1} roughness={0.9} />
-      </mesh>
-    </>
-  );
-}
-
-// ============================================================================
-// Inner Component with Context Access
-// ============================================================================
-
-function MotionPlanningInner() {
+export function MotionPlanningScene() {
   const { addLog } = useAppStore();
 
-  // State
-  const [obstacles, setObstacles] = useState<PlanningObstacle[]>(DEFAULT_OBSTACLES);
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [startJoints, setStartJoints] = useState<number[]>(DEFAULT_START);
-  const [goalJoints, setGoalJoints] = useState<number[]>(DEFAULT_GOAL);
-  const [selectedObstacleId, setSelectedObstacleId] = useState<string | null>(null);
-  const [playbackPosition, setPlaybackPosition] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false);
-  const [currentJoints, setCurrentJoints] = useState<number[]>(DEFAULT_START);
+  // ========== State ==========
+  const [workpoints, setWorkpoints] = useState<Workpoint[]>(INITIAL_WORKPOINTS);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dragPosition, setDragPosition] = useState<[number, number, number] | null>(null);
+  const [urdfContent, setUrdfContent] = useState<string | null>(null);
+  const [robotJoints, setRobotJoints] = useState<number[]>(HOME_JOINTS);
+  const [selectedAlgorithms, setSelectedAlgorithms] = useState<PlannerType[]>(['birrt', 'rrt-star']);
+  const [algorithmResults, setAlgorithmResults] = useState<AlgorithmResult[]>([]);
+  const [isRunningComparison, setIsRunningComparison] = useState(false);
+  const [showPaths, setShowPaths] = useState(true);
+  const [selectedPathForPlayback, setSelectedPathForPlayback] = useState<PlannerType | null>(null);
+  const [isPlayingPath, setIsPlayingPath] = useState(false);
+  const [playbackTime, setPlaybackTime] = useState(0);  // Current playback time for TrajectoryFK
+  const playbackStateRef = useRef({
+    setIsPlaying: (_: boolean) => {},
+    setIndex: (_: number) => {},
+    reset: () => {},
+  });
 
-  // Refs
-  const addLogRef = useRef(addLog);
-  addLogRef.current = addLog;
+  // ========== WASM Init ==========
+  const { ready: wasmReady } = useTrajx();
 
-  // Planning hook
-  const {
-    state: planningState,
-    settings: plannerSettings,
-    updateSettings: updatePlannerSettings,
-    plan,
-    abort,
-    clearResult,
-    createObstacleChecker,
-  } = usePlanningPipeline({
-    jointLimits: JOINT_LIMITS,
+  // ========== Collision World ==========
+  const collisionWorld = useCollisionWorld({
+    onEvent: (event) => {
+      if (event.type === 'object-added') {
+        addLog('info', `Added collision object: ${event.objectId}`);
+      }
+    },
+  });
+
+  const { addBox, addSphere, addCylinder, objects: collisionObjects } = collisionWorld;
+
+  // Initialize collision objects (only once)
+  const collisionInitializedRef = useRef(false);
+  useEffect(() => {
+    if (collisionInitializedRef.current) return;
+    collisionInitializedRef.current = true;
+
+    for (const obj of INITIAL_COLLISION_OBJECTS) {
+      if (obj.type === 'box') {
+        addBox({
+          name: obj.name,
+          position: obj.position,
+          dimensions: { width: obj.params.width, height: obj.params.height, depth: obj.params.depth },
+          color: obj.color,
+        });
+      } else if (obj.type === 'sphere') {
+        addSphere({
+          name: obj.name,
+          position: obj.position,
+          radius: obj.params.radius,
+          color: obj.color,
+        });
+      } else if (obj.type === 'cylinder') {
+        addCylinder({
+          name: obj.name,
+          position: obj.position,
+          radius: obj.params.radius,
+          height: obj.params.height,
+          color: obj.color,
+        });
+      }
+    }
+
+    addLog('info', `Initialized ${INITIAL_COLLISION_OBJECTS.length} collision objects`);
+  }, [addBox, addSphere, addCylinder, addLog]);
+
+  // ========== Load URDF ==========
+  useEffect(() => {
+    fetch(URDF_PATH)
+      .then(r => r.text())
+      .then(content => {
+        setUrdfContent(content);
+        addLog('info', 'URDF loaded');
+      })
+      .catch(err => addLog('error', `Failed to load URDF: ${err.message}`));
+  }, [addLog]);
+
+  // ========== Planning Pipeline ==========
+  const planning = usePlanningPipeline({
+    jointLimits: ROBOT_JOINT_LIMITS,
     defaultPlanner: 'birrt',
     autoInit: true,
-    trajectoryConfig: TRAJECTORY_CONFIG,
     pipelineConfig: {
-      enablePostProcessing: settings.enablePostProcessing,
-      shortcutIterations: settings.shortcutIterations,
-      smoothIterations: settings.smoothIterations,
+      enablePostProcessing: true,
+      shortcutIterations: 100,
+      smoothIterations: 50,
       smoothingFactor: 0.5,
       calculateMetrics: true,
     },
   });
 
-  // Compute path positions for visualization
-  const pathPositions = useMemo<Array<[number, number, number]>>(() => {
-    if (!planningState.result?.path) return [];
-    return planningState.result.path.map((wp) => computeApproximateTcpPosition(wp.joints));
-  }, [planningState.result?.path]);
+  const { state: planningState, updateSettings, plan, createObstacleChecker } = planning;
 
-  // Create collision checker from obstacles
-  const collisionChecker = useMemo(() => {
-    return createObstacleChecker(
-      obstacles.filter((o) => o.enabled),
-      getRobotBoundingSpheres
-    );
-  }, [obstacles, createObstacleChecker]);
+  // ========== Selected Workpoint ==========
+  const selectedWorkpoint = useMemo(() => {
+    return workpoints.find(wp => wp.id === selectedId);
+  }, [workpoints, selectedId]);
 
-  // Handle planning
-  const handlePlan = useCallback(async () => {
-    addLogRef.current('info', `Starting ${plannerSettings.type.toUpperCase()} planning...`);
+  const effectivePosition = useMemo(() => {
+    if (dragPosition) return dragPosition;
+    if (selectedWorkpoint) return selectedWorkpoint.position;
+    return null;
+  }, [dragPosition, selectedWorkpoint]);
 
-    const result = await plan(startJoints, goalJoints, collisionChecker);
+  const targetPose = useMemo(() => {
+    if (!effectivePosition) return null;
+    return {
+      position: effectivePosition as [number, number, number],
+      quaternion: TOOL_FORWARD_QUATERNION,
+    };
+  }, [effectivePosition]);
 
-    if (result.success) {
-      addLogRef.current(
-        'info',
-        `Path found: ${result.path.length} waypoints in ${result.totalTimeMs.toFixed(0)}ms`
-      );
-      setIsAnimating(settings.animatePath);
-      setPlaybackPosition(0);
-    } else {
-      addLogRef.current('error', `Planning failed: ${result.error}`);
+  // ========== IK for selected workpoint ==========
+  const {
+    ready: solverReady,
+    computing,
+    ghostJoints,
+    ghostStatus,
+    workspace,
+    isNearSingular,
+    hasAnalyticalIk,
+  } = usePoseIK({
+    robotId: ROBOT_ID,
+    urdfContent: wasmReady ? urdfContent : null,
+    targetPose,
+    toolOffset: TOOL_OFFSET,
+    debounceMs: 8,
+    // Workspace metrics only trigger warnings, not errors (if IK succeeds, pose is reachable)
+    statusThresholds: {
+      manipulabilityWarning: 0.01,   // Low manipulability triggers warning
+      positionError: 0.02,           // 20mm position error threshold
+      positionWarning: 0.005,        // 5mm warning threshold
+    },
+  });
+
+  // ========== Hybrid Solver for IK computation ==========
+  const solver = useHybridSolver({
+    robotId: ROBOT_ID,
+    urdfContent: wasmReady ? urdfContent : null,
+    coordinateSystem: 'Z-up',
+  });
+
+  // Log solver status
+  useEffect(() => {
+    if (solverReady) {
+      addLog('info', `Solver ready, analytical IK: ${hasAnalyticalIk ? 'yes' : 'no'}`);
     }
-  }, [plan, startJoints, goalJoints, collisionChecker, plannerSettings.type, settings.animatePath]);
+  }, [solverReady, hasAnalyticalIk, addLog]);
 
-  // Handle abort
-  const handleAbort = useCallback(() => {
-    abort();
-    addLogRef.current('warning', 'Planning aborted');
-  }, [abort]);
+  // ========== Helper: Convert PlanningResult path to TrajectoryData ==========
+  const pathToTrajectoryData = useCallback((path: Array<{ joints: number[] }>): TrajectoryData => {
+    const numPoints = path.length;
+    const duration = PLAYBACK_DURATION;  // Use fixed duration for consistent playback
 
-  // Handle clear
-  const handleClear = useCallback(() => {
-    clearResult();
-    setIsAnimating(false);
-    setPlaybackPosition(0);
-    addLogRef.current('info', 'Results cleared');
-  }, [clearResult]);
+    // Generate evenly spaced time stamps
+    const times = path.map((_, i) => (i / (numPoints - 1)) * duration);
+    const positions = path.map(p => p.joints);
 
-  // Handle obstacle click
-  const handleObstacleClick = useCallback((obs: PlanningObstacle) => {
-    setSelectedObstacleId((prev) => (prev === obs.id ? null : obs.id));
-    addLogRef.current('info', `Selected obstacle: ${obs.name}`);
-  }, []);
-
-  // Handle animation position change
-  const handleAnimationPosition = useCallback((position: number, joints: number[]) => {
-    setPlaybackPosition(position);
-    setCurrentJoints(joints);
-  }, []);
-
-  // Toggle obstacle
-  const toggleObstacle = useCallback((id: string) => {
-    setObstacles((prev) =>
-      prev.map((obs) =>
-        obs.id === id ? { ...obs, enabled: !obs.enabled } : obs
-      )
-    );
-  }, []);
-
-  // Reset start to current
-  const resetStartToCurrent = useCallback(() => {
-    setStartJoints(currentJoints);
-    addLogRef.current('info', 'Start set to current position');
-  }, [currentJoints]);
-
-  // Set goal from preset
-  const setGoalPreset = useCallback((preset: 'home' | 'extended' | 'custom') => {
-    switch (preset) {
-      case 'home':
-        setGoalJoints([0, 0, 0, 0, 0, 0]);
-        break;
-      case 'extended':
-        setGoalJoints([1.5, 0.8, -1.2, 0, 1.0, 0]);
-        break;
-      case 'custom':
-        setGoalJoints(DEFAULT_GOAL);
-        break;
+    // Simple velocity estimation (finite differences)
+    const velocities: number[][] = [];
+    for (let i = 0; i < numPoints; i++) {
+      if (i === 0) {
+        // Forward difference at start
+        const dt = times[1] - times[0];
+        velocities.push(positions[1].map((p, j) => (p - positions[0][j]) / dt));
+      } else if (i === numPoints - 1) {
+        // Backward difference at end
+        const dt = times[i] - times[i - 1];
+        velocities.push(positions[i].map((p, j) => (p - positions[i - 1][j]) / dt));
+      } else {
+        // Central difference
+        const dt = times[i + 1] - times[i - 1];
+        velocities.push(positions[i + 1].map((p, j) => (p - positions[i - 1][j]) / dt));
+      }
     }
-    addLogRef.current('info', `Goal preset: ${preset}`);
-  }, []);
-
-  // Stats
-  const stats = useMemo(() => {
-    const result = planningState.result;
-    if (!result?.success) return null;
 
     return {
-      waypoints: result.path.length,
-      planTime: result.planningTimeMs,
-      totalTime: result.totalTimeMs,
-      pathLength: result.metrics?.pathLength,
-      improvement: result.metrics?.improvementRatio,
+      times,
+      positions,
+      velocities,
+      duration,
     };
-  }, [planningState.result]);
+  }, []);
+
+  // ========== Collision Checker ==========
+  const collisionChecker = useMemo(() => {
+    const obstacles = collisionObjects.map(obj => {
+      const params = obj.params;
+      let dimensions: number[];
+
+      if (params.type === 'box') {
+        dimensions = [params.width, params.height, params.depth];
+      } else if (params.type === 'sphere') {
+        dimensions = [params.radius];
+      } else if (params.type === 'cylinder' || params.type === 'capsule') {
+        dimensions = [params.radius, params.height];
+      } else {
+        dimensions = [0.1]; // Default fallback
+      }
+
+      return {
+        id: obj.id,
+        name: obj.name,
+        type: obj.type as 'box' | 'sphere' | 'cylinder' | 'mesh',
+        position: obj.transform.position,
+        dimensions,
+        enabled: obj.enabled,
+      };
+    });
+    return createObstacleChecker(obstacles, getRobotBoundingSpheres);
+  }, [collisionObjects, createObstacleChecker]);
+
+  // ========== Compute IK for workpoints ==========
+  const computeWorkpointIK = useCallback((wp: Workpoint): number[] | null => {
+    if (!solver.ready) return null;
+
+    const pose = {
+      position: { x: wp.position[0], y: wp.position[1], z: wp.position[2] },
+      orientation: {
+        x: TOOL_FORWARD_QUATERNION[0],
+        y: TOOL_FORWARD_QUATERNION[1],
+        z: TOOL_FORWARD_QUATERNION[2],
+        w: TOOL_FORWARD_QUATERNION[3],
+      },
+    };
+
+    const ikResult = solver.ik(pose, robotJoints);
+    return ikResult?.success && ikResult.solution ? ikResult.solution : null;
+  }, [solver.ready, solver.ik, robotJoints]);
+
+  // ========== Run Algorithm Comparison ==========
+  const runComparison = useCallback(async () => {
+    if (!solver.ready || !planningState.ready) {
+      addLog('error', 'Solver or planner not ready');
+      return;
+    }
+
+    const startWp = workpoints.find(wp => wp.type === 'start');
+    const goalWp = workpoints.find(wp => wp.type === 'goal');
+
+    if (!startWp || !goalWp) {
+      addLog('error', 'Need both start and goal workpoints');
+      return;
+    }
+
+    // Compute IK for start and goal
+    const startJoints = computeWorkpointIK(startWp);
+    const goalJoints = computeWorkpointIK(goalWp);
+
+    if (!startJoints || !goalJoints) {
+      addLog('error', 'IK failed for start or goal position');
+      return;
+    }
+
+    setIsRunningComparison(true);
+
+    // Initialize results
+    const initialResults: AlgorithmResult[] = selectedAlgorithms.map(planner => ({
+      planner,
+      result: null,
+      isRunning: true,
+      color: ALGORITHM_COLORS[planner],
+    }));
+    setAlgorithmResults(initialResults);
+
+    addLog('info', `Running comparison with ${selectedAlgorithms.length} algorithms...`);
+
+    // Run each algorithm sequentially (to get accurate timing)
+    const results: AlgorithmResult[] = [];
+    for (const planner of selectedAlgorithms) {
+      addLog('info', `Running ${ALGORITHM_NAMES[planner]}...`);
+
+      // Update settings for this planner
+      updateSettings({ type: planner });
+
+      // Small delay to ensure settings are applied
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      try {
+        const result = await plan(startJoints, goalJoints, collisionChecker);
+
+        // Generate TrajectoryData for TrajectoryFK visualization
+        const trajectoryData = result.success && result.path.length > 0
+          ? pathToTrajectoryData(result.path)
+          : undefined;
+
+        results.push({
+          planner,
+          result,
+          isRunning: false,
+          color: ALGORITHM_COLORS[planner],
+          trajectoryData,
+        });
+
+        if (result.success) {
+          addLog('info', `${ALGORITHM_NAMES[planner]}: Success - ${result.path.length} pts in ${result.totalTimeMs.toFixed(0)}ms`);
+        } else {
+          addLog('warning', `${ALGORITHM_NAMES[planner]}: Failed - ${result.error}`);
+        }
+      } catch (err) {
+        results.push({
+          planner,
+          result: {
+            success: false,
+            error: err instanceof Error ? err.message : 'Unknown error',
+            path: [],
+            totalTimeMs: 0,
+            planningTimeMs: 0,
+            collisionChecked: true,
+          },
+          isRunning: false,
+          color: ALGORITHM_COLORS[planner],
+        });
+        addLog('error', `${ALGORITHM_NAMES[planner]}: Error - ${err instanceof Error ? err.message : 'Unknown'}`);
+      }
+
+      // Update results incrementally
+      setAlgorithmResults([...results, ...selectedAlgorithms.slice(results.length).map(p => ({
+        planner: p,
+        result: null,
+        isRunning: selectedAlgorithms.indexOf(p) === results.length,
+        color: ALGORITHM_COLORS[p],
+      }))]);
+    }
+
+    setAlgorithmResults(results);
+    setIsRunningComparison(false);
+    addLog('info', 'Comparison complete');
+  }, [solver.ready, planningState.ready, workpoints, computeWorkpointIK, selectedAlgorithms, updateSettings, plan, collisionChecker, pathToTrajectoryData, addLog]);
+
+  // ========== Toggle Algorithm ==========
+  const toggleAlgorithm = useCallback((planner: PlannerType) => {
+    setSelectedAlgorithms(prev =>
+      prev.includes(planner)
+        ? prev.filter(p => p !== planner)
+        : [...prev, planner]
+    );
+  }, []);
+
+  // ========== Clear Results ==========
+  const clearResults = useCallback(() => {
+    setAlgorithmResults([]);
+    setSelectedPathForPlayback(null);
+    addLog('info', 'Results cleared');
+  }, [addLog]);
+
+  // ========== Handlers ==========
+  const handleDragPosition = useCallback((id: string, pos: [number, number, number]) => {
+    if (workpoints.some(w => w.id === id)) {
+      setDragPosition(pos);
+    }
+  }, [workpoints]);
+
+  const handleUpdatePosition = useCallback((id: string, pos: [number, number, number]) => {
+    setDragPosition(null);
+    setWorkpoints(prev => prev.map(w => w.id === id ? { ...w, position: pos } : w));
+    addLog('info', `Updated ${id} position`);
+  }, [addLog]);
+
+  const handleJointsUpdate = useCallback((joints: number[]) => {
+    setRobotJoints(joints);
+  }, []);
+
+  // ========== Execute Path ==========
+  const executePath = useCallback((planner: PlannerType) => {
+    const result = algorithmResults.find(r => r.planner === planner);
+    if (!result?.result?.success || !result.trajectoryData) {
+      addLog('warning', 'No valid path to execute');
+      return;
+    }
+    setSelectedPathForPlayback(planner);
+    setPlaybackTime(0);
+    playbackStateRef.current.reset();
+    playbackStateRef.current.setIsPlaying(true);
+    setIsPlayingPath(true);
+    addLog('info', `Executing ${ALGORITHM_NAMES[planner]} path (${result.trajectoryData.positions.length} pts)...`);
+  }, [algorithmResults, addLog]);
+
+  // ========== Get Playback TrajectoryData ==========
+  const playbackTrajectoryData = useMemo(() => {
+    if (!selectedPathForPlayback) return null;
+    const result = algorithmResults.find(r => r.planner === selectedPathForPlayback);
+    return result?.trajectoryData ?? null;
+  }, [selectedPathForPlayback, algorithmResults]);
+
+  // ========== Playback Time Update Handler ==========
+  const handlePlaybackTimeUpdate = useCallback((time: number) => {
+    setPlaybackTime(time);
+  }, []);
+
+  // ========== Loading State ==========
+  if (!wasmReady) {
+    return (
+      <div style={{ padding: 20, color: THEME.text }}>
+        <h3>Loading WASM kinematics...</h3>
+      </div>
+    );
+  }
 
   return (
-    <div className="module-container" style={{ background: THEME.background, maxHeight: '100%', overflowY: 'auto' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: THEME.background }}>
       {/* Header */}
-      <div className="module-header" style={{ borderBottom: `1px solid ${THEME.primary}40` }}>
-        <h2 style={{ color: THEME.primary }}>Motion Planning</h2>
-        <p style={{ color: THEME.textSecondary }}>
-          GPU-accelerated path planning with collision avoidance
+      <div style={{ padding: 12, borderBottom: `1px solid ${THEME.primary}40` }}>
+        <h2 style={{ color: THEME.primary, margin: 0 }}>Motion Planning - Algorithm Comparison</h2>
+        <p style={{ color: THEME.textSecondary, margin: '4px 0 0', fontSize: 12 }}>
+          {collisionObjects.length} obstacles • IK: {solverReady ? (hasAnalyticalIk ? 'Analytical' : 'Numerical') : 'Loading...'} • Planner: {planningState.ready ? 'Ready' : 'Initializing...'}
         </p>
       </div>
 
-      {/* Stats Bar */}
-      {stats && (
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            padding: '12px 16px',
-            background: THEME.surface,
-            borderRadius: 8,
-            marginBottom: 12,
-            flexWrap: 'wrap',
-          }}
-        >
-          <StatBadge label="Waypoints" value={stats.waypoints} color={THEME.primary} />
-          <StatBadge label="Plan Time" value={`${stats.planTime.toFixed(0)}ms`} color={THEME.success} />
-          <StatBadge label="Total Time" value={`${stats.totalTime.toFixed(0)}ms`} color={THEME.secondary} />
-          {stats.pathLength && (
-            <StatBadge label="Path Length" value={stats.pathLength.toFixed(3)} color={THEME.textSecondary} />
-          )}
-          {stats.improvement !== undefined && stats.improvement > 0 && (
-            <StatBadge
-              label="Optimized"
-              value={`${(stats.improvement * 100).toFixed(1)}%`}
-              color={THEME.success}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div style={{ display: 'flex', gap: 16 }}>
-        {/* Left Panel */}
-        <div style={{ width: 300, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Planning Control */}
-          <PlanningControlPanel
-            state={planningState}
-            settings={plannerSettings}
-            onUpdateSettings={updatePlannerSettings}
-            onPlan={handlePlan}
-            onAbort={handleAbort}
-            onClearResult={handleClear}
-            theme={THEME}
+      {/* Main content */}
+      <div style={{ flex: 1, display: 'flex', gap: 12, padding: 12, minHeight: 0 }}>
+        {/* Left panel */}
+        <div style={{ width: 300, display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
+          {/* Algorithm Comparison */}
+          <AlgorithmComparisonPanel
+            results={algorithmResults}
+            selectedAlgorithms={selectedAlgorithms}
+            onToggleAlgorithm={toggleAlgorithm}
+            onRunComparison={runComparison}
+            onClearResults={clearResults}
+            isRunning={isRunningComparison}
+            canRun={solver.ready && planningState.ready && ghostStatus !== 'error'}
           />
 
-          {/* Goal Presets */}
-          <div
-            style={{
-              background: THEME.panel,
-              borderRadius: 8,
-              border: `1px solid ${THEME.primary}40`,
-              padding: 12,
-            }}
-          >
-            <div style={{ fontSize: 11, color: THEME.textSecondary, marginBottom: 8 }}>
-              Goal Presets
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button style={presetButtonStyle} onClick={() => setGoalPreset('home')}>
-                Home
-              </button>
-              <button style={presetButtonStyle} onClick={() => setGoalPreset('extended')}>
-                Extended
-              </button>
-              <button style={presetButtonStyle} onClick={() => setGoalPreset('custom')}>
-                Custom
-              </button>
-              <button style={presetButtonStyle} onClick={resetStartToCurrent}>
-                Set Start
-              </button>
-            </div>
-          </div>
+          {/* Workspace Analysis */}
+          <WorkspaceMetricsPanel
+            workspace={workspace}
+            isNearSingular={isNearSingular}
+            ghostStatus={ghostStatus}
+            computing={computing}
+            selectedWp={selectedWorkpoint || null}
+          />
 
-          {/* Obstacles List */}
-          <div
-            style={{
-              background: THEME.panel,
-              borderRadius: 8,
-              border: `1px solid ${THEME.primary}40`,
-              padding: 12,
-            }}
-          >
-            <div style={{ fontSize: 11, color: THEME.textSecondary, marginBottom: 8 }}>
-              Obstacles ({obstacles.filter((o) => o.enabled).length}/{obstacles.length})
+          {/* Visualization Controls */}
+          <div style={{ background: THEME.panel, borderRadius: 8, padding: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: THEME.text, marginBottom: 8 }}>
+              Visualization
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {obstacles.map((obs) => (
-                <div
-                  key={obs.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '4px 8px',
-                    background: selectedObstacleId === obs.id ? `${THEME.primary}20` : 'transparent',
-                    borderRadius: 4,
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setSelectedObstacleId(obs.id)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={obs.enabled}
-                    onChange={() => toggleObstacle(obs.id)}
-                    style={{ accentColor: THEME.primary }}
-                  />
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 2,
-                      background: obs.color,
-                    }}
-                  />
-                  <span style={{ fontSize: 11, color: THEME.text, flex: 1 }}>{obs.name}</span>
-                  <span style={{ fontSize: 10, color: THEME.textSecondary }}>{obs.type}</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8 }}>
+              <input
+                type="checkbox"
+                checked={showPaths}
+                onChange={(e) => setShowPaths(e.target.checked)}
+                style={{ accentColor: THEME.primary }}
+              />
+              <span style={{ fontSize: 11, color: THEME.text }}>Show Paths</span>
+            </label>
+
+            {/* Path execution buttons */}
+            {algorithmResults.some(r => r.result?.success) && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 10, color: THEME.textSecondary, marginBottom: 6 }}>
+                  Execute path:
                 </div>
-              ))}
-            </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {algorithmResults.filter(r => r.result?.success).map(({ planner }) => (
+                    <button
+                      key={planner}
+                      onClick={() => executePath(planner)}
+                      disabled={isPlayingPath}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: 10,
+                        borderRadius: 4,
+                        border: 'none',
+                        background: ALGORITHM_COLORS[planner],
+                        color: 'white',
+                        cursor: isPlayingPath ? 'not-allowed' : 'pointer',
+                        opacity: isPlayingPath ? 0.5 : 1,
+                      }}
+                    >
+                      {ALGORITHM_NAMES[planner]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Visualization Settings */}
-          <div
-            style={{
-              background: THEME.panel,
-              borderRadius: 8,
-              border: `1px solid ${THEME.primary}40`,
-              overflow: 'hidden',
-            }}
-          >
-            <PropertyEditor
-              schema={SETTINGS_SCHEMA}
-              value={settings as unknown as Record<string, unknown>}
-              onChange={(v) => setSettings(v as unknown as typeof DEFAULT_SETTINGS)}
-              theme="dark"
-              compact={true}
-              hideActions={true}
-              autoSave={true}
-            />
+          {/* Workpoints list */}
+          <div style={{ background: THEME.panel, borderRadius: 8, padding: 12, flex: 1, overflow: 'auto' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: THEME.textSecondary, marginBottom: 8 }}>
+              Workpoints
+            </div>
+            {workpoints.map(wp => (
+              <div
+                key={wp.id}
+                onClick={() => setSelectedId(wp.id)}
+                style={{
+                  padding: '6px 8px',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  borderRadius: 4,
+                  color: wp.id === selectedId ? WORKPOINT_COLORS[wp.type] : THEME.text,
+                  background: wp.id === selectedId ? `${WORKPOINT_COLORS[wp.type]}20` : 'transparent',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: 4,
+                }}
+              >
+                <span>{wp.name}</span>
+                <span style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: WORKPOINT_COLORS[wp.type],
+                }} />
+              </div>
+            ))}
+
+            <button
+              onClick={() => { setRobotJoints(HOME_JOINTS); clearResults(); }}
+              style={{
+                width: '100%',
+                marginTop: 8,
+                padding: '8px 12px',
+                borderRadius: 4,
+                border: `1px solid ${THEME.primary}40`,
+                background: 'transparent',
+                color: THEME.text,
+                cursor: 'pointer',
+                fontSize: 11,
+              }}
+            >
+              Reset Robot
+            </button>
           </div>
         </div>
 
-        {/* Right Panel - 3D View */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div
-            style={{
-              height: 550,
-              borderRadius: 8,
-              overflow: 'hidden',
-              border: `1px solid ${THEME.primary}30`,
-            }}
-          >
-            <RoboViz
-              config={{
-                scene: { background: THEME.background },
-                camera: { position: { x: 1.2, y: 0.8, z: 1.2 } },
-              }}
-            >
-              <SceneContent
-                obstacles={obstacles}
-                path={planningState.result?.path || []}
-                pathPositions={pathPositions}
-                settings={settings}
-                playbackPosition={playbackPosition}
-                selectedObstacleId={selectedObstacleId}
-                onObstacleClick={handleObstacleClick}
-              />
-
-              {/* Animation controller */}
-              {isAnimating && planningState.result?.path && (
-                <PathAnimator
-                  path={planningState.result.path}
-                  isPlaying={isAnimating}
-                  speed={settings.animationSpeed}
-                  onPositionChange={handleAnimationPosition}
-                />
-              )}
-            </RoboViz>
-          </div>
-
-          {/* Playback Controls */}
-          {planningState.result?.success && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: 12,
-                background: THEME.surface,
-                borderRadius: 8,
-              }}
-            >
-              <button
-                style={{
-                  ...presetButtonStyle,
-                  background: isAnimating ? THEME.danger : THEME.primary,
-                }}
-                onClick={() => setIsAnimating(!isAnimating)}
-              >
-                {isAnimating ? 'Stop' : 'Play'}
-              </button>
-
-              <div style={{ flex: 1 }}>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.001}
-                  value={playbackPosition}
-                  onChange={(e) => {
-                    const pos = parseFloat(e.target.value);
-                    setPlaybackPosition(pos);
-
-                    const path = planningState.result?.path;
-                    if (path && path.length > 1) {
-                      const idx = Math.floor(pos * (path.length - 1));
-                      setCurrentJoints(path[idx].joints);
-                    }
-                  }}
-                  style={{ width: '100%', accentColor: THEME.primary }}
-                />
-              </div>
-
-              <span style={{ fontSize: 11, color: THEME.textSecondary, minWidth: 40 }}>
-                {Math.round(playbackPosition * 100)}%
-              </span>
-            </div>
-          )}
-
-          {/* Keyboard Shortcuts */}
-          <div
-            style={{
-              padding: 10,
-              background: `${THEME.surface}80`,
-              borderRadius: 6,
-              fontSize: 11,
-              color: THEME.textSecondary,
-            }}
-          >
-            <strong>Tips:</strong>
-            <span style={{ marginLeft: 12 }}>
-              Click obstacles to select • Toggle checkboxes to enable/disable • Use presets for quick goal setting
-            </span>
-          </div>
+        {/* 3D View */}
+        <div style={{ flex: 1, borderRadius: 8, overflow: 'hidden', border: `1px solid ${THEME.primary}30` }}>
+          <RoboViz config={{ scene: { background: THEME.background }, camera: { position: { x: 1.2, y: 0.8, z: 1 } } }}>
+            <SceneContent
+              workpoints={workpoints}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onUpdatePosition={handleUpdatePosition}
+              onDragPosition={handleDragPosition}
+              ghostJoints={ghostJoints}
+              ghostStatus={ghostStatus}
+              robotJoints={robotJoints}
+              collisionObjects={collisionObjects}
+              algorithmResults={algorithmResults}
+              showPaths={showPaths}
+              playbackTime={playbackTime}
+              selectedPlaybackPlanner={selectedPathForPlayback}
+            />
+            <PlaybackController
+              trajectoryData={playbackTrajectoryData}
+              onJointsUpdate={handleJointsUpdate}
+              onTimeUpdate={handlePlaybackTimeUpdate}
+              playbackState={playbackStateRef.current}
+            />
+          </RoboViz>
         </div>
       </div>
     </div>
-  );
-}
-
-// ============================================================================
-// Styles
-// ============================================================================
-
-const presetButtonStyle: React.CSSProperties = {
-  padding: '6px 12px',
-  fontSize: 11,
-  fontWeight: 500,
-  background: '#333',
-  color: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  cursor: 'pointer',
-};
-
-// ============================================================================
-// Helper Components
-// ============================================================================
-
-function StatBadge({ label, value, color }: { label: string; value: string | number; color: string }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '4px 10px',
-        backgroundColor: `${color}15`,
-        borderRadius: 4,
-        fontSize: 12,
-      }}
-    >
-      <span style={{ color: THEME.textSecondary }}>{label}:</span>
-      <span style={{ fontWeight: 600, color }}>{value}</span>
-    </div>
-  );
-}
-
-// ============================================================================
-// Export
-// ============================================================================
-
-export function MotionPlanningScene() {
-  return (
-    <ProcessProvider>
-      <RobotProcessProvider urdfPath={URDF_PATH} robotId="motion-planning-robot">
-        <MotionPlanningInner />
-      </RobotProcessProvider>
-    </ProcessProvider>
   );
 }
 

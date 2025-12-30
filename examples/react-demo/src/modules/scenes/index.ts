@@ -6,3 +6,4 @@ export { CollisionAnalysisScene } from './CollisionAnalysisScene';
 export { default as RenderingShowcaseScene } from './RenderingShowcaseScene';
 export { MotionPlanningScene } from './MotionPlanningScene';
 export { GPUMotionPlanningScene } from './GPUMotionPlanningScene';
+export { IKDemoScene } from './IKDemoScene';

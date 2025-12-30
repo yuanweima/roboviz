@@ -21,6 +21,11 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import type { Vector3Like } from '../types';
 import { isURDFLink, findLastURDFLink } from '../types/urdf';
 import { EndEffectorProvider } from './EndEffector';
+// Import GhostStatus from unified-types (single source of truth)
+import { type GhostStatus, GHOST_STATUS_COLORS } from '../kinematics/unified-types';
+
+// Re-export for backward compatibility
+export { type GhostStatus, GHOST_STATUS_COLORS };
 
 /** Euler angles tuple [x, y, z] in radians */
 export type EulerTuple = [number, number, number];
@@ -32,21 +37,6 @@ export type QuaternionTuple = [number, number, number, number];
  * Mesh data for loading meshes from memory (base64 encoded)
  */
 export type MeshDataMap = Record<string, string>;
-
-/**
- * Ghost robot status for visual feedback
- */
-export type GhostStatus = 'valid' | 'warning' | 'error' | 'neutral';
-
-/**
- * Predefined colors for different ghost statuses
- */
-export const GHOST_STATUS_COLORS: Record<GhostStatus, string> = {
-  valid: '#00ff88',    // Green - reachable, no collision
-  warning: '#ffaa00',  // Orange - near limits or singularity
-  error: '#ff4444',    // Red - unreachable or collision
-  neutral: '#88aaff',  // Blue - neutral preview
-};
 
 export interface GhostRobotProps {
   /** Unique identifier for this ghost */

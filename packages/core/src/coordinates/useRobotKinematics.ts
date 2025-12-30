@@ -39,6 +39,7 @@
 import { useCallback, useMemo } from 'react';
 import { useHybridSolver, type UseHybridSolverOptions } from '../kinematics/useTrajx';
 import { CoordinateTransform } from './transform';
+import { computeWorkspaceAnalysis } from '../kinematics/solver-interface';
 import type {
   Position3D,
   Quaternion,
@@ -46,7 +47,7 @@ import type {
   TCPOffset,
   JointAngles,
 } from './types';
-import type { IkResult, MultiIkResult, FkChainResult } from '../kinematics/types';
+import type { IkResult, MultiIkResult, FkChainResult, WorkspaceAnalysis } from '../kinematics/types';
 
 // ============================================================================
 // Types
@@ -136,6 +137,10 @@ export interface UseRobotKinematicsReturn {
   /** Get all IK solutions (analytical if available) */
   ikAll: (targetPose: Pose3D, seed?: JointAngles) => MultiIkResult3D | null;
 
+  // Workspace Analysis
+  /** Analyze workspace properties at joint configuration */
+  analyzeWorkspace: (joints: JointAngles) => WorkspaceAnalysis | null;
+
   // Tool Management (Z-up coordinates)
   /** Attach TCP offset (in flange-local Z-up frame) */
   attachTcp: (offset: TCPOffset) => void;
@@ -177,6 +182,8 @@ export function useRobotKinematics(options: UseRobotKinematicsOptions): UseRobot
     jointNames,
     jointLimits,
     hasAnalyticalIk,
+    urdfSolver,
+    dhSolver,
     fk: hybridFk,
     fkTcp: hybridFkTcp,
     fkChain: hybridFkChain,
@@ -287,6 +294,16 @@ export function useRobotKinematics(options: UseRobotKinematicsOptions): UseRobot
     [attachTool]
   );
 
+  // Workspace analysis (use DH solver if available, otherwise URDF solver with fallback)
+  const analyzeWorkspace = useCallback(
+    (joints: JointAngles): WorkspaceAnalysis | null => {
+      const solver = dhSolver || urdfSolver;
+      if (!solver) return null;
+      return computeWorkspaceAnalysis(solver, joints);
+    },
+    [dhSolver, urdfSolver]
+  );
+
   return {
     // State
     ready,
@@ -305,6 +322,9 @@ export function useRobotKinematics(options: UseRobotKinematicsOptions): UseRobot
     ik,
     ikTcp,
     ikAll,
+
+    // Workspace Analysis
+    analyzeWorkspace,
 
     // Tool
     attachTcp,

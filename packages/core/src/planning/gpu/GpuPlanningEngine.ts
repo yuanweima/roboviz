@@ -53,6 +53,9 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
 
   // trajx-wasm module reference (loaded dynamically)
   private trajxWasm: typeof import('../../wasm/trajx_wasm') | null = null;
+  // Robot instance for FK computation (using 'any' because Robot has private constructor)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private robot: any = null;
 
   constructor(config: GpuPlanningEngineConfig) {
     this.config = {
@@ -100,6 +103,16 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
       // Dynamically import trajx-wasm
       this.trajxWasm = await import('../../wasm/trajx_wasm');
 
+      // Load robot from URDF for FK computation
+      if (this.config.robotUrdf) {
+        try {
+          this.robot = this.trajxWasm.Robot.fromString(this.config.robotUrdf);
+        } catch (robotError) {
+          console.warn('Failed to load robot from URDF for FK:', robotError);
+          // Continue without robot - collision checking will be limited
+        }
+      }
+
       // Initialize capsule transformer if robot capsule model is provided in config
       // (This will be set later via setCollisionWorld if not provided initially)
 
@@ -124,6 +137,10 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
     this.progressCallbacks.clear();
     this.eventCallbacks.clear();
     this.capsuleTransformer = null;
+    if (this.robot) {
+      this.robot.free();
+      this.robot = null;
+    }
     this.trajxWasm = null;
     this._state.initialized = false;
   }
@@ -269,18 +286,35 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
 
   /**
    * Compute link transforms as a flat Float64Array of 4x4 matrices
-   * This will use trajx-wasm's FK when available
+   * Uses trajx-wasm's FK to get link poses, then converts to flat matrix array
    */
   private computeLinkTransformsFlat(joints: number[]): Float64Array {
-    // This would use trajx-wasm's FK to compute link transforms
-    // For now, return empty array (will be connected to actual FK later)
-    if (this.trajxWasm) {
-      // TODO: Call trajx-wasm FK
-      // const robot = this.trajxWasm.loadRobot(this.config.robotUrdf);
-      // return robot.getLinkTransforms(joints);
+    if (!this.robot) {
+      return new Float64Array(0);
     }
 
-    return new Float64Array(0);
+    try {
+      // Get link poses from FK
+      const jointAngles = new Float64Array(joints);
+      const poses = this.robot.forwardKinematicsChain(jointAngles);
+
+      if (!poses || poses.length === 0) {
+        return new Float64Array(0);
+      }
+
+      // Each pose is a 4x4 matrix (16 floats)
+      const result = new Float64Array(poses.length * 16);
+
+      for (let i = 0; i < poses.length; i++) {
+        const matrix = poses[i].toMatrix4();
+        result.set(matrix, i * 16);
+      }
+
+      return result;
+    } catch (error) {
+      console.warn('Failed to compute link transforms:', error);
+      return new Float64Array(0);
+    }
   }
 
   // ============================================================================
@@ -611,6 +645,9 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
         path = await this.smoothPath(path, checker, params.smoothingIterations);
       }
 
+      // Densify path to ensure smooth motion (interpolate with max 0.1 rad step)
+      path = this.densifyPath(path, params.stepSize);
+
       // Convert to GpuPathWaypoint format
       const pathWaypoints: GpuPathWaypoint[] = path.map((joints) => ({ joints }));
 
@@ -665,6 +702,17 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
 
     // Build k-NN graph (simplified)
     const edges: Array<[number, number]> = [];
+    const edgeSet = new Set<string>(); // Track unique edges
+
+    const addEdge = (a: number, b: number) => {
+      const [min, max] = a < b ? [a, b] : [b, a];
+      const key = `${min}-${max}`;
+      if (!edgeSet.has(key)) {
+        edgeSet.add(key);
+        edges.push([min, max]);
+      }
+    };
+
     for (let i = 0; i < samples.length; i++) {
       if (signal.aborted) break;
 
@@ -673,7 +721,9 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
       for (let j = 0; j < samples.length; j++) {
         if (i === j) continue;
         const dist = this.jointDistance(samples[i], samples[j]);
-        if (dist < params.connectionRadius) {
+        // For start (0) and goal (1), always consider all neighbors (no radius limit)
+        // This ensures start/goal connect to the roadmap
+        if (i <= 1 || j <= 1 || dist < params.connectionRadius) {
           distances.push({ idx: j, dist });
         }
       }
@@ -681,9 +731,7 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
       distances.sort((a, b) => a.dist - b.dist);
       for (let k = 0; k < Math.min(params.numNeighbors, distances.length); k++) {
         const j = distances[k].idx;
-        if (i < j) {
-          edges.push([i, j]);
-        }
+        addEdge(i, j);
       }
 
       if (i % 100 === 0) {
@@ -1135,6 +1183,41 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
           result[i] = smoothed;
         }
       }
+    }
+
+    return result;
+  }
+
+  /**
+   * Densify path by interpolating between waypoints to ensure minimum spacing.
+   * This ensures smooth robot motion even if the planner finds a direct path.
+   */
+  private densifyPath(
+    path: JointConfiguration[],
+    maxStepSize: number = 0.1 // Maximum step size in joint space (radians)
+  ): JointConfiguration[] {
+    if (path.length < 2) return path;
+
+    const result: JointConfiguration[] = [path[0]];
+
+    for (let i = 0; i < path.length - 1; i++) {
+      const from = path[i];
+      const to = path[i + 1];
+      const dist = this.jointDistance(from, to);
+
+      if (dist > maxStepSize) {
+        // Need to interpolate
+        const numSteps = Math.ceil(dist / maxStepSize);
+        for (let step = 1; step < numSteps; step++) {
+          const t = step / numSteps;
+          const interpolated: number[] = [];
+          for (let j = 0; j < from.length; j++) {
+            interpolated.push(from[j] + t * (to[j] - from[j]));
+          }
+          result.push(interpolated);
+        }
+      }
+      result.push(to);
     }
 
     return result;

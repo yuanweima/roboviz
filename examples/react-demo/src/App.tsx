@@ -13,6 +13,7 @@ import { CollisionAnalysisScene } from './modules/scenes/CollisionAnalysisScene'
 import RenderingShowcaseScene from './modules/scenes/RenderingShowcaseScene';
 import { MotionPlanningScene } from './modules/scenes/MotionPlanningScene';
 import { GPUMotionPlanningScene } from './modules/scenes/GPUMotionPlanningScene';
+import { IKDemoScene } from './modules/scenes/IKDemoScene';
 
 // Core Features
 import { RobotModule } from './modules/RobotModule';
@@ -56,6 +57,7 @@ export type ModuleType =
   | 'rendering-showcase'
   | 'motion-planning'
   | 'gpu-motion-planning'
+  | 'ik-demo'
   // Core Features
   | 'robot'
   | 'workpoint'
@@ -92,6 +94,7 @@ const MODULE_COMPONENTS: Record<ModuleType, React.ComponentType> = {
   'rendering-showcase': RenderingShowcaseScene,
   'motion-planning': MotionPlanningScene,
   'gpu-motion-planning': GPUMotionPlanningScene,
+  'ik-demo': IKDemoScene,
   // Core Features
   'robot': RobotModule,
   'workpoint': WorkpointModule,
