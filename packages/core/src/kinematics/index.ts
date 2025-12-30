@@ -160,3 +160,35 @@ export {
   type WaypointResult,
   type OrientationInterpolation,
 } from './linear-motion';
+
+// ============================================================================
+// Unified IK Types & Ghost Status
+// ============================================================================
+
+export {
+  // Ghost Status (SINGLE SOURCE OF TRUTH)
+  type GhostStatus,
+  GHOST_STATUS_COLORS,
+  // Types
+  type UnifiedIKResult,
+  type UnifiedMultiIKResult,
+  type UnifiedIKSolution,
+  type StatusThresholds,
+  // Constants
+  DEFAULT_STATUS_THRESHOLDS,
+  // Utilities
+  getGhostStatusFromWorkspace,
+  createUnifiedIKResult,
+} from './unified-types';
+
+// ============================================================================
+// Core IK Computation Hook
+// ============================================================================
+
+export {
+  useIKComputation,
+  type IKSolver,
+  type IKSolverResult,
+  type UseIKComputationOptions,
+  type UseIKComputationReturn,
+} from './useIKComputation';

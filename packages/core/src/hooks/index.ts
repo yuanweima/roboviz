@@ -75,7 +75,6 @@ export {
 // Ghost preview hook for IK-based robot pose preview (Z-up API)
 export {
   useGhostPreview,
-  type GhostPreviewStatus,
   type GhostInputMode,
   type UseGhostPreviewOptions,
   type UseGhostPreviewResult,
@@ -98,3 +97,17 @@ export {
   type UseRobotWithKinematicsOptions,
   type UseRobotWithKinematicsResult,
 } from './useRobotWithKinematics';
+
+// Workpoint IK hook - unified workpoint → IK → ghost (Z-up API)
+export {
+  useWorkpointIK,
+  type UseWorkpointIKOptions,
+  type UseWorkpointIKReturn,
+} from './useWorkpointIK';
+
+// Pose IK hook - low-level pose → IK → ghost (Z-up API)
+export {
+  usePoseIK,
+  type UsePoseIKOptions,
+  type UsePoseIKReturn,
+} from './usePoseIK';

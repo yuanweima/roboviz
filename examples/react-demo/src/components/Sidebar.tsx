@@ -37,8 +37,9 @@ const MODULES: ModuleInfo[] = [
   { id: 'cable-management', label: 'Cable Management', icon: '🔌', description: 'Cable twist tracking', category: 'scenes', isFeatured: true },
   { id: 'collision-analysis', label: 'Collision Analysis', icon: '📊', description: 'Timeline + Robot integration', category: 'scenes', isFeatured: true },
   { id: 'rendering-showcase', label: 'Rendering Showcase', icon: '✨', description: 'Post-processing & shaders', category: 'scenes', isFeatured: true },
-  { id: 'motion-planning', label: 'Motion Planning', icon: '🧭', description: 'GPU path planning', category: 'scenes', isFeatured: true },
+  { id: 'motion-planning', label: 'Motion Planning', icon: '🧭', description: 'Algorithm comparison', category: 'scenes', isFeatured: true },
   { id: 'gpu-motion-planning', label: 'GPU Planning Pro', icon: '⚡', description: 'Advanced collision + waypoints', category: 'scenes', isFeatured: true },
+  { id: 'ik-demo', label: 'IK Demo', icon: '📐', description: 'usePoseIK reference implementation', category: 'scenes', isFeatured: true },
 
   // Core Features
   { id: 'robot', label: 'Robot Basics', icon: '🤖', description: 'URDF loading, joint control', category: 'core' },

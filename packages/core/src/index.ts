@@ -198,6 +198,10 @@ export {
   type IKSolutionSelectorProps,
 } from './components/IKGhostRobot';
 export {
+  WorkpointGhostPreview,
+  type WorkpointGhostPreviewProps,
+} from './components/WorkpointGhostPreview';
+export {
   LinearMotionPreview,
   type LinearMotionPreviewProps,
   type PathPoint,

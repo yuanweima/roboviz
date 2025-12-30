@@ -382,6 +382,56 @@ The following modules extend the base architecture to support industrial robotic
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### Kinematics Module (FK/IK/Ghost Preview)
+
+The kinematics module provides a unified Z-up API for robot forward/inverse kinematics,
+ghost preview visualization, and workspace analysis.
+
+**Architecture:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Unified Types Layer                             │
+│  Pose3D: { position: [x,y,z], quaternion: [x,y,z,w] }               │
+│  GhostStatus: 'valid' | 'warning' | 'error' | 'neutral'             │
+│  UnifiedIKResult: { joints, status, workspace, isNearSingular }     │
+└─────────────────────────────────────────────────────────────────────┘
+                                  │
+┌─────────────────────────────────┴───────────────────────────────────┐
+│                      IK Computation Core                             │
+│  useIKComputation - Unified IK with workspace analysis              │
+│  ┌──────────────┐ ┌────────────────────┐ ┌──────────────────┐       │
+│  │  usePoseIK   │ │  useWorkpointIK    │ │  useGhostPreview │       │
+│  └──────────────┘ └────────────────────┘ └──────────────────┘       │
+└─────────────────────────────────────────────────────────────────────┘
+                                  │
+┌─────────────────────────────────┴───────────────────────────────────┐
+│                      High-Level Hooks                                │
+│  useRobotWithKinematics - URDF loading + joint state + FK/IK        │
+│  useRobotKinematics     - Pure FK/IK interface                      │
+└─────────────────────────────────────────────────────────────────────┘
+                                  │
+┌─────────────────────────────────┴───────────────────────────────────┐
+│                      Process System (Provider Pattern)               │
+│  RobotProcessProvider + useProcessRobot + useProcessGhost           │
+│  ProcessScene - Auto-renders Robot + GhostRobot                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Features:**
+- Z-up coordinate system (URDF/robotics standard)
+- Unified `Pose3D` type for all kinematics operations
+- Workspace analysis (manipulability, singularity detection)
+- Ghost robot preview with status feedback
+- Hybrid solver (URDF + DH database for analytical IK)
+- TCP offset/tool management
+
+**Location:** `packages/core/src/kinematics/`, `packages/core/src/hooks/`
+
+**Documentation:** See [Kinematics API](./kinematics-api.md) for detailed usage.
+
+---
+
 ### 1. Streaming Module (Real-time Data)
 
 Supports high-frequency data transmission for industrial robot control (up to 1kHz).

@@ -51,6 +51,7 @@ import type {
   FkResult3D,
   IkResult3D,
 } from '../coordinates/useRobotKinematics';
+import type { WorkspaceAnalysis } from '../kinematics/types';
 
 // =============================================================================
 // Types
@@ -145,6 +146,10 @@ export interface UseRobotWithKinematicsResult {
   ik: (target: Pose3D, seed?: JointAngles) => IkResult3D | null;
   /** Compute IK for TCP pose */
   ikTcp: (target: Pose3D, seed?: JointAngles) => IkResult3D | null;
+
+  // Workspace Analysis
+  /** Analyze workspace properties at joint configuration */
+  analyzeWorkspace: (joints: JointAngles) => WorkspaceAnalysis | null;
 }
 
 // =============================================================================
@@ -260,6 +265,7 @@ export function useRobotWithKinematics(
     attachTcp,
     detachTcp,
     hasTool: kinematicsHasTool,
+    analyzeWorkspace,
   } = kinematics;
 
   // Overall ready state
@@ -387,5 +393,8 @@ export function useRobotWithKinematics(
     // IK Functions
     ik,
     ikTcp,
+
+    // Workspace Analysis
+    analyzeWorkspace,
   };
 }

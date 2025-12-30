@@ -1,24 +1,43 @@
 /**
- * GPU Motion Planning Scene - Simplified Version
+ * GPU Motion Planning Scene - Full Implementation
  *
- * 简化的运动规划演示场景
- * - 使用 useTrajx 初始化 WASM
- * - 使用 useHybridSolver 进行 IK 计算
- * - 工作点拖动时自动计算 IK 并显示 ghost robot
+ * 完整的 GPU 加速运动规划演示场景：
+ * - useCollisionWorld: 碰撞对象管理（box, sphere, cylinder, capsule）
+ * - useGpuPlanning: GPU 加速的运动规划（Lazy-PRM, BiRRT, RRT*）
+ * - usePoseIK: IK 计算和工作空间分析
+ * - CollisionWorldRenderer: 碰撞对象可视化
+ *
+ * 工作流程:
+ * 1. 选择工作点 → 自动计算 IK 显示 Ghost
+ * 2. 点击 "Plan Path" → GPU 规划路径
+ * 3. 点击 "Execute" → 播放路径动画
  *
  * Z-up 坐标系: X=forward, Y=left, Z=up
+ *
+ * @see docs/kinematics-api.md for API documentation
  */
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import { RoboViz } from '@aspect/roboviz-react';
 import { TransformControls, Line } from '@react-three/drei';
 import {
   Robot,
   GhostRobot,
   useTrajx,
+  usePoseIK,
+  useCollisionWorld,
+  useGpuPlanning,
   useHybridSolver,
+  CollisionWorldRenderer,
+  type GhostStatus,
+  type WorkspaceAnalysis,
+  type GpuPlanningProgress,
+  type GpuPlanningResult,
+  type PlanningWaypoint,
+  type RobotCapsuleModel,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 
@@ -47,80 +66,134 @@ const ROBOT_ID = 'planning-robot';
 // Types
 // ============================================================================
 
-interface CollisionObject {
-  id: string;
-  name: string;
-  type: 'box' | 'sphere' | 'cylinder';
-  position: [number, number, number];
-  color: string;
-  width?: number;
-  height?: number;
-  depth?: number;
-  radius?: number;
-}
-
 interface Workpoint {
   id: string;
   name: string;
   type: 'start' | 'via' | 'goal';
   position: [number, number, number];
   order: number;
+  joints?: number[];  // Cached IK solution
 }
 
 // ============================================================================
-// IK Helper - Tool pointing down orientation (for Z-up scene)
+// Tool Configuration (Z-up coordinate system)
 // ============================================================================
 
-// Quaternion for tool pointing down (-Z direction in world frame)
-// This is 180° rotation around X axis: q = (1, 0, 0, 0) normalized
-// Or equivalently, 180° around Y: q = (0, 1, 0, 0)
-// For Fanuc robots, we use a 90° rotation around Y which points tool forward
-const TOOL_FORWARD_QUATERNION = { x: 0, y: 0.707, z: 0, w: 0.707 };
+/**
+ * Tool orientation - tool pointing down (-Z direction in world frame)
+ * This is the natural orientation for most robot tasks.
+ * Quaternion: 180° rotation around X axis
+ */
+const TOOL_FORWARD_QUATERNION: [number, number, number, number] = [1, 0, 0, 0];
 
-// Alternative: tool pointing straight down
-const TOOL_DOWN_QUATERNION = { x: 0.707, y: 0, z: 0, w: 0.707 };
+/**
+ * TCP offset - set to 0 per user request
+ */
+const TOOL_OFFSET = {
+  position: [0, 0, 0] as [number, number, number],
+  quaternion: [0, 0, 0, 1] as [number, number, number, number],
+};
+
+/**
+ * Workspace quality thresholds
+ */
+const WORKSPACE_THRESHOLDS = {
+  manipulabilityGood: 0.15,
+  manipulabilityWarn: 0.05,
+  conditionNumberWarn: 50,
+  conditionNumberBad: 200,
+};
+
+// ============================================================================
+// Robot Configuration
+// ============================================================================
+
+const ROBOT_DOF = 6;
+const ROBOT_JOINT_LIMITS = {
+  lower: [-2.97, -1.57, -2.36, -4.71, -2.44, -6.28],
+  upper: [2.97, 2.62, 4.54, 4.71, 2.44, 6.28],
+};
+
+// Initial joint position (all zeros)
+const HOME_JOINTS = [0, 0, 0, 0, 0, 0];
+
+// ============================================================================
+// Robot Capsule Model for Collision Detection
+// ============================================================================
+
+/**
+ * Simplified capsule model for Fanuc LR Mate 200iD/7L
+ * Each link is represented as a capsule (cylinder with hemispherical caps)
+ * Points are in local link coordinates (Z-up)
+ */
+const ROBOT_CAPSULES: RobotCapsuleModel = {
+  robotId: ROBOT_ID,
+  linkNames: ['link_0', 'link_1', 'link_2', 'link_3', 'link_4', 'link_5', 'link_6'],
+  capsules: [
+    // Link 0 (base) - usually ignored for environment collision
+    { linkIndex: 0, linkName: 'link_0', radius: 0.08, point1: [0, 0, 0], point2: [0, 0, 0.1] },
+    // Link 1 (shoulder) - vertical
+    { linkIndex: 1, linkName: 'link_1', radius: 0.06, point1: [0, 0, 0], point2: [0, 0, 0.15] },
+    // Link 2 (upper arm) - main arm segment, ~330mm
+    { linkIndex: 2, linkName: 'link_2', radius: 0.05, point1: [0, 0, 0], point2: [0.33, 0, 0] },
+    // Link 3 (forearm) - ~260mm
+    { linkIndex: 3, linkName: 'link_3', radius: 0.04, point1: [0, 0, 0], point2: [0.26, 0, 0] },
+    // Link 4 (wrist 1)
+    { linkIndex: 4, linkName: 'link_4', radius: 0.035, point1: [0, 0, 0], point2: [0, 0, 0.05] },
+    // Link 5 (wrist 2)
+    { linkIndex: 5, linkName: 'link_5', radius: 0.03, point1: [0, 0, 0], point2: [0, 0, 0.05] },
+    // Link 6 (flange)
+    { linkIndex: 6, linkName: 'link_6', radius: 0.025, point1: [0, 0, 0], point2: [0, 0, 0.03] },
+  ],
+  // Self-collision pairs: check non-adjacent links
+  selfCollisionPairs: [
+    [1, 4], [1, 5], [1, 6],  // Link 1 vs wrist
+    [2, 5], [2, 6],          // Link 2 vs wrist
+  ],
+  ignoredLinksForEnv: [0], // Ignore base for environment collision
+};
 
 // ============================================================================
 // Initial Data (Z-up coordinates)
 // ============================================================================
 
-const INITIAL_OBJECTS: CollisionObject[] = [
+// Simple obstacles: one large wall (rotated 90°) + one sphere
+// Wall blocks direct path, sphere creates additional constraint
+const INITIAL_COLLISION_OBJECTS: Array<{
+  name: string;
+  position: [number, number, number];
+  type: 'box' | 'sphere' | 'cylinder' | 'capsule';
+  params: Record<string, number>;
+  color: string;
+}> = [
+  // Large wall - standing vertically, blocking left-right path
+  // Thin in X, very wide in Y (extends beyond workpoints to force going over/around)
   {
-    id: 'table-1',
-    name: 'Work Table',
+    name: 'Wall',
+    position: [0.4, 0, 0.2],   // Centered, slightly lower to block more effectively
     type: 'box',
-    position: [0.5, 0, 0.01],
-    color: '#555555',
-    width: 0.6,
-    height: 0.8,
-    depth: 0.02,
+    params: { width: 0.05, height: 0.35, depth: 0.6 }, // Thin in X, tall in Z, very wide in Y (spans Y=-0.3 to Y=+0.3)
+    color: '#e53e3e'
   },
+  // Sphere obstacle - front area, forces path to go around
   {
-    id: 'pillar-1',
-    name: 'Pillar 1',
-    type: 'cylinder',
-    position: [0.3, 0.3, 0.15],
-    color: '#666666',
-    radius: 0.05,
-    height: 0.3,
-  },
-  {
-    id: 'workpiece-1',
-    name: 'Workpiece',
-    type: 'box',
-    position: [0.4, 0.15, 0.07],
-    color: '#888888',
-    width: 0.1,
-    height: 0.1,
-    depth: 0.1,
+    name: 'Sphere',
+    position: [0.45, 0.2, 0.35],  // Front-left area
+    type: 'sphere',
+    params: { radius: 0.08 },     // 8cm radius
+    color: '#3182ce'
   },
 ];
 
-// Workpoints within robot's reachable workspace (LR Mate 200iD/7L has ~0.7m reach)
+// Three workpoints: Left → Near Sphere → Right
+// User-specified positions for clear collision avoidance demo
 const INITIAL_WORKPOINTS: Workpoint[] = [
-  { id: 'wp-start', name: 'Start', type: 'start', position: [0.35, 0.15, 0.3], order: 0 },
-  { id: 'wp-via', name: 'Via', type: 'via', position: [0.4, 0, 0.35], order: 1 },
-  { id: 'wp-goal', name: 'Goal', type: 'goal', position: [0.35, -0.15, 0.25], order: 2 },
+  // Start: Left side (Y positive)
+  { id: 'wp-start', name: 'Left', type: 'start', position: [0.324, 0.325, 0.350], order: 0 },
+  // Via: Near the sphere
+  { id: 'wp-via', name: 'Near Sphere', type: 'via', position: [0.602, 0.150, 0.397], order: 1 },
+  // Goal: Right side (Y negative)
+  { id: 'wp-goal', name: 'Right', type: 'goal', position: [0.269, -0.347, 0.350], order: 2 },
 ];
 
 const WORKPOINT_COLORS = {
@@ -130,66 +203,225 @@ const WORKPOINT_COLORS = {
 };
 
 // ============================================================================
-// Simple Visual Components
+// Workspace Metrics Panel
 // ============================================================================
 
-function CollisionObjectMesh({ object, color }: { object: CollisionObject; color: string }) {
-  if (object.type === 'box') {
-    return (
-      <mesh>
-        <boxGeometry args={[object.width!, object.height!, object.depth!]} />
-        <meshStandardMaterial color={color} transparent opacity={0.7} />
-      </mesh>
-    );
-  }
-  if (object.type === 'sphere') {
-    return (
-      <mesh>
-        <sphereGeometry args={[object.radius!, 32, 32]} />
-        <meshStandardMaterial color={color} transparent opacity={0.7} />
-      </mesh>
-    );
-  }
-  if (object.type === 'cylinder') {
-    return (
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[object.radius!, object.radius!, object.height!, 32]} />
-        <meshStandardMaterial color={color} transparent opacity={0.7} />
-      </mesh>
-    );
-  }
-  return null;
+interface WorkspaceMetricsPanelProps {
+  workspace: WorkspaceAnalysis | null;
+  isNearSingular: boolean;
+  ghostStatus: GhostStatus;
+  computing: boolean;
 }
 
-function CoordinateAxes({ size = 0.1 }: { size?: number }) {
+function WorkspaceMetricsPanel({ workspace, isNearSingular, ghostStatus, computing }: WorkspaceMetricsPanelProps) {
+  const getManipulabilityColor = (value: number) => {
+    if (value >= WORKSPACE_THRESHOLDS.manipulabilityGood) return THEME.success;
+    if (value >= WORKSPACE_THRESHOLDS.manipulabilityWarn) return THEME.warning;
+    return THEME.danger;
+  };
+
+  const getConditionColor = (value: number) => {
+    if (value < WORKSPACE_THRESHOLDS.conditionNumberWarn) return THEME.success;
+    if (value < WORKSPACE_THRESHOLDS.conditionNumberBad) return THEME.warning;
+    return THEME.danger;
+  };
+
+  const statusColors: Record<GhostStatus, string> = {
+    valid: THEME.success,
+    warning: THEME.warning,
+    error: THEME.danger,
+    neutral: THEME.textSecondary,
+  };
+
   return (
-    <group>
-      <Line points={[[0, 0, 0], [size, 0, 0]]} color="#ff0000" lineWidth={2} />
-      <Line points={[[0, 0, 0], [0, size, 0]]} color="#00ff00" lineWidth={2} />
-      <Line points={[[0, 0, 0], [0, 0, size]]} color="#0000ff" lineWidth={2} />
-    </group>
+    <div style={{ background: THEME.panel, borderRadius: 8, padding: 12, fontSize: 11 }}>
+      <div style={{ fontWeight: 600, color: THEME.text, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+        Workspace Analysis
+        {computing && <span style={{ color: THEME.textSecondary, fontSize: 10, fontWeight: 400 }}>(computing...)</span>}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ color: THEME.textSecondary }}>Status:</span>
+        <span style={{ color: statusColors[ghostStatus], fontWeight: 600 }}>{ghostStatus.toUpperCase()}</span>
+      </div>
+
+      {isNearSingular && (
+        <div style={{
+          background: `${THEME.warning}20`,
+          border: `1px solid ${THEME.warning}`,
+          borderRadius: 4,
+          padding: '4px 8px',
+          marginBottom: 8,
+          color: THEME.warning,
+          fontSize: 10,
+          fontWeight: 600,
+        }}>
+          Near Singularity
+        </div>
+      )}
+
+      {workspace ? (
+        <>
+          <div style={{ marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+              <span style={{ color: THEME.textSecondary }}>Manipulability:</span>
+              <span style={{ color: getManipulabilityColor(workspace.manipulability), fontWeight: 600 }}>
+                {workspace.manipulability.toFixed(4)}
+              </span>
+            </div>
+            <div style={{ height: 4, background: THEME.surface, borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                width: `${Math.min(workspace.manipulability * 200, 100)}%`,
+                background: getManipulabilityColor(workspace.manipulability),
+                borderRadius: 2,
+                transition: 'width 0.2s ease',
+              }} />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+              <span style={{ color: THEME.textSecondary }}>Condition #:</span>
+              <span style={{ color: getConditionColor(workspace.conditionNumber), fontWeight: 600 }}>
+                {workspace.conditionNumber.toFixed(1)}
+              </span>
+            </div>
+            <div style={{ height: 4, background: THEME.surface, borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                width: `${Math.min((1 - workspace.conditionNumber / 300) * 100, 100)}%`,
+                background: getConditionColor(workspace.conditionNumber),
+                borderRadius: 2,
+                transition: 'width 0.2s ease',
+              }} />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: THEME.textSecondary }}>Min σ:</span>
+            <span style={{ color: workspace.minSingularValue > 0.01 ? THEME.success : THEME.warning, fontWeight: 600 }}>
+              {workspace.minSingularValue.toFixed(4)}
+            </span>
+          </div>
+        </>
+      ) : (
+        <div style={{ color: THEME.textSecondary, fontStyle: 'italic' }}>
+          Select a workpoint to see analysis
+        </div>
+      )}
+    </div>
   );
 }
 
 // ============================================================================
-// Draggable Wrapper
+// Planning Progress Panel
 // ============================================================================
 
-interface DraggableProps {
-  position: [number, number, number];
-  onDragEnd: (pos: [number, number, number]) => void;
-  onDrag?: (pos: [number, number, number]) => void;
-  onClick?: () => void;
-  children: React.ReactNode;
+interface PlanningProgressPanelProps {
+  progress: GpuPlanningProgress;
+  result: GpuPlanningResult | null;
+  error: string | null;
 }
 
-function Draggable({ position, onDragEnd, onDrag, onClick, children }: DraggableProps) {
+function PlanningProgressPanel({ progress, result, error }: PlanningProgressPanelProps) {
+  const phaseColors: Record<string, string> = {
+    idle: THEME.textSecondary,
+    initializing: THEME.primary,
+    'building-roadmap': THEME.secondary,
+    searching: THEME.accent,
+    'validating-edges': THEME.warning,
+    optimizing: THEME.primary,
+    smoothing: THEME.secondary,
+    completed: THEME.success,
+    failed: THEME.danger,
+    aborted: THEME.warning,
+  };
+
+  return (
+    <div style={{ background: THEME.panel, borderRadius: 8, padding: 12, fontSize: 11 }}>
+      <div style={{ fontWeight: 600, color: THEME.text, marginBottom: 8 }}>
+        Planning Status
+      </div>
+
+      {/* Phase */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ color: THEME.textSecondary }}>Phase:</span>
+        <span style={{ color: phaseColors[progress.phase] || THEME.text, fontWeight: 600 }}>
+          {progress.phase.replace(/-/g, ' ').toUpperCase()}
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+          <span style={{ color: THEME.textSecondary }}>Progress:</span>
+          <span style={{ color: THEME.text }}>{(progress.overallProgress * 100).toFixed(0)}%</span>
+        </div>
+        <div style={{ height: 6, background: THEME.surface, borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{
+            height: '100%',
+            width: `${progress.overallProgress * 100}%`,
+            background: `linear-gradient(90deg, ${THEME.primary}, ${THEME.accent})`,
+            borderRadius: 3,
+            transition: 'width 0.2s ease',
+          }} />
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 10 }}>
+        <div><span style={{ color: THEME.textSecondary }}>Nodes:</span> {progress.nodesCount}</div>
+        <div><span style={{ color: THEME.textSecondary }}>Iterations:</span> {progress.currentIteration}</div>
+        <div><span style={{ color: THEME.textSecondary }}>Collisions:</span> {progress.collisionsFound}</div>
+        <div><span style={{ color: THEME.textSecondary }}>Time:</span> {progress.elapsedMs}ms</div>
+      </div>
+
+      {/* Result */}
+      {result && (
+        <div style={{ marginTop: 8, padding: 8, background: result.success ? `${THEME.success}20` : `${THEME.danger}20`, borderRadius: 4 }}>
+          {result.success ? (
+            <>
+              <div style={{ color: THEME.success, fontWeight: 600 }}>Path Found!</div>
+              <div style={{ fontSize: 10, color: THEME.textSecondary }}>
+                {result.path.length} waypoints, {result.planningTimeMs.toFixed(0)}ms
+              </div>
+            </>
+          ) : (
+            <div style={{ color: THEME.danger }}>{result.error || 'Planning failed'}</div>
+          )}
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div style={{ marginTop: 8, padding: 8, background: `${THEME.danger}20`, borderRadius: 4, color: THEME.danger }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Draggable Workpoint
+// ============================================================================
+
+interface DraggableWorkpointProps {
+  position: [number, number, number];
+  color: string;
+  isSelected: boolean;
+  onDragEnd: (pos: [number, number, number]) => void;
+  onDrag?: (pos: [number, number, number]) => void;
+  onClick: () => void;
+}
+
+function DraggableWorkpoint({ position, color, isSelected, onDragEnd, onDrag, onClick }: DraggableWorkpointProps) {
   const groupRef = useRef<THREE.Group>(null!);
   const controlsRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
   const isDraggingRef = useRef(false);
 
-  // Initialize position on mount
   useEffect(() => {
     if (groupRef.current) {
       groupRef.current.position.set(...position);
@@ -197,14 +429,12 @@ function Draggable({ position, onDragEnd, onDrag, onClick, children }: Draggable
     }
   }, []);
 
-  // Update position from props only when NOT dragging
   useEffect(() => {
     if (groupRef.current && !isDraggingRef.current) {
       groupRef.current.position.set(...position);
     }
   }, [position]);
 
-  // Handle drag events
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
@@ -212,12 +442,10 @@ function Draggable({ position, onDragEnd, onDrag, onClick, children }: Draggable
     const handleDraggingChanged = (e: { value: boolean }) => {
       isDraggingRef.current = e.value;
       if (!e.value && groupRef.current) {
-        // Drag ended - commit position
         onDragEnd(groupRef.current.position.toArray() as [number, number, number]);
       }
     };
 
-    // Real-time position updates during drag
     const handleObjectChange = () => {
       if (isDraggingRef.current && groupRef.current && onDrag) {
         onDrag(groupRef.current.position.toArray() as [number, number, number]);
@@ -234,36 +462,74 @@ function Draggable({ position, onDragEnd, onDrag, onClick, children }: Draggable
 
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
-    onClick?.();
+    onClick();
   }, [onClick]);
+
+  const radius = isSelected ? 0.025 : 0.02;
+  const emissiveIntensity = isSelected ? 0.5 : 0.2;
 
   return (
     <>
-      <group ref={groupRef} onClick={handleClick}>{children}</group>
-      {ready && groupRef.current && (
-        <TransformControls ref={controlsRef} object={groupRef.current} mode="translate" size={0.6} />
+      <group ref={groupRef} onClick={handleClick}>
+        <mesh>
+          <sphereGeometry args={[radius, 16, 16]} />
+          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={emissiveIntensity} />
+        </mesh>
+        {isSelected && (
+          <>
+            {/* Coordinate axes */}
+            <Line points={[[0, 0, 0], [0.06, 0, 0]]} color="#ff0000" lineWidth={2} />
+            <Line points={[[0, 0, 0], [0, 0.06, 0]]} color="#00ff00" lineWidth={2} />
+            <Line points={[[0, 0, 0], [0, 0, 0.06]]} color="#0000ff" lineWidth={2} />
+          </>
+        )}
+      </group>
+      {ready && isSelected && groupRef.current && (
+        <TransformControls ref={controlsRef} object={groupRef.current} mode="translate" size={0.5} />
       )}
     </>
   );
 }
 
 // ============================================================================
-// Scene Content (inside Canvas)
+// Path Visualization
+// ============================================================================
+
+interface PathVisualizationProps {
+  path: Array<{ joints: number[] }>;
+  currentIndex: number;
+}
+
+function PathVisualization({ path, currentIndex }: PathVisualizationProps) {
+  // For now, just show a simple indicator of path progress
+  if (path.length < 2) return null;
+
+  return (
+    <group>
+      {/* Path progress indicator could be added here */}
+    </group>
+  );
+}
+
+// ============================================================================
+// Scene Content
 // ============================================================================
 
 interface SceneContentProps {
-  objects: CollisionObject[];
   workpoints: Workpoint[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onUpdatePosition: (id: string, pos: [number, number, number]) => void;
   onDragPosition?: (id: string, pos: [number, number, number]) => void;
   ghostJoints: number[] | null;
-  ghostStatus: 'valid' | 'warning' | 'error';
+  ghostStatus: GhostStatus;
+  robotJoints: number[];
+  collisionObjects: ReturnType<typeof useCollisionWorld>['objects'];
+  plannedPath: Array<{ joints: number[] }>;
+  pathIndex: number;
 }
 
 function SceneContent({
-  objects,
   workpoints,
   selectedId,
   onSelect,
@@ -271,6 +537,10 @@ function SceneContent({
   onDragPosition,
   ghostJoints,
   ghostStatus,
+  robotJoints,
+  collisionObjects,
+  plannedPath,
+  pathIndex,
 }: SceneContentProps) {
   // Connection line between workpoints
   const connectionPoints = useMemo(() => {
@@ -283,7 +553,7 @@ function SceneContent({
   return (
     <>
       {/* Robot */}
-      <Robot id={ROBOT_ID} urdfPath={URDF_PATH} showAxes={false} />
+      <Robot id={ROBOT_ID} urdfPath={URDF_PATH} jointAngles={robotJoints} showAxes={false} />
 
       {/* Ghost Robot for selected workpoint */}
       {ghostJoints && (
@@ -298,85 +568,164 @@ function SceneContent({
       )}
 
       {/* Collision Objects */}
-      {objects.map(obj => {
-        const isSelected = obj.id === selectedId;
-        if (isSelected) {
-          return (
-            <Draggable
-              key={obj.id}
-              position={obj.position}
-              onDragEnd={pos => onUpdatePosition(obj.id, pos)}
-              onClick={() => onSelect(obj.id)}
-            >
-              <CollisionObjectMesh object={obj} color="#00ff00" />
-              <CoordinateAxes size={0.12} />
-            </Draggable>
-          );
-        }
-        return (
-          <group
-            key={obj.id}
-            position={obj.position}
-            onClick={(e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); onSelect(obj.id); }}
-          >
-            <CollisionObjectMesh object={obj} color={obj.color} />
-          </group>
-        );
-      })}
+      <CollisionWorldRenderer
+        objects={collisionObjects}
+        selectedId={null}
+        editingEnabled={false}
+        onSelect={() => {}}
+      />
 
       {/* Workpoints */}
       {workpoints.map(wp => {
         const isSelected = wp.id === selectedId;
         const color = isSelected ? '#ffffff' : WORKPOINT_COLORS[wp.type];
-        const radius = isSelected ? 0.025 : 0.02;
 
-        if (isSelected) {
-          return (
-            <Draggable
-              key={wp.id}
-              position={wp.position}
-              onDragEnd={pos => onUpdatePosition(wp.id, pos)}
-              onDrag={onDragPosition ? pos => onDragPosition(wp.id, pos) : undefined}
-              onClick={() => onSelect(wp.id)}
-            >
-              <mesh>
-                <sphereGeometry args={[radius, 16, 16]} />
-                <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} />
-              </mesh>
-              <CoordinateAxes size={0.08} />
-            </Draggable>
-          );
-        }
         return (
-          <group
+          <DraggableWorkpoint
             key={wp.id}
             position={wp.position}
-            onClick={(e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); onSelect(wp.id); }}
-          >
-            <mesh>
-              <sphereGeometry args={[radius, 16, 16]} />
-              <meshStandardMaterial color={color} />
-            </mesh>
-          </group>
+            color={color}
+            isSelected={isSelected}
+            onDragEnd={pos => onUpdatePosition(wp.id, pos)}
+            onDrag={isSelected && onDragPosition ? pos => onDragPosition(wp.id, pos) : undefined}
+            onClick={() => onSelect(wp.id)}
+          />
         );
       })}
 
-      {/* Connection line */}
+      {/* Connection line between workpoints */}
       {connectionPoints.length >= 2 && (
         <Line points={connectionPoints} color="#6366f1" lineWidth={2} dashed dashSize={0.04} gapSize={0.02} />
       )}
 
+      {/* Path visualization */}
+      <PathVisualization path={plannedPath} currentIndex={pathIndex} />
+
       {/* Lighting */}
-      <ambientLight intensity={0.4} />
+      <ambientLight intensity={0.5} />
       <directionalLight position={[5, 5, 5]} intensity={0.8} />
+      <directionalLight position={[-3, 3, 3]} intensity={0.4} />
 
       {/* Ground */}
-      <mesh position={[0, 0, 0]} onClick={handleBackgroundClick}>
+      <mesh position={[0, 0, -0.001]} rotation={[0, 0, 0]} onClick={handleBackgroundClick}>
         <planeGeometry args={[3, 3]} />
         <meshStandardMaterial color="#1a1a2e" />
       </mesh>
     </>
   );
+}
+
+// ============================================================================
+// Path Playback Hook
+// ============================================================================
+
+function usePathPlayback(path: Array<{ joints: number[] }> | null, onJointsUpdate: (joints: number[]) => void) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [speed, setSpeed] = useState(1);
+  const timeRef = useRef(0);
+  const lastTimeRef = useRef(0);
+
+  useFrame((_, delta) => {
+    if (!isPlaying || !path || path.length === 0) return;
+
+    timeRef.current += delta * speed * 2;  // 2 waypoints per second base speed
+
+    const newIndex = Math.min(Math.floor(timeRef.current), path.length - 1);
+    if (newIndex !== currentIndex) {
+      setCurrentIndex(newIndex);
+      onJointsUpdate(path[newIndex].joints);
+    }
+
+    if (newIndex >= path.length - 1) {
+      setIsPlaying(false);
+    }
+  });
+
+  const play = useCallback(() => {
+    if (!path || path.length === 0) return;
+    timeRef.current = 0;
+    setCurrentIndex(0);
+    setIsPlaying(true);
+    if (path.length > 0) {
+      onJointsUpdate(path[0].joints);
+    }
+  }, [path, onJointsUpdate]);
+
+  const pause = useCallback(() => {
+    setIsPlaying(false);
+  }, []);
+
+  const reset = useCallback(() => {
+    setIsPlaying(false);
+    timeRef.current = 0;
+    setCurrentIndex(0);
+  }, []);
+
+  return { isPlaying, currentIndex, speed, setSpeed, play, pause, reset };
+}
+
+// ============================================================================
+// Playback Controller Component (inside Canvas)
+// ============================================================================
+
+const PLAYBACK_DURATION = 3.0; // Total playback duration in seconds
+
+function PlaybackController({
+  path,
+  onJointsUpdate,
+  playbackState,
+}: {
+  path: Array<{ joints: number[] }> | null;
+  onJointsUpdate: (joints: number[]) => void;
+  playbackState: { setIsPlaying: (v: boolean) => void; setIndex: (v: number) => void };
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const timeRef = useRef(0);
+
+  useEffect(() => {
+    playbackState.setIsPlaying = setIsPlaying;
+    playbackState.setIndex = setCurrentIndex;
+  }, [playbackState]);
+
+  useFrame((_, delta) => {
+    if (!isPlaying || !path || path.length === 0) return;
+
+    // Time-based playback: complete path in PLAYBACK_DURATION seconds
+    timeRef.current += delta / PLAYBACK_DURATION;
+
+    // Calculate progress (0 to 1)
+    const progress = Math.min(timeRef.current, 1);
+
+    // Map progress to path index with smooth interpolation
+    const exactIndex = progress * (path.length - 1);
+    const newIndex = Math.min(Math.floor(exactIndex), path.length - 1);
+
+    if (newIndex !== currentIndex) {
+      setCurrentIndex(newIndex);
+    }
+
+    // Interpolate between waypoints for smooth motion
+    const lowerIndex = Math.floor(exactIndex);
+    const upperIndex = Math.min(lowerIndex + 1, path.length - 1);
+    const t = exactIndex - lowerIndex; // Interpolation factor (0 to 1)
+
+    const lowerJoints = path[lowerIndex].joints;
+    const upperJoints = path[upperIndex].joints;
+    const interpolatedJoints = lowerJoints.map((v, i) =>
+      v + t * (upperJoints[i] - v)
+    );
+
+    onJointsUpdate(interpolatedJoints);
+
+    if (progress >= 1) {
+      setIsPlaying(false);
+      timeRef.current = 0;
+    }
+  });
+
+  return null;
 }
 
 // ============================================================================
@@ -386,23 +735,81 @@ function SceneContent({
 export function GPUMotionPlanningScene() {
   const { addLog } = useAppStore();
 
-  // State
-  const [objects, setObjects] = useState<CollisionObject[]>(INITIAL_OBJECTS);
+  // ========== State ==========
   const [workpoints, setWorkpoints] = useState<Workpoint[]>(INITIAL_WORKPOINTS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [ghostJoints, setGhostJoints] = useState<number[] | null>(null);
-  const [ghostStatus, setGhostStatus] = useState<'valid' | 'warning' | 'error'>('valid');
-
-  // Temp position during drag (for real-time IK)
   const [dragPosition, setDragPosition] = useState<[number, number, number] | null>(null);
-
-  // URDF content for solver
   const [urdfContent, setUrdfContent] = useState<string | null>(null);
+  const [robotJoints, setRobotJoints] = useState<number[]>(HOME_JOINTS);
+  const [plannedPath, setPlannedPath] = useState<Array<{ joints: number[] }>>([]);
+  const [pathIndex, setPathIndex] = useState(0);
+  const [isPlayingPath, setIsPlayingPath] = useState(false);
+  const playbackStateRef = useRef({ setIsPlaying: (_: boolean) => {}, setIndex: (_: number) => {} });
 
-  // Initialize WASM
+  // ========== WASM Init ==========
   const { ready: wasmReady } = useTrajx();
 
-  // Load URDF
+  // ========== Collision World ==========
+  const collisionWorld = useCollisionWorld({
+    onEvent: (event) => {
+      if (event.type === 'object-added') {
+        addLog('info', `Added collision object: ${event.objectId}`);
+      }
+    },
+  });
+
+  // Extract stable functions from collision world
+  const { addBox, addSphere, addCylinder, addCapsule, setRobotCapsules, objects: collisionObjects, world: collisionWorldData } = collisionWorld;
+
+  // Track if collision objects have been initialized
+  const collisionInitializedRef = useRef(false);
+
+  // Initialize collision objects (only once)
+  useEffect(() => {
+    if (collisionInitializedRef.current) return;
+    collisionInitializedRef.current = true;
+
+    for (const obj of INITIAL_COLLISION_OBJECTS) {
+      if (obj.type === 'box') {
+        addBox({
+          name: obj.name,
+          position: obj.position,
+          dimensions: { width: obj.params.width, height: obj.params.height, depth: obj.params.depth },
+          color: obj.color,
+        });
+      } else if (obj.type === 'sphere') {
+        addSphere({
+          name: obj.name,
+          position: obj.position,
+          radius: obj.params.radius,
+          color: obj.color,
+        });
+      } else if (obj.type === 'cylinder') {
+        addCylinder({
+          name: obj.name,
+          position: obj.position,
+          radius: obj.params.radius,
+          height: obj.params.height,
+          color: obj.color,
+        });
+      } else if (obj.type === 'capsule') {
+        addCapsule({
+          name: obj.name,
+          position: obj.position,
+          radius: obj.params.radius,
+          height: obj.params.height,
+          color: obj.color,
+        });
+      }
+    }
+
+    // Set robot capsule model for collision checking
+    setRobotCapsules(ROBOT_CAPSULES);
+
+    addLog('info', `Initialized ${INITIAL_COLLISION_OBJECTS.length} collision objects and robot capsules`);
+  }, [addBox, addSphere, addCylinder, addCapsule, setRobotCapsules, addLog]);
+
+  // ========== Load URDF ==========
   useEffect(() => {
     fetch(URDF_PATH)
       .then(r => r.text())
@@ -413,11 +820,97 @@ export function GPUMotionPlanningScene() {
       .catch(err => addLog('error', `Failed to load URDF: ${err.message}`));
   }, [addLog]);
 
-  // Create hybrid solver (Z-up coordinate system, no conversion needed)
-  const { ready: solverReady, ik, hasAnalyticalIk } = useHybridSolver({
+  // ========== GPU Planning ==========
+  const gpuPlanning = useGpuPlanning({
+    robotUrdf: urdfContent || '',
+    dof: ROBOT_DOF,
+    jointLimits: ROBOT_JOINT_LIMITS,
+    collisionWorld: collisionWorldData,
+    defaultPlanner: 'lazy-prm',
+    autoInitialize: false,
+  });
+
+  // Extract stable properties and functions from gpuPlanning
+  const {
+    ready: gpuPlanningReady,
+    initialize: initializeGpuPlanning,
+    setCollisionWorld: setGpuCollisionWorld,
+    isPlanning,
+    progress: planningProgress,
+    result: planningResult,
+    error: planningError,
+    planToGoal,
+    planThroughWaypoints,
+    abort: abortPlanning,
+    clearResult: clearPlanningResult,
+  } = gpuPlanning;
+
+  // Track if GPU planning initialization has been attempted
+  const gpuInitAttemptedRef = useRef(false);
+
+  // Initialize GPU planning when URDF is loaded
+  useEffect(() => {
+    if (urdfContent && wasmReady && !gpuPlanningReady && !gpuInitAttemptedRef.current) {
+      gpuInitAttemptedRef.current = true;
+      initializeGpuPlanning().then(() => {
+        addLog('info', 'GPU planning engine initialized');
+      }).catch(err => {
+        addLog('error', `GPU planning init failed: ${err.message}`);
+      });
+    }
+  }, [urdfContent, wasmReady, gpuPlanningReady, initializeGpuPlanning, addLog]);
+
+  // Update collision world in GPU planner when world changes
+  const prevCollisionWorldRef = useRef<typeof collisionWorldData | null>(null);
+  useEffect(() => {
+    if (gpuPlanningReady && collisionWorldData && collisionWorldData !== prevCollisionWorldRef.current) {
+      setGpuCollisionWorld(collisionWorldData);
+      prevCollisionWorldRef.current = collisionWorldData;
+    }
+  }, [gpuPlanningReady, collisionWorldData, setGpuCollisionWorld]);
+
+  // ========== Selected Workpoint ==========
+  const selectedWorkpoint = useMemo(() => {
+    return workpoints.find(wp => wp.id === selectedId);
+  }, [workpoints, selectedId]);
+
+  const effectivePosition = useMemo(() => {
+    if (dragPosition) return dragPosition;
+    if (selectedWorkpoint) return selectedWorkpoint.position;
+    return null;
+  }, [dragPosition, selectedWorkpoint]);
+
+  const targetPose = useMemo(() => {
+    if (!effectivePosition) return null;
+    return {
+      position: effectivePosition as [number, number, number],
+      quaternion: TOOL_FORWARD_QUATERNION,
+    };
+  }, [effectivePosition]);
+
+  // ========== IK for selected workpoint (preview) ==========
+  const {
+    ready: solverReady,
+    computing,
+    ghostJoints,
+    ghostStatus,
+    workspace,
+    isNearSingular,
+    hasAnalyticalIk,
+  } = usePoseIK({
     robotId: ROBOT_ID,
     urdfContent: wasmReady ? urdfContent : null,
-    coordinateSystem: 'Z-up',
+    targetPose,
+    toolOffset: TOOL_OFFSET,
+    debounceMs: 8,
+  });
+
+  // ========== Hybrid Solver for multi-waypoint IK ==========
+  // NOTE: Our coordinates are Z-up, so disable Y-up to Z-up conversion
+  const solver = useHybridSolver({
+    robotId: ROBOT_ID,
+    urdfContent: wasmReady ? urdfContent : null,
+    coordinateSystem: 'Z-up', // Our positions are already in Z-up format
   });
 
   // Log solver status
@@ -427,87 +920,162 @@ export function GPUMotionPlanningScene() {
     }
   }, [solverReady, hasAnalyticalIk, addLog]);
 
-  // Find selected workpoint
-  const selectedWorkpoint = useMemo(() => {
-    return workpoints.find(wp => wp.id === selectedId);
-  }, [workpoints, selectedId]);
+  // ========== Compute IK for all workpoints ==========
+  const computeAllIK = useCallback((): Array<{ wp: Workpoint; joints: number[] | null; error?: string }> => {
+    if (!solver.ready) return [];
 
-  // Get the effective position for IK (use drag position if available)
-  const effectivePosition = useMemo(() => {
-    if (dragPosition) return dragPosition;
-    if (selectedWorkpoint) return selectedWorkpoint.position;
-    return null;
-  }, [dragPosition, selectedWorkpoint]);
+    const results: Array<{ wp: Workpoint; joints: number[] | null; error?: string }> = [];
 
-  // Compute IK when position changes (either from selection or drag)
-  useEffect(() => {
-    if (!solverReady || !effectivePosition) {
-      setGhostJoints(null);
+    for (const wp of workpoints) {
+      // Convert tuple format to Pose object format for solver.ik()
+      const pose = {
+        position: {
+          x: wp.position[0],
+          y: wp.position[1],
+          z: wp.position[2],
+        },
+        orientation: {
+          x: TOOL_FORWARD_QUATERNION[0],
+          y: TOOL_FORWARD_QUATERNION[1],
+          z: TOOL_FORWARD_QUATERNION[2],
+          w: TOOL_FORWARD_QUATERNION[3],
+        },
+      };
+
+      const ikResult = solver.ik(pose, robotJoints);
+
+      if (ikResult && ikResult.success && ikResult.solution) {
+        results.push({ wp, joints: ikResult.solution });
+      } else {
+        results.push({ wp, joints: null, error: ikResult?.errorMessage || 'IK failed' });
+      }
+    }
+
+    return results;
+  }, [solver.ready, solver.ik, workpoints, robotJoints]);
+
+  // ========== Planning Functions ==========
+  const planPath = useCallback(async () => {
+    if (!gpuPlanningReady) {
+      addLog('error', 'GPU planning not ready');
       return;
     }
 
-    // Create target pose for IK
-    // Use tool-forward orientation (90° around Y) which is a typical reachable pose
-    const pose = {
-      position: {
-        x: effectivePosition[0],
-        y: effectivePosition[1],
-        z: effectivePosition[2],
-      },
-      orientation: TOOL_FORWARD_QUATERNION, // Tool pointing forward (X direction)
-    };
-
-    console.log('[GPUMotionPlanningScene] Computing IK for pose:', pose);
-
-    const result = ik(pose);
-    console.log('[GPUMotionPlanningScene] IK result:', result);
-
-    if (result && result.success && result.solution) {
-      setGhostJoints(result.solution);
-      setGhostStatus('valid');
-      // Only log on final position (not during drag)
-      if (!dragPosition && selectedWorkpoint) {
-        addLog('info', `IK solved for ${selectedWorkpoint.name}: [${result.solution.map(j => j.toFixed(2)).join(', ')}]`);
-      }
-    } else {
-      setGhostJoints(null);
-      setGhostStatus('error');
-      if (!dragPosition && selectedWorkpoint) {
-        addLog('warning', `IK failed for ${selectedWorkpoint.name}: ${result?.errorMessage || 'unknown'}`);
-      }
+    if (!solver.ready) {
+      addLog('error', 'IK solver not ready');
+      return;
     }
-  }, [solverReady, effectivePosition, ik, addLog, dragPosition, selectedWorkpoint]);
 
-  // Handle real-time drag for workpoints (IK updates)
+    // Sort workpoints by order
+    const sortedWorkpoints = [...workpoints].sort((a, b) => a.order - b.order);
+
+    if (sortedWorkpoints.length === 0) {
+      addLog('warning', 'No workpoints defined');
+      return;
+    }
+
+    try {
+      // Step 1: Compute IK for ALL workpoints
+      addLog('info', 'Computing IK for all workpoints...');
+      const ikResults = computeAllIK();
+
+      // Check for IK failures
+      const failedWps = ikResults.filter(r => !r.joints);
+      if (failedWps.length > 0) {
+        for (const f of failedWps) {
+          addLog('error', `IK failed for ${f.wp.name}: ${f.error}`);
+        }
+        return;
+      }
+
+      // Step 2: Convert to PlanningWaypoint format
+      // WaypointType is: 'start' | 'via' | 'goal' | 'approach' | 'retract'
+      const planningWaypoints: PlanningWaypoint[] = sortedWorkpoints.map((wp, index) => {
+        const ikResult = ikResults.find(r => r.wp.id === wp.id);
+        return {
+          id: wp.id,
+          name: wp.name,
+          type: wp.type as 'start' | 'via' | 'goal', // Direct mapping - same values
+          pose: {
+            position: wp.position,
+            orientation: TOOL_FORWARD_QUATERNION, // Use 'orientation' not 'quaternion'
+          },
+          joints: ikResult?.joints || undefined,
+          ikStatus: ikResult?.joints ? 'solved' : 'failed',
+          enabled: true,
+          order: index,
+        };
+      });
+
+      addLog('info', `IK computed for ${planningWaypoints.length} waypoints. Starting GPU planning...`);
+
+      // Step 3: Plan through ALL waypoints using planThroughWaypoints
+      const result = await planThroughWaypoints(
+        robotJoints, // Start from current robot position
+        planningWaypoints,
+        {
+          maxPlanningTime: 30,
+          maxIterations: 10000,
+          numSamples: 3000,      // More samples for better roadmap coverage
+          numNeighbors: 25,      // More neighbors for better connectivity
+          connectionRadius: 3.0,
+          stepSize: 0.1,         // Larger step for path densification
+          smoothPath: true,
+          shortcutPath: true,
+          shortcutIterations: 100, // More shortcut iterations for smoother path
+          smoothingIterations: 20, // More smoothing iterations
+        }
+      );
+
+      if (result.success) {
+        setPlannedPath(result.path);
+        addLog('info', `Path found through ${sortedWorkpoints.length} waypoints: ${result.path.length} total waypoints in ${result.planningTimeMs.toFixed(0)}ms`);
+      } else {
+        addLog('error', `Planning failed: ${result.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      addLog('error', `Planning error: ${err instanceof Error ? err.message : 'Unknown'}`);
+    }
+  }, [gpuPlanningReady, solver.ready, workpoints, robotJoints, computeAllIK, planThroughWaypoints, addLog]);
+
+  const executePath = useCallback(() => {
+    if (plannedPath.length === 0) {
+      addLog('warning', 'No path to execute');
+      return;
+    }
+    setPathIndex(0);
+    playbackStateRef.current.setIndex(0);
+    playbackStateRef.current.setIsPlaying(true);
+    setIsPlayingPath(true);
+    addLog('info', 'Executing planned path...');
+  }, [plannedPath, addLog]);
+
+  const stopExecution = useCallback(() => {
+    playbackStateRef.current.setIsPlaying(false);
+    setIsPlayingPath(false);
+  }, []);
+
+  // ========== Handlers ==========
   const handleDragPosition = useCallback((id: string, pos: [number, number, number]) => {
-    // Only track drag position for workpoints
     if (workpoints.some(w => w.id === id)) {
       setDragPosition(pos);
     }
   }, [workpoints]);
 
-  // Update position handler (drag end)
   const handleUpdatePosition = useCallback((id: string, pos: [number, number, number]) => {
-    // Clear drag position
     setDragPosition(null);
-
-    // Check if it's a collision object
-    const objIndex = objects.findIndex(o => o.id === id);
-    if (objIndex >= 0) {
-      setObjects(prev => prev.map(o => o.id === id ? { ...o, position: pos } : o));
-      addLog('info', `Updated ${id} position`);
-      return;
-    }
-
-    // Check if it's a workpoint
     const wpIndex = workpoints.findIndex(w => w.id === id);
     if (wpIndex >= 0) {
       setWorkpoints(prev => prev.map(w => w.id === id ? { ...w, position: pos } : w));
       addLog('info', `Updated ${id} position`);
     }
-  }, [objects, workpoints, addLog]);
+  }, [workpoints, addLog]);
 
-  // Loading state
+  const handleJointsUpdate = useCallback((joints: number[]) => {
+    setRobotJoints(joints);
+  }, []);
+
+  // ========== Loading State ==========
   if (!wasmReady) {
     return (
       <div style={{ padding: 20, color: THEME.text }}>
@@ -520,67 +1088,128 @@ export function GPUMotionPlanningScene() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: THEME.background }}>
       {/* Header */}
       <div style={{ padding: 12, borderBottom: `1px solid ${THEME.primary}40` }}>
-        <h2 style={{ color: THEME.primary, margin: 0 }}>Motion Planning</h2>
+        <h2 style={{ color: THEME.primary, margin: 0 }}>GPU Motion Planning Pro</h2>
         <p style={{ color: THEME.textSecondary, margin: '4px 0 0', fontSize: 12 }}>
-          Click to select, drag to move • IK: {solverReady ? (hasAnalyticalIk ? 'Analytical' : 'Numerical') : 'Loading...'}
+          {collisionObjects.length} obstacles • IK: {solverReady ? (hasAnalyticalIk ? 'Analytical' : 'Numerical') : 'Loading...'} • GPU: {gpuPlanningReady ? 'Ready' : 'Initializing...'}
         </p>
       </div>
 
       {/* Main content */}
       <div style={{ flex: 1, display: 'flex', gap: 12, padding: 12, minHeight: 0 }}>
         {/* Left panel */}
-        <div style={{ width: 240, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ width: 280, display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
           {/* Selected info */}
           <div style={{ background: THEME.panel, borderRadius: 8, padding: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: THEME.text }}>
-              {selectedId ? `Selected: ${selectedId}` : 'Click to select'}
+              {selectedId ? `Selected: ${selectedWorkpoint?.name || selectedId}` : 'Click a workpoint to select'}
             </div>
-            {selectedWorkpoint && ghostJoints && (
+            {selectedWorkpoint && effectivePosition && (
               <div style={{ fontSize: 10, color: THEME.textSecondary, marginTop: 4 }}>
-                IK Status: {ghostStatus}
+                Position: [{effectivePosition.map(p => p.toFixed(3)).join(', ')}]
               </div>
             )}
           </div>
 
-          {/* Objects list */}
-          <div style={{ background: THEME.panel, borderRadius: 8, padding: 12, flex: 1, overflow: 'auto' }}>
+          {/* Workspace Analysis */}
+          {selectedWorkpoint && (
+            <WorkspaceMetricsPanel
+              workspace={workspace}
+              isNearSingular={isNearSingular}
+              ghostStatus={ghostStatus}
+              computing={computing}
+            />
+          )}
+
+          {/* Planning Progress */}
+          <PlanningProgressPanel
+            progress={planningProgress}
+            result={planningResult}
+            error={planningError}
+          />
+
+          {/* Planning Controls */}
+          <div style={{ background: THEME.panel, borderRadius: 8, padding: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: THEME.textSecondary, marginBottom: 8 }}>
-              Collision Objects
+              Planning Controls
             </div>
-            {objects.map(obj => (
-              <div
-                key={obj.id}
-                onClick={() => setSelectedId(obj.id)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button
+                onClick={planPath}
+                disabled={!gpuPlanningReady || isPlanning || !ghostJoints}
                 style={{
-                  padding: '4px 8px',
-                  fontSize: 11,
-                  cursor: 'pointer',
+                  padding: '8px 12px',
                   borderRadius: 4,
-                  color: obj.id === selectedId ? THEME.success : THEME.text,
-                  background: obj.id === selectedId ? `${THEME.success}20` : 'transparent',
+                  border: 'none',
+                  background: gpuPlanningReady && ghostJoints ? THEME.primary : THEME.surface,
+                  color: gpuPlanningReady && ghostJoints ? 'white' : THEME.textSecondary,
+                  cursor: gpuPlanningReady && ghostJoints ? 'pointer' : 'not-allowed',
+                  fontSize: 11,
+                  fontWeight: 600,
                 }}
               >
-                {obj.name}
-              </div>
-            ))}
-
-            <div style={{ fontSize: 11, fontWeight: 600, color: THEME.textSecondary, marginTop: 12, marginBottom: 8 }}>
-              Workpoints
+                {isPlanning ? 'Planning...' : 'Plan Path'}
+              </button>
+              <button
+                onClick={isPlayingPath ? stopExecution : executePath}
+                disabled={plannedPath.length === 0}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 4,
+                  border: 'none',
+                  background: plannedPath.length > 0 ? THEME.success : THEME.surface,
+                  color: plannedPath.length > 0 ? 'white' : THEME.textSecondary,
+                  cursor: plannedPath.length > 0 ? 'pointer' : 'not-allowed',
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                {isPlayingPath ? 'Stop' : `Execute Path (${plannedPath.length} pts)`}
+              </button>
+              <button
+                onClick={() => { setRobotJoints(HOME_JOINTS); setPlannedPath([]); }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 4,
+                  border: `1px solid ${THEME.primary}40`,
+                  background: 'transparent',
+                  color: THEME.text,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                }}
+              >
+                Reset Robot
+              </button>
             </div>
-            {workpoints.map(wp => (
+          </div>
+
+          {/* Workpoints list */}
+          <div style={{ background: THEME.panel, borderRadius: 8, padding: 12, flex: 1, overflow: 'auto' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: THEME.textSecondary, marginBottom: 8 }}>
+              Workpoints ({workpoints.length})
+            </div>
+            {workpoints.sort((a, b) => a.order - b.order).map(wp => (
               <div
                 key={wp.id}
                 onClick={() => setSelectedId(wp.id)}
                 style={{
-                  padding: '4px 8px',
+                  padding: '6px 8px',
                   fontSize: 11,
                   cursor: 'pointer',
                   borderRadius: 4,
                   color: wp.id === selectedId ? WORKPOINT_COLORS[wp.type] : THEME.text,
                   background: wp.id === selectedId ? `${WORKPOINT_COLORS[wp.type]}20` : 'transparent',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
                 }}
               >
-                {wp.order + 1}. {wp.name}
+                <span>{wp.order + 1}. {wp.name}</span>
+                <span style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: WORKPOINT_COLORS[wp.type],
+                }} />
               </div>
             ))}
           </div>
@@ -588,9 +1217,8 @@ export function GPUMotionPlanningScene() {
 
         {/* 3D View */}
         <div style={{ flex: 1, borderRadius: 8, overflow: 'hidden', border: `1px solid ${THEME.primary}30` }}>
-          <RoboViz config={{ scene: { background: THEME.background }, camera: { position: { x: 1, y: 0.8, z: 1 } } }}>
+          <RoboViz config={{ scene: { background: THEME.background }, camera: { position: { x: 1.2, y: 0.8, z: 1 } } }}>
             <SceneContent
-              objects={objects}
               workpoints={workpoints}
               selectedId={selectedId}
               onSelect={setSelectedId}
@@ -598,6 +1226,15 @@ export function GPUMotionPlanningScene() {
               onDragPosition={handleDragPosition}
               ghostJoints={ghostJoints}
               ghostStatus={ghostStatus}
+              robotJoints={robotJoints}
+              collisionObjects={collisionObjects}
+              plannedPath={plannedPath}
+              pathIndex={pathIndex}
+            />
+            <PlaybackController
+              path={plannedPath.length > 0 ? plannedPath : null}
+              onJointsUpdate={handleJointsUpdate}
+              playbackState={playbackStateRef.current}
             />
           </RoboViz>
         </div>

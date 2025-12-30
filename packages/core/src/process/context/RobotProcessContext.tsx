@@ -49,7 +49,6 @@ import {
 import {
   useGhostPreview,
   type UseGhostPreviewResult,
-  type GhostPreviewStatus,
   type GhostInputMode,
 } from '../../hooks/useGhostPreview';
 import {
@@ -58,6 +57,12 @@ import {
   type PoseTrajectory,
   type PosePlaybackState,
 } from '../../hooks/usePoseTrajectoryPlayer';
+import { type IKSolver } from '../../kinematics/useIKComputation';
+import {
+  type GhostStatus,
+  type UnifiedIKResult,
+} from '../../kinematics/unified-types';
+import type { WorkspaceAnalysis } from '../../kinematics/types';
 import type {
   Pose3D,
   JointAngles,
@@ -94,7 +99,7 @@ export interface RobotProcessState {
   /** Ghost joint angles (IK solution for target or direct joints) */
   ghostJointAngles: JointAngles | null;
   /** Ghost preview status */
-  ghostStatus: GhostPreviewStatus;
+  ghostStatus: GhostStatus;
   /** Ghost input mode ('pose' for IK-based, 'joints' for direct control) */
   ghostInputMode: GhostInputMode;
   /** Current target pose for ghost (only in pose mode) */
@@ -103,6 +108,12 @@ export interface RobotProcessState {
   ghostTargetJoints: JointAngles | null;
   /** Whether ghost is computing IK (only in pose mode) */
   ghostIsComputing: boolean;
+  /** Workspace analysis for ghost position */
+  ghostWorkspace: WorkspaceAnalysis | null;
+  /** Whether ghost is near singularity */
+  ghostIsNearSingular: boolean;
+  /** Full IK result for ghost */
+  ghostIKResult: UnifiedIKResult | null;
 
   // Trajectory Playback
   /** Playback state */
@@ -299,12 +310,27 @@ export function RobotProcessProvider({
     },
   });
 
+  // Create IKSolver adapter for ghost preview
+  const ghostSolver: IKSolver | null = useMemo(() => {
+    if (!robot.ready) return null;
+    return {
+      ikTcp: (pose: Pose3D, seed?: number[]) => {
+        const result = robot.ikTcp(pose, seed);
+        if (!result) return null;
+        return {
+          success: result.success,
+          solution: result.solution,
+          positionError: result.positionError,
+          errorMessage: result.errorMessage,
+        };
+      },
+      analyzeWorkspace: robot.analyzeWorkspace,
+    };
+  }, [robot.ready, robot.ikTcp, robot.analyzeWorkspace]);
+
   // Ghost preview
   const ghost = useGhostPreview({
-    kinematics: {
-      ready: robot.ready,
-      ikTcp: robot.ikTcp,
-    } as any,
+    solver: ghostSolver,
     currentJoints: robot.jointAngles,
     enabled: enableGhost,
     standoffDistance,
@@ -341,7 +367,10 @@ export function RobotProcessProvider({
     ghostInputMode: ghost.inputMode,
     ghostTargetPose: ghost.targetPose,
     ghostTargetJoints: ghost.targetJoints,
-    ghostIsComputing: ghost.isComputing,
+    ghostIsComputing: ghost.computing,
+    ghostWorkspace: ghost.workspace,
+    ghostIsNearSingular: ghost.isNearSingular,
+    ghostIKResult: ghost.ikResult,
 
     // Trajectory Playback
     playbackState: player.state,
@@ -361,7 +390,8 @@ export function RobotProcessProvider({
     processError: processState?.error ?? null,
   }), [
     robot.ready, robot.loading, robot.error, robot.dof, robot.jointAngles, robot.tcpPose, robot.hasTool,
-    ghost.jointAngles, ghost.status, ghost.inputMode, ghost.targetPose, ghost.targetJoints, ghost.isComputing,
+    ghost.jointAngles, ghost.status, ghost.inputMode, ghost.targetPose, ghost.targetJoints, ghost.computing,
+    ghost.workspace, ghost.isNearSingular, ghost.ikResult,
     player.state, player.isPlaying, player.position, player.speed, player.trajectory, player.currentPose, player.ikError,
     activeProcess, processState,
   ]);
@@ -495,7 +525,13 @@ export function useProcessGhost(): {
   /** Ghost joint angles (IK solution or direct joints) */
   jointAngles: JointAngles | null;
   /** Ghost preview status */
-  status: GhostPreviewStatus;
+  status: GhostStatus;
+  /** Workspace analysis for ghost position */
+  workspace: WorkspaceAnalysis | null;
+  /** Whether ghost is near singularity */
+  isNearSingular: boolean;
+  /** Full IK result */
+  ikResult: UnifiedIKResult | null;
   /** Current input mode */
   inputMode: GhostInputMode;
   /** Current target pose (only in pose mode) */
@@ -515,6 +551,9 @@ export function useProcessGhost(): {
   return {
     jointAngles: state.ghostJointAngles,
     status: state.ghostStatus,
+    workspace: state.ghostWorkspace,
+    isNearSingular: state.ghostIsNearSingular,
+    ikResult: state.ghostIKResult,
     inputMode: state.ghostInputMode,
     targetPose: state.ghostTargetPose,
     targetJoints: state.ghostTargetJoints,
