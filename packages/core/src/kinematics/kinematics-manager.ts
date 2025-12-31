@@ -52,7 +52,7 @@ interface TrajxCoreRobot {
   forwardKinematicsChain(jointAngles: number[]): TrajxPose[];
   inverseKinematics(targetPose: unknown, seed?: number[]): unknown;
   inverseKinematicsAll(targetPose: unknown, seed?: number[]): unknown;
-  analyzeWorkspace(jointAngles: number[]): unknown;
+  analyzeWorkspace(jointAngles: Float64Array): unknown;
   isReachable(targetPose: unknown): boolean;
   isNearSingularity(jointAngles: number[], threshold?: number): boolean;
   computeManipulability(jointAngles: number[]): number;
@@ -89,7 +89,7 @@ interface TrajxUrdfRobot {
   usesDhForFk(): boolean;
   loadDhParamsFromDatabase(dbRobotName: string): boolean;
   getLinkTransforms(jointAngles: number[]): Record<string, TrajxPose>;
-  analyzeWorkspace(jointAngles: number[]): unknown;
+  analyzeWorkspace(jointAngles: Float64Array): unknown;
   isReachable(targetPose: unknown): boolean;
   isNearSingularity(jointAngles: number[], threshold?: number): boolean;
   computeManipulability(jointAngles: number[]): number;
@@ -445,13 +445,15 @@ export class RobotSolver {
    * Analyze workspace properties
    */
   analyzeWorkspace(jointAngles: number[]): WorkspaceAnalysis {
-    const result = this.robot.analyzeWorkspace(jointAngles) as {
+    // Convert to Float64Array for WASM
+    const jointsArray = new Float64Array(jointAngles);
+    const result = this.robot.analyzeWorkspace(jointsArray) as {
       isReachable: boolean;
       manipulability: number;
       conditionNumber: number;
       isNearSingular: boolean;
       minSingularValue: number;
-      jointLimitMargins: number[];
+      jointLimitMargins: Float64Array;
     };
 
     return {
@@ -1097,13 +1099,15 @@ export class UrdfRobotSolver {
    * Analyze workspace properties
    */
   analyzeWorkspace(jointAngles: number[]): WorkspaceAnalysis {
-    const result = this.robot.analyzeWorkspace(jointAngles) as {
+    // Convert to Float64Array for WASM
+    const jointsArray = new Float64Array(jointAngles);
+    const result = this.robot.analyzeWorkspace(jointsArray) as {
       isReachable: boolean;
       manipulability: number;
       conditionNumber: number;
       isNearSingular: boolean;
       minSingularValue: number;
-      jointLimitMargins: number[];
+      jointLimitMargins: Float64Array;
     };
 
     return {

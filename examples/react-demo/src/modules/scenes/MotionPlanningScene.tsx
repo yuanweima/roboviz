@@ -85,10 +85,19 @@ interface AlgorithmResult {
 // ============================================================================
 
 const ROBOT_DOF = 6;
-// Use slightly conservative limits to avoid FK errors at boundaries
+// Joint limits from URDF (Fanuc LR Mate 200iD 7L)
+// These must match the URDF limits exactly to avoid FK errors
 const ROBOT_JOINT_LIMITS = {
-  lower: [-2.9, -1.5, -2.3, -4.7, -2.4, -6.2],
-  upper: [2.9, 2.6, 4.5, 4.7, 2.4, 6.2],
+  lower: [-2.9, -1.7, -2.4, -3.3, -2.1, -6.2],
+  upper: [2.9, 2.5, 4.8, 3.3, 2.1, 6.2],
+};
+
+// Trajectory generation config - velocity and acceleration limits per joint
+// Based on typical Fanuc LR Mate 200iD/7L specs (conservative values)
+const TRAJECTORY_CONFIG = {
+  maxVelocity: [3.0, 3.0, 3.5, 5.0, 5.0, 7.0],       // rad/s per joint
+  maxAcceleration: [6.0, 6.0, 7.0, 10.0, 10.0, 14.0], // rad/s^2 per joint
+  timeStep: 0.01,  // 10ms sampling interval for smooth playback
 };
 
 const HOME_JOINTS = [0, 0, 0, 0, 0, 0];
@@ -144,6 +153,16 @@ const INITIAL_COLLISION_OBJECTS: Array<{
     params: { radius: 0.06 },
     color: '#3182ce'
   },
+  // Ground plane to prevent paths going below floor level
+  // In Z-up scene with Three.js boxGeometry: width=X, height=Y, depth=Z
+  // So for a horizontal ground plane: large X and Y, thin Z
+  {
+    name: 'Ground',
+    position: [0, 0, -0.05],
+    type: 'box',
+    params: { width: 3.0, height: 3.0, depth: 0.1 },  // 3x3m horizontal, 0.1m thick in Z
+    color: '#1a1a2e'  // Match floor color, mostly invisible
+  },
 ];
 
 const INITIAL_WORKPOINTS: Workpoint[] = [
@@ -176,40 +195,104 @@ const ALGORITHM_NAMES: Record<PlannerType, string> = {
 // ============================================================================
 
 /**
- * Compute approximate bounding spheres for robot links
- * Used for simple collision checking in planning pipeline
+ * Create a function that computes bounding spheres using FK
+ * This uses the actual FK solver for accurate end-effector position
+ */
+function createFkBasedBoundingSpheres(
+  fk: ((joints: number[]) => { pose: { position: { x: number; y: number; z: number } } } | null) | null
+): (joints: number[]) => Array<{ position: [number, number, number]; radius: number }> {
+  // Fanuc LR Mate 200iD/7L approximate link lengths (from DH parameters)
+  const L1 = 0.330;  // Base height (d1)
+  const L2 = 0.260;  // Upper arm length (a2)
+  const L3 = 0.020;  // Elbow offset (a3)
+  const L4 = 0.290;  // Forearm length (d4)
+  const L5 = 0.072;  // Wrist length (d6)
+
+  return (joints: number[]) => {
+    const [j1, j2, j3, j4, j5, j6] = joints;
+
+    const c1 = Math.cos(j1);
+    const s1 = Math.sin(j1);
+    const c2 = Math.cos(j2);
+    const s2 = Math.sin(j2);
+    const c23 = Math.cos(j2 + j3);
+    const s23 = Math.sin(j2 + j3);
+
+    const spheres: Array<{ position: [number, number, number]; radius: number }> = [
+      // Base (fixed)
+      { position: [0, 0, L1 * 0.5], radius: 0.10 },
+
+      // Shoulder (joint 2 area)
+      {
+        position: [c1 * 0.05, s1 * 0.05, L1] as [number, number, number],
+        radius: 0.08
+      },
+
+      // Upper arm middle
+      {
+        position: [
+          c1 * L2 * 0.5 * c2,
+          s1 * L2 * 0.5 * c2,
+          L1 + L2 * 0.5 * s2
+        ] as [number, number, number],
+        radius: 0.06,
+      },
+
+      // Elbow (joint 3 area)
+      {
+        position: [
+          c1 * L2 * c2,
+          s1 * L2 * c2,
+          L1 + L2 * s2
+        ] as [number, number, number],
+        radius: 0.07,
+      },
+
+      // Forearm middle
+      {
+        position: [
+          c1 * (L2 * c2 + L4 * 0.5 * c23),
+          s1 * (L2 * c2 + L4 * 0.5 * c23),
+          L1 + L2 * s2 + L4 * 0.5 * s23
+        ] as [number, number, number],
+        radius: 0.05,
+      },
+
+      // Wrist (joint 5 area)
+      {
+        position: [
+          c1 * (L2 * c2 + L4 * c23),
+          s1 * (L2 * c2 + L4 * c23),
+          L1 + L2 * s2 + L4 * s23
+        ] as [number, number, number],
+        radius: 0.05,
+      },
+    ];
+
+    // If FK is available, add a sphere at the actual end-effector position
+    if (fk) {
+      const fkResult = fk(joints);
+      if (fkResult) {
+        const { x, y, z } = fkResult.pose.position;
+        spheres.push({
+          position: [x, y, z] as [number, number, number],
+          radius: 0.06,  // End effector / tool
+        });
+      }
+    }
+
+    return spheres;
+  };
+}
+
+/**
+ * Fallback: Compute approximate bounding spheres without FK
+ * Used when FK solver is not available
  */
 function getRobotBoundingSpheres(
   joints: number[]
 ): Array<{ position: [number, number, number]; radius: number }> {
-  const [j1, j2, j3] = joints;
-  const L1 = 0.33;  // Base height
-  const L2 = 0.26;  // Upper arm length
-  const L3 = 0.26;  // Forearm length
-
-  const c1 = Math.cos(j1);
-  const s1 = Math.sin(j1);
-  const c2 = Math.cos(j2);
-  const s2 = Math.sin(j2);
-  const c23 = Math.cos(j2 + j3);
-  const s23 = Math.sin(j2 + j3);
-
-  return [
-    { position: [0, 0, L1 * 0.5], radius: 0.08 },  // Base
-    {
-      position: [c1 * L2 * 0.5 * c2, s1 * L2 * 0.5 * c2, L1 + L2 * 0.5 * s2] as [number, number, number],
-      radius: 0.06,  // Upper arm
-    },
-    {
-      position: [c1 * (L2 * c2 + L3 * 0.5 * c23), s1 * (L2 * c2 + L3 * 0.5 * c23), L1 + L2 * s2 + L3 * 0.5 * s23] as [number, number, number],
-      radius: 0.05,  // Forearm
-    },
-    {
-      // End effector position (approximate)
-      position: [c1 * (L2 * c2 + L3 * c23), s1 * (L2 * c2 + L3 * c23), L1 + L2 * s2 + L3 * s23] as [number, number, number],
-      radius: 0.04,  // Wrist
-    },
-  ];
+  return createFkBasedBoundingSpheres(null)(joints);
 }
 
 // ============================================================================
@@ -593,6 +676,7 @@ interface SceneContentProps {
   showPaths: boolean;
   playbackTime?: number;  // Current playback time for TrajectoryFK
   selectedPlaybackPlanner?: PlannerType | null;  // Which algorithm's path is being played
+  urdfContent?: string | null;  // URDF content for TrajectoryFK
 }
 
 function SceneContent({
@@ -609,6 +693,7 @@ function SceneContent({
   showPaths,
   playbackTime,
   selectedPlaybackPlanner,
+  urdfContent,
 }: SceneContentProps) {
   // Connection line between workpoints
   const connectionPoints = useMemo(() => {
@@ -668,7 +753,7 @@ function SceneContent({
       )}
 
       {/* Algorithm paths - using TrajectoryFK for real FK-based path visualization */}
-      {showPaths && algorithmResults.map(({ planner, result, trajectoryData, color }) => {
+      {showPaths && urdfContent && algorithmResults.map(({ planner, result, trajectoryData, color }) => {
         if (!result?.success || !trajectoryData || trajectoryData.positions.length < 2) return null;
 
         // Determine if this is the currently playing path
@@ -677,8 +762,8 @@ function SceneContent({
         return (
           <TrajectoryFK
             key={planner}
-            robotId={ROBOT_ID}
-            robotName="Fanuc_LR_Mate_200iD_7L"
+            robotId={`${ROBOT_ID}-traj-${planner}`}
+            urdfContent={urdfContent}
             trajectoryData={trajectoryData}
             showPath={true}
             pathWidth={isPlayingThis ? 4 : 2}
@@ -716,6 +801,7 @@ interface PlaybackControllerProps {
   trajectoryData: TrajectoryData | null;
   onJointsUpdate: (joints: number[]) => void;
   onTimeUpdate: (time: number) => void;  // Report current time for TrajectoryFK
+  onComplete?: () => void;  // Called when playback finishes
   playbackState: {
     setIsPlaying: (v: boolean) => void;
     setIndex: (v: number) => void;
@@ -727,6 +813,7 @@ function PlaybackController({
   trajectoryData,
   onJointsUpdate,
   onTimeUpdate,
+  onComplete,
   playbackState,
 }: PlaybackControllerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -786,6 +873,7 @@ function PlaybackController({
       setIsPlaying(false);
       timeRef.current = 0;
       onTimeUpdate(0);
+      onComplete?.();  // Notify parent that playback finished
     }
   });
 
@@ -890,6 +978,7 @@ export function MotionPlanningScene() {
       smoothingFactor: 0.5,
       calculateMetrics: true,
     },
+    trajectoryConfig: TRAJECTORY_CONFIG,  // Enable trajectory generation with velocity/acceleration limits
   });
 
   const { state: planningState, updateSettings, plan, createObstacleChecker } = planning;
@@ -951,41 +1040,73 @@ export function MotionPlanningScene() {
   }, [solverReady, hasAnalyticalIk, addLog]);
 
   // ========== Helper: Convert PlanningResult path to TrajectoryData ==========
-  const pathToTrajectoryData = useCallback((path: Array<{ joints: number[] }>): TrajectoryData => {
-    const numPoints = path.length;
-    const duration = PLAYBACK_DURATION;  // Use fixed duration for consistent playback
+  const pathToTrajectoryData = useCallback((path: Array<{ joints: number[]; time?: number; velocity?: number[] }>): TrajectoryData => {
+    // Validate joint counts - all waypoints should have ROBOT_DOF joints
+    const expectedDOF = ROBOT_DOF;
+    const invalidWaypoints = path.filter((p) => p.joints.length !== expectedDOF);
+    if (invalidWaypoints.length > 0) {
+      console.error(`[pathToTrajectoryData] Invalid waypoints detected: ${invalidWaypoints.length} waypoints have incorrect joint count.`);
+      path.forEach((p, i) => {
+        if (p.joints.length !== expectedDOF) {
+          console.error(`  Waypoint ${i}: expected ${expectedDOF} joints, got ${p.joints.length}`, p.joints);
+        }
+      });
+    }
 
-    // Generate evenly spaced time stamps
-    const times = path.map((_, i) => (i / (numPoints - 1)) * duration);
-    const positions = path.map(p => p.joints);
+    // Filter out invalid waypoints to prevent FK errors
+    const validPath = path.filter(p => p.joints.length === expectedDOF);
+    if (validPath.length < 2) {
+      console.error('[pathToTrajectoryData] Not enough valid waypoints after filtering!');
+      return { times: [], positions: [], velocities: [], duration: 0 };
+    }
+
+    const validNumPoints = validPath.length;
+
+    // Check if we have real trajectory data (time-parameterized from WASM)
+    const hasTrajectoryData = validPath[0].time !== undefined && validPath[validPath.length - 1].time !== undefined;
+
+    if (hasTrajectoryData) {
+      // Use actual trajectory timing from WASM trajectory generation
+      const times = validPath.map(p => p.time!);
+      const positions = validPath.map(p => p.joints);
+      const velocities = validPath.map(p => p.velocity ?? p.joints.map(() => 0));
+      const duration = times[times.length - 1] - times[0];
+
+      return { times, positions, velocities, duration };
+    }
+
+    // Fallback: Generate evenly spaced time stamps (path-only data)
+    const duration = PLAYBACK_DURATION;
+    const times = validPath.map((_, i) => (i / (validNumPoints - 1)) * duration);
+    const positions = validPath.map(p => p.joints);
 
     // Simple velocity estimation (finite differences)
     const velocities: number[][] = [];
-    for (let i = 0; i < numPoints; i++) {
+    for (let i = 0; i < validNumPoints; i++) {
       if (i === 0) {
-        // Forward difference at start
         const dt = times[1] - times[0];
         velocities.push(positions[1].map((p, j) => (p - positions[0][j]) / dt));
-      } else if (i === numPoints - 1) {
-        // Backward difference at end
+      } else if (i === validNumPoints - 1) {
         const dt = times[i] - times[i - 1];
         velocities.push(positions[i].map((p, j) => (p - positions[i - 1][j]) / dt));
       } else {
-        // Central difference
         const dt = times[i + 1] - times[i - 1];
         velocities.push(positions[i + 1].map((p, j) => (p - positions[i - 1][j]) / dt));
       }
     }
 
-    return {
-      times,
-      positions,
-      velocities,
-      duration,
-    };
+    return { times, positions, velocities, duration };
   }, []);
 
   // ========== Collision Checker ==========
+  // Create FK-based bounding spheres function using actual solver
+  const fkBasedBoundingSpheres = useMemo(() => {
+    if (!solver.ready || !solver.fk) {
+      return getRobotBoundingSpheres;
+    }
+    return createFkBasedBoundingSpheres(solver.fk);
+  }, [solver.ready, solver.fk]);
+
   const collisionChecker = useMemo(() => {
     const obstacles = collisionObjects.map(obj => {
       const params = obj.params;
@@ -1010,8 +1131,9 @@ export function MotionPlanningScene() {
         enabled: obj.enabled,
       };
     });
-    return createObstacleChecker(obstacles, getRobotBoundingSpheres);
-  }, [collisionObjects, createObstacleChecker]);
+
+    return createObstacleChecker(obstacles, fkBasedBoundingSpheres);
+  }, [collisionObjects, createObstacleChecker, fkBasedBoundingSpheres]);
 
   // ========== Compute IK for workpoints ==========
   const computeWorkpointIK = useCallback((wp: Workpoint): number[] | null => {
@@ -1028,8 +1150,9 @@ export function MotionPlanningScene() {
     };
 
     const ikResult = solver.ik(pose, robotJoints);
+
     return ikResult?.success && ikResult.solution ? ikResult.solution : null;
-  }, [solver.ready, solver.ik, robotJoints]);
+  }, [solver.ready, solver.ik, solver.fk, robotJoints]);
 
   // ========== Run Algorithm Comparison ==========
   const runComparison = useCallback(async () => {
@@ -1191,6 +1314,13 @@ export function MotionPlanningScene() {
     setPlaybackTime(time);
   }, []);
 
+  // ========== Playback Complete Handler ==========
+  const handlePlaybackComplete = useCallback(() => {
+    setIsPlayingPath(false);
+    setSelectedPathForPlayback(null);
+    addLog('info', 'Playback complete');
+  }, [addLog]);
+
   // ========== Loading State ==========
   if (!wasmReady) {
     return (
@@ -1348,11 +1478,13 @@ export function MotionPlanningScene() {
               showPaths={showPaths}
               playbackTime={playbackTime}
               selectedPlaybackPlanner={selectedPathForPlayback}
+              urdfContent={urdfContent}
             />
             <PlaybackController
               trajectoryData={playbackTrajectoryData}
               onJointsUpdate={handleJointsUpdate}
               onTimeUpdate={handlePlaybackTimeUpdate}
+              onComplete={handlePlaybackComplete}
               playbackState={playbackStateRef.current}
             />
           </RoboViz>

@@ -13,9 +13,9 @@
  */
 
 import * as React from 'react';
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
-import { useRobotSolver } from '../kinematics/useTrajx';
+import { useHybridSolver } from '../kinematics/useTrajx';
 import type { WorkspaceAnalysis } from '../kinematics/types';
 
 // ============================================================================
@@ -25,8 +25,10 @@ import type { WorkspaceAnalysis } from '../kinematics/types';
 export interface ManipulabilityIndicatorProps {
   /** Robot ID for kinematics */
   robotId: string;
-  /** Robot name for solver creation */
-  robotName: string;
+  /** Robot name for solver creation (deprecated - use urdfContent instead) */
+  robotName?: string;
+  /** URDF content for solver creation (preferred over robotName) */
+  urdfContent?: string;
   /** Current joint configuration */
   jointAngles: number[];
 
@@ -367,6 +369,7 @@ function PrincipalAxes({
 export function ManipulabilityIndicator({
   robotId,
   robotName,
+  urdfContent,
   jointAngles,
   position,
   attachToEndEffector = true,
@@ -386,11 +389,49 @@ export function ManipulabilityIndicator({
   onAnalysis,
   onStatusChange,
 }: ManipulabilityIndicatorProps): React.JSX.Element | null {
-  // Solver
-  const { solver, ready, fk, analyzeWorkspace } = useRobotSolver({
+  // Solver - use useHybridSolver (which supports URDF content)
+  const { ready, fk: hybridFk, jointLimits } = useHybridSolver({
     robotId,
-    robotName,
+    urdfContent: urdfContent || null,
+    dhRobotName: robotName,
+    coordinateSystem: 'Z-up',
   });
+
+  // Simple workspace analysis based on joint limits
+  const analyzeWorkspace = useCallback(
+    (joints: number[]): WorkspaceAnalysis | null => {
+      if (!jointLimits) return null;
+
+      // Calculate joint limit margins
+      const jointLimitMargins = joints.map((joint, i) => {
+        const lower = jointLimits.lower[i] ?? -Math.PI;
+        const upper = jointLimits.upper[i] ?? Math.PI;
+        const range = upper - lower;
+        const fromLower = (joint - lower) / range;
+        const fromUpper = (upper - joint) / range;
+        return Math.min(fromLower, fromUpper);
+      });
+
+      // Approximate manipulability (simplified - based on joint limit margins)
+      const manipulability = jointLimitMargins.reduce((a, b) => a * b, 1);
+
+      return {
+        isValid: true,
+        manipulability,
+        isNearSingular: manipulability < 0.01,
+        minSingularValue: manipulability,
+        jointLimitMargins,
+        conditionNumber: 1 / Math.max(manipulability, 0.001),
+      };
+    },
+    [jointLimits]
+  );
+
+  // Wrapper for FK
+  const fk = useCallback(
+    (joints: number[]) => hybridFk(joints),
+    [hybridFk]
+  );
 
   // State
   const [analysis, setAnalysis] = useState<WorkspaceAnalysis | null>(null);
@@ -410,7 +451,7 @@ export function ManipulabilityIndicator({
 
   // Compute workspace analysis
   useEffect(() => {
-    if (!ready || !solver || jointAngles.length === 0) {
+    if (!ready || jointAngles.length === 0) {
       setAnalysis(null);
       return;
     }
@@ -432,7 +473,7 @@ export function ManipulabilityIndicator({
         );
       }
     }
-  }, [ready, solver, jointAngles, attachToEndEffector, analyzeWorkspace, fk, onAnalysis]);
+  }, [ready, jointAngles, attachToEndEffector, analyzeWorkspace, fk, onAnalysis]);
 
   // Compute status
   const status = useMemo(

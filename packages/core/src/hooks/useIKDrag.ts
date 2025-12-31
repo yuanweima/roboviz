@@ -14,7 +14,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useRobotSolver } from '../kinematics/useTrajx';
+import { useHybridSolver } from '../kinematics/useTrajx';
 import type { Pose, Vector3, Quaternion } from '../types';
 import type { IkResult, MultiIkResult, WorkspaceAnalysis } from '../kinematics/types';
 
@@ -25,8 +25,10 @@ import type { IkResult, MultiIkResult, WorkspaceAnalysis } from '../kinematics/t
 export interface UseIKDragOptions {
   /** Robot ID for kinematics solver */
   robotId: string;
-  /** Robot name for solver creation */
-  robotName: string;
+  /** Robot name for solver creation (deprecated - use urdfContent instead) */
+  robotName?: string;
+  /** URDF content for solver creation (preferred over robotName) */
+  urdfContent?: string;
   /** Initial joint configuration (used as seed) */
   initialJoints: number[];
   /** Debounce delay in ms (default: 16 = 60fps) */
@@ -112,6 +114,7 @@ export function useIKDrag(options: UseIKDragOptions): UseIKDragReturn {
   const {
     robotId,
     robotName,
+    urdfContent,
     initialJoints,
     debounceMs = 16,
     getAllSolutions = false,
@@ -121,12 +124,84 @@ export function useIKDrag(options: UseIKDragOptions): UseIKDragReturn {
     onDragEnd,
   } = options;
 
-  // Get solver
-  const { solver, ready, fk, ik, ikAll, analyzeWorkspace, isNearSingularity } =
-    useRobotSolver({
-      robotId,
-      robotName,
-    });
+  // Get solver using useHybridSolver (which supports URDF content)
+  const {
+    ready,
+    fk: hybridFk,
+    ik: hybridIk,
+    ikAll: hybridIkAll,
+    jointLimits,
+  } = useHybridSolver({
+    robotId,
+    urdfContent: urdfContent || null,
+    dhRobotName: robotName,
+    coordinateSystem: 'Z-up',
+  });
+
+  // Simple workspace analysis based on joint limits
+  const analyzeWorkspace = useCallback(
+    (joints: number[]): WorkspaceAnalysis | null => {
+      if (!jointLimits) return null;
+
+      // Calculate joint limit margins
+      const jointLimitMargins = joints.map((joint, i) => {
+        const lower = jointLimits.lower[i] ?? -Math.PI;
+        const upper = jointLimits.upper[i] ?? Math.PI;
+        const range = upper - lower;
+        const fromLower = (joint - lower) / range;
+        const fromUpper = (upper - joint) / range;
+        return Math.min(fromLower, fromUpper);
+      });
+
+      // Approximate manipulability (simplified - based on joint limit margins)
+      const manipulability = jointLimitMargins.reduce((a, b) => a * b, 1);
+
+      return {
+        isValid: true,
+        manipulability,
+        isNearSingular: manipulability < 0.01,
+        minSingularValue: manipulability,
+        jointLimitMargins,
+        conditionNumber: 1 / Math.max(manipulability, 0.001),
+      };
+    },
+    [jointLimits]
+  );
+
+  // Check if near singularity
+  const isNearSingularity = useCallback(
+    (joints: number[]): boolean => {
+      const workspace = analyzeWorkspace(joints);
+      return workspace?.isNearSingular ?? false;
+    },
+    [analyzeWorkspace]
+  );
+
+  // Wrapper for FK
+  const fk = useCallback(
+    (joints: number[]) => hybridFk(joints),
+    [hybridFk]
+  );
+
+  // Wrapper for IK
+  const ik = useCallback(
+    (pose: Pose, seed?: number[]): IkResult | null => {
+      const result = hybridIk(pose, seed);
+      if (!result) return null;
+      return result;
+    },
+    [hybridIk]
+  );
+
+  // Wrapper for IK All
+  const ikAll = useCallback(
+    (pose: Pose, seed?: number[]): MultiIkResult | null => {
+      const result = hybridIkAll(pose, seed);
+      if (!result) return null;
+      return result;
+    },
+    [hybridIkAll]
+  );
 
   // State
   const [isDragging, setIsDragging] = useState(false);
@@ -149,7 +224,7 @@ export function useIKDrag(options: UseIKDragOptions): UseIKDragReturn {
   // Compute IK for a target pose
   const computeIK = useCallback(
     (targetPose: Pose) => {
-      if (!ready || !solver) {
+      if (!ready) {
         setResult({
           ...DEFAULT_RESULT,
           targetPose,
@@ -239,7 +314,6 @@ export function useIKDrag(options: UseIKDragOptions): UseIKDragReturn {
     },
     [
       ready,
-      solver,
       getAllSolutions,
       ik,
       ikAll,

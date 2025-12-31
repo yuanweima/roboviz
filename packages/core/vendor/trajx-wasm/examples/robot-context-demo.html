@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RobotContext API Demo</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0a0a1a;
+            color: #eee;
+        }
+        h1 { color: #ff6b9d; margin-bottom: 5px; }
+        h2 { color: #ff6b9d; margin-top: 0; font-size: 18px; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+
+        .card {
+            background: #12122a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #2a2a4a;
+        }
+        .card.highlight {
+            border-color: #ff6b9d;
+            box-shadow: 0 0 20px rgba(255, 107, 157, 0.1);
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status.loading { background: #e6a23c22; color: #e6a23c; border: 1px solid #e6a23c44; }
+        .status.ready { background: #67c23a22; color: #67c23a; border: 1px solid #67c23a44; }
+        .status.error { background: #f56c6c22; color: #f56c6c; border: 1px solid #f56c6c44; }
+
+        button {
+            background: linear-gradient(135deg, #ff6b9d 0%, #c84b7a 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 107, 157, 0.4);
+        }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .output {
+            background: #0d0d1a;
+            color: #67c23a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #2a2a4a;
+        }
+
+        .code-block {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: 'Monaco', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+        }
+
+        .result { padding: 5px 0; }
+        .success { color: #67c23a; }
+        .error { color: #f56c6c; }
+        .info { color: #409eff; }
+    </style>
+</head>
+<body>
+    <h1>🤖 RobotContext API Demo</h1>
+    <p class="subtitle">Unified URDF loading with automatic capsule approximation for GPU-friendly planning</p>
+
+    <div id="status" class="status loading">⏳ Loading WASM module...</div>
+
+    <div class="card highlight">
+        <h2>📋 Quick Start</h2>
+        <div class="code-block">
+// One-line URDF loading with automatic capsule approximation
+const ctx = RobotContext.fromUrdf(urdfContent);
+
+// Check collision with automatic FK
+const isFree = ctx.isConfigCollisionFree([0,0,0,0,0,0], env);
+
+// Batch edge checking for planning
+const edges = [[[0,0,0,0,0,0], [1,0,0,0,0,0]]];
+const results = ctx.checkEdgesBatch(edges, env);
+
+// Create planner directly from context
+const planner = ctx.createPlanner();
+        </div>
+        <button onclick="runAllTests()" id="runBtn" disabled>▶️ Run All Tests</button>
+        <div id="output" class="output"></div>
+    </div>
+
+    <div class="card">
+        <h2>🔧 Configuration Presets</h2>
+        <p>RobotContextConfig provides several presets optimized for different use cases:</p>
+        <div class="code-block">
+RobotContextConfig.gpuOptimized()  // Default: capsule approximation, 5 samples/edge
+RobotContextConfig.fast()          // Quick planning: 3 samples/edge, 200 roadmap samples
+RobotContextConfig.quality()       // Thorough: 10 samples/edge, 1000 roadmap samples
+RobotContextConfig.cpuOnly()       // No capsule approximation
+        </div>
+    </div>
+
+    <script type="module">
+        import init, {
+            RobotContext,
+            RobotContextConfig,
+            CollisionEnvironment,
+            Pose,
+            Position,
+            Quaternion,
+            createRobotContext,
+        } from '../trajx_wasm.js';
+
+        let wasm;
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+
+        function log(msg, type = 'info') {
+            const prefix = type === 'success' ? '✅ ' : type === 'error' ? '❌ ' : 'ℹ️ ';
+            output.textContent += prefix + msg + '\n';
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // Simple 3-DOF robot URDF for testing
+        const TEST_URDF = `<?xml version="1.0"?>
+<robot name="test_robot">
+    <link name="base_link">
+        <collision>
+            <geometry><box size="0.1 0.1 0.1"/></geometry>
+        </collision>
+    </link>
+    <link name="link1">
+        <collision>
+            <geometry><cylinder radius="0.05" length="0.5"/></geometry>
+            <origin xyz="0 0 0.25"/>
+        </collision>
+    </link>
+    <link name="link2">
+        <collision>
+            <geometry><cylinder radius="0.04" length="0.4"/></geometry>
+            <origin xyz="0 0 0.2"/>
+        </collision>
+    </link>
+    <link name="link3">
+        <collision>
+            <geometry><sphere radius="0.05"/></geometry>
+        </collision>
+    </link>
+    <joint name="joint1" type="revolute">
+        <parent link="base_link"/>
+        <child link="link1"/>
+        <origin xyz="0 0 0.1"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="-3.14" upper="3.14" velocity="2.0" effort="100"/>
+    </joint>
+    <joint name="joint2" type="revolute">
+        <parent link="link1"/>
+        <child link="link2"/>
+        <origin xyz="0 0 0.5"/>
+        <axis xyz="0 1 0"/>
+        <limit lower="-2.0" upper="2.0" velocity="2.0" effort="100"/>
+    </joint>
+    <joint name="joint3" type="revolute">
+        <parent link="link2"/>
+        <child link="link3"/>
+        <origin xyz="0 0 0.4"/>
+        <axis xyz="0 1 0"/>
+        <limit lower="-2.0" upper="2.0" velocity="2.0" effort="100"/>
+    </joint>
+</robot>`;
+
+        async function runAllTests() {
+            output.textContent = '';
+
+            try {
+                // Test 1: Basic RobotContext creation
+                log('=== Test 1: RobotContext Creation ===', 'info');
+                const ctx = RobotContext.fromUrdf(TEST_URDF);
+                log(`Created RobotContext for: ${ctx.name}`, 'success');
+                log(`DOF: ${ctx.dof}`);
+                log(`GPU Compatible: ${ctx.isGpuCompatible}`);
+                log(`Stats: ${ctx.stats.summary()}`);
+
+                // Test 2: Config presets
+                log('\n=== Test 2: Configuration Presets ===', 'info');
+                const configs = [
+                    ['gpuOptimized', RobotContextConfig.gpuOptimized()],
+                    ['fast', RobotContextConfig.fast()],
+                    ['quality', RobotContextConfig.quality()],
+                    ['cpuOnly', RobotContextConfig.cpuOnly()],
+                ];
+                for (const [name, cfg] of configs) {
+                    log(`${name}: samples=${cfg.samplesPerEdge}, roadmap=${cfg.roadmapSamples}`);
+                }
+                log('All config presets work!', 'success');
+
+                // Test 3: Collision checking
+                log('\n=== Test 3: Collision Checking ===', 'info');
+                const env = new CollisionEnvironment();
+                const obstaclePose = new Pose(
+                    new Position(1.0, 0, 0.5),
+                    new Quaternion(0, 0, 0, 1)
+                );
+                env.addBox("obstacle", [0.2, 0.2, 0.2], obstaclePose);
+                log(`Created environment with 1 obstacle`);
+
+                const zeroConfig = [0, 0, 0];
+                const isFree = ctx.isConfigCollisionFree(zeroConfig, env);
+                log(`Zero config collision-free: ${isFree}`, isFree ? 'success' : 'info');
+
+                // Test 4: Edge collision checking
+                log('\n=== Test 4: Edge Collision Checking ===', 'info');
+                const start = [0, 0, 0];
+                const end = [0.5, 0.3, 0.2];
+                const edgeFree = ctx.isEdgeCollisionFree(start, end, env, 5);
+                log(`Edge [0,0,0] -> [0.5,0.3,0.2] free: ${edgeFree}`, edgeFree ? 'success' : 'info');
+
+                // Test 5: Batch edge checking
+                log('\n=== Test 5: Batch Edge Checking ===', 'info');
+                const edges = [
+                    [[0, 0, 0], [0.1, 0, 0]],
+                    [[0.1, 0, 0], [0.2, 0.1, 0]],
+                    [[0.2, 0.1, 0], [0.3, 0.2, 0.1]],
+                ];
+                const startTime = performance.now();
+                const results = ctx.checkEdgesBatch(edges, env, 5);
+                const elapsed = performance.now() - startTime;
+                log(`Checked ${edges.length} edges in ${elapsed.toFixed(2)}ms`);
+                log(`Results: ${Array.from(results).map(r => r ? '✓' : '✗').join(', ')}`, 'success');
+
+                // Test 6: Create planner
+                log('\n=== Test 6: Create Planner ===', 'info');
+                const planner = ctx.createPlanner();
+                log(`Created LazyPrmPlanner`, 'success');
+                planner.buildRoadmap();
+                log(`Built roadmap: ${planner.nodeCount} nodes, ${planner.edgeCount} edges`);
+
+                // Test 7: Planning query
+                log('\n=== Test 7: Planning Query ===', 'info');
+                const planStart = [0, 0, 0];
+                const planGoal = [0.5, 0.3, 0.2];
+                const planResult = planner.query(planStart, planGoal, (edgesToCheck) => {
+                    return ctx.checkEdgesBatch(edgesToCheck, env, 5);
+                });
+                if (planResult.success) {
+                    log(`Path found! ${planResult.waypointCount} waypoints, length: ${planResult.pathLength.toFixed(3)}`, 'success');
+                    log(`Edges validated: ${planResult.edgesValidated}, GPU batches: ${planResult.gpuBatches}`);
+                    log(`Planning time: ${planResult.planningTimeMs.toFixed(2)}ms`);
+                } else {
+                    log(`No path found: ${planResult.error}`, 'error');
+                }
+
+                // Test 8: FK and summary
+                log('\n=== Test 8: Forward Kinematics ===', 'info');
+                const pose = ctx.forwardKinematics([0.1, 0.2, 0.3]);
+                log(`FK at [0.1, 0.2, 0.3]: pos=(${pose.position.x.toFixed(3)}, ${pose.position.y.toFixed(3)}, ${pose.position.z.toFixed(3)})`, 'success');
+
+                log('\n=== Test 9: Summary ===', 'info');
+                log(ctx.summary(), 'success');
+
+                log('\n🎉 All tests passed!', 'success');
+            } catch (err) {
+                log(`Error: ${err.message}`, 'error');
+                console.error(err);
+            }
+        }
+
+        // Make function available globally
+        window.runAllTests = runAllTests;
+
+        // Initialize
+        init().then(() => {
+            wasm = true;
+            status.className = 'status ready';
+            status.textContent = '✅ WASM loaded! Ready to test RobotContext API.';
+            document.getElementById('runBtn').disabled = false;
+        }).catch(err => {
+            status.className = 'status error';
+            status.textContent = '❌ Failed to load WASM: ' + err.message;
+            console.error(err);
+        });
+    </script>
+</body>
+</html>

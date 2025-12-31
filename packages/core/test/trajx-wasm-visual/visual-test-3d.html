@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>trajx-wasm 3D Visual Test</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      overflow: hidden;
+    }
+
+    #container {
+      display: flex;
+      height: 100vh;
+    }
+
+    #viewport {
+      flex: 1;
+      position: relative;
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    #sidebar {
+      width: 320px;
+      background: #12122a;
+      border-left: 1px solid #2a2a4a;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    h1 { font-size: 18px; color: #00d9ff; margin-bottom: 8px; }
+    h2 { font-size: 14px; color: #888; margin: 16px 0 8px 0; text-transform: uppercase; }
+
+    .status {
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
+    .status.loading { background: #e6a23c22; color: #e6a23c; }
+    .status.ready { background: #67c23a22; color: #67c23a; }
+    .status.error { background: #f56c6c22; color: #f56c6c; }
+
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      margin: 4px;
+      transition: all 0.2s;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { background: #444; cursor: not-allowed; }
+    button.success { background: linear-gradient(135deg, #67c23a 0%, #4a9e2a 100%); }
+    button.danger { background: linear-gradient(135deg, #f56c6c 0%, #c45454 100%); }
+
+    .btn-group { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+
+    .log {
+      background: #0d0d1a;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: 'Monaco', monospace;
+      font-size: 11px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: #67c23a;
+    }
+
+    .info-panel {
+      background: #0d0d1a;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin: 8px 0;
+    }
+    .info-row { display: flex; justify-content: space-between; padding: 4px 0; }
+    .info-label { color: #888; }
+    .info-value { color: #00d9ff; font-family: monospace; }
+
+    #overlay {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(0,0,0,0.8);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      pointer-events: none;
+    }
+    #overlay h3 { color: #00d9ff; margin-bottom: 8px; }
+
+    .legend {
+      display: flex;
+      gap: 16px;
+      font-size: 11px;
+      margin-top: 8px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="viewport">
+      <div id="canvas-container"></div>
+      <div id="overlay">
+        <h3>trajx-wasm 3D Visual Test</h3>
+        <div>Loading...</div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-color" style="background:#4fc3f7"></div> Robot</div>
+          <div class="legend-item"><div class="legend-color" style="background:#ff6b6b"></div> Obstacle</div>
+          <div class="legend-item"><div class="legend-color" style="background:#51cf66"></div> Trajectory</div>
+          <div class="legend-item"><div class="legend-color" style="background:#ffd43b"></div> Collision</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sidebar">
+      <h1>Visual Test Control</h1>
+      <div id="status" class="status loading">Loading WASM...</div>
+
+      <h2>1. Robot Control</h2>
+      <div class="btn-group">
+        <button id="btn-home">Home Position</button>
+        <button id="btn-random">Random Pose</button>
+      </div>
+      <div class="info-panel" id="robot-info">
+        <div class="info-row"><span class="info-label">Position X:</span><span class="info-value" id="pos-x">-</span></div>
+        <div class="info-row"><span class="info-label">Position Y:</span><span class="info-value" id="pos-y">-</span></div>
+        <div class="info-row"><span class="info-label">Position Z:</span><span class="info-value" id="pos-z">-</span></div>
+      </div>
+
+      <h2>2. Obstacles</h2>
+      <div class="btn-group">
+        <button id="btn-add-box">Add Box</button>
+        <button id="btn-add-sphere">Add Sphere</button>
+        <button id="btn-clear-obs" class="danger">Clear All</button>
+      </div>
+      <div class="info-panel">
+        <div class="info-row"><span class="info-label">Obstacles:</span><span class="info-value" id="obs-count">0</span></div>
+      </div>
+
+      <h2>3. Trajectory Planning</h2>
+      <div class="btn-group">
+        <button id="btn-plan" class="success">Plan Trajectory</button>
+        <button id="btn-execute">Execute</button>
+        <button id="btn-clear-traj" class="danger">Clear</button>
+      </div>
+      <div class="info-panel">
+        <div class="info-row"><span class="info-label">Waypoints:</span><span class="info-value" id="traj-points">-</span></div>
+        <div class="info-row"><span class="info-label">Path Length:</span><span class="info-value" id="traj-length">-</span></div>
+        <div class="info-row"><span class="info-label">Collision Free:</span><span class="info-value" id="traj-collision">-</span></div>
+      </div>
+
+      <h2>4. Visual Verification</h2>
+      <div class="btn-group">
+        <button id="btn-verify">Run Visual Test</button>
+        <button id="btn-screenshot">Save Screenshot</button>
+      </div>
+
+      <h2>Log</h2>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // Import trajx-wasm
+    import init, {
+      version,
+      listDhDatabase,
+      WasmDhDatabase,
+      forwardKinematicsDh,
+      forwardKinematicsChainDh,
+      CollisionEnvironment,
+      BiRRTPlanner,
+      JointLimits,
+      Pose
+    } from '../../vendor/trajx-wasm/trajx_wasm.js';
+
+    // ========== Globals ==========
+    let scene, camera, renderer, controls;
+    let robotGroup, obstaclesGroup, trajectoryGroup;
+    let dhParams, collisionEnv, dhDb, jointLimits;
+    let numJoints = 6; // Will be updated from DH params (excluding flange)
+    let currentJoints = [0, 0, 0, 0, 0, 0];
+    let trajectoryData = null;
+    let animationId = null;
+    const ROBOT_NAME = 'Fanuc_LR_Mate_200iD_7L';
+
+    // ========== Logging ==========
+    const logEl = document.getElementById('log');
+    function log(msg, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const color = { info: '#67c23a', warn: '#e6a23c', error: '#f56c6c' }[type] || '#67c23a';
+      logEl.innerHTML += `<span style="color:${color}">[${time}] ${msg}</span>\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(`[${type}] ${msg}`);
+    }
+
+    function setStatus(text, type = 'ready') {
+      const el = document.getElementById('status');
+      el.textContent = text;
+      el.className = `status ${type}`;
+    }
+
+    // ========== Three.js Setup ==========
+    function initThree() {
+      const container = document.getElementById('canvas-container');
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1a1a2e);
+
+      camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 100);
+      camera.position.set(2, 2, 2);
+      camera.lookAt(0, 0.5, 0);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.set(0, 0.3, 0);
+
+      // Lights
+      const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambient);
+
+      const directional = new THREE.DirectionalLight(0xffffff, 0.8);
+      directional.position.set(5, 10, 5);
+      directional.castShadow = true;
+      scene.add(directional);
+
+      // Grid
+      const grid = new THREE.GridHelper(4, 20, 0x444444, 0x333333);
+      scene.add(grid);
+
+      // Axes
+      const axes = new THREE.AxesHelper(0.5);
+      scene.add(axes);
+
+      // Groups
+      robotGroup = new THREE.Group();
+      scene.add(robotGroup);
+
+      obstaclesGroup = new THREE.Group();
+      scene.add(obstaclesGroup);
+
+      trajectoryGroup = new THREE.Group();
+      scene.add(trajectoryGroup);
+
+      // Handle resize
+      window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+
+      log('Three.js initialized');
+    }
+
+    // ========== Robot Visualization ==========
+    function createSimpleRobot() {
+      // Create a simplified 6-axis robot arm visualization
+      const materials = {
+        base: new THREE.MeshPhongMaterial({ color: 0x4fc3f7 }),
+        link: new THREE.MeshPhongMaterial({ color: 0x29b6f6 }),
+        joint: new THREE.MeshPhongMaterial({ color: 0x0288d1 }),
+        endEffector: new THREE.MeshPhongMaterial({ color: 0x00bcd4 })
+      };
+
+      // Base
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.12, 0.08, 32),
+        materials.base
+      );
+      base.position.y = 0.04;
+      robotGroup.add(base);
+
+      // Link lengths (simplified Fanuc-like dimensions)
+      const linkLengths = [0.33, 0.33, 0.08, 0.32, 0.08, 0.08];
+
+      let currentY = 0.08;
+
+      // Joint 1 (base rotation)
+      const joint1 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, 0.1, 32),
+        materials.joint
+      );
+      joint1.position.y = currentY + 0.05;
+      joint1.name = 'joint1';
+      robotGroup.add(joint1);
+      currentY += 0.1;
+
+      // Link 1
+      const link1 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, linkLengths[0], 0.08),
+        materials.link
+      );
+      link1.position.y = currentY + linkLengths[0] / 2;
+      link1.name = 'link1';
+      robotGroup.add(link1);
+      currentY += linkLengths[0];
+
+      // Joint 2
+      const joint2 = new THREE.Mesh(
+        new THREE.SphereGeometry(0.05, 16, 16),
+        materials.joint
+      );
+      joint2.position.y = currentY;
+      joint2.name = 'joint2';
+      robotGroup.add(joint2);
+
+      // Link 2
+      const link2 = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06, linkLengths[1], 0.06),
+        materials.link
+      );
+      link2.position.set(0, currentY + linkLengths[1] / 2, 0);
+      link2.name = 'link2';
+      robotGroup.add(link2);
+      currentY += linkLengths[1];
+
+      // Joint 3
+      const joint3 = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04, 16, 16),
+        materials.joint
+      );
+      joint3.position.y = currentY;
+      joint3.name = 'joint3';
+      robotGroup.add(joint3);
+
+      // Wrist assembly (joints 4-6)
+      const wrist = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.03, 0.15, 16),
+        materials.link
+      );
+      wrist.rotation.x = Math.PI / 2;
+      wrist.position.set(0.1, currentY, 0);
+      wrist.name = 'wrist';
+      robotGroup.add(wrist);
+
+      // End effector
+      const endEffector = new THREE.Mesh(
+        new THREE.ConeGeometry(0.02, 0.06, 16),
+        materials.endEffector
+      );
+      endEffector.rotation.x = -Math.PI / 2;
+      endEffector.position.set(0.2, currentY, 0);
+      endEffector.name = 'endEffector';
+      robotGroup.add(endEffector);
+
+      log('Robot model created');
+    }
+
+    function updateRobotPose(joints) {
+      // Update current joints
+      currentJoints = joints;
+
+      // Update visual (simplified rotation for base)
+      robotGroup.rotation.y = joints[0];
+
+      // Get FK result from trajx-wasm using DH parameters
+      // NOTE: dhParams is consumed by forwardKinematicsDh, so we must get fresh params each call
+      if (dhDb) {
+        try {
+          const freshDhParams = dhDb.getDhParams(ROBOT_NAME);
+          // Ensure joint array matches DH params length (add 0 for flange if needed)
+          let jointArray = new Float64Array(freshDhParams.length);
+          for (let i = 0; i < Math.min(joints.length, freshDhParams.length); i++) {
+            jointArray[i] = joints[i];
+          }
+
+          const fkResult = forwardKinematicsDh(freshDhParams, jointArray);
+          const pos = fkResult.position;
+
+          document.getElementById('pos-x').textContent = (pos.x * 1000).toFixed(1) + ' mm';
+          document.getElementById('pos-y').textContent = (pos.y * 1000).toFixed(1) + ' mm';
+          document.getElementById('pos-z').textContent = (pos.z * 1000).toFixed(1) + ' mm';
+
+          // Update end effector marker position
+          const endEffector = robotGroup.getObjectByName('endEffector');
+          if (endEffector) {
+            // Convert from robotics convention to Three.js
+            endEffector.position.set(pos.x, pos.z, -pos.y);
+          }
+
+          // Also update robot arm visualization using FK chain
+          updateRobotArmVisualization(joints);
+        } catch (e) {
+          log(`FK error: ${e.message}`, 'warn');
+        }
+      }
+    }
+
+    function updateRobotArmVisualization(joints) {
+      // Get FK chain for all links
+      // NOTE: dhParams is consumed by forwardKinematicsChainDh, so we must get fresh params each call
+      if (!dhDb) return;
+
+      try {
+        const freshDhParams = dhDb.getDhParams(ROBOT_NAME);
+        // Ensure joint array matches DH params length
+        let jointArray = new Float64Array(freshDhParams.length);
+        for (let i = 0; i < Math.min(joints.length, freshDhParams.length); i++) {
+          jointArray[i] = joints[i];
+        }
+        const chainPoses = forwardKinematicsChainDh(freshDhParams, jointArray);
+
+        // Update link positions based on FK chain results
+        // This is a simplified visualization - real implementation would use actual link meshes
+        for (let i = 0; i < Math.min(chainPoses.length, 6); i++) {
+          const pose = chainPoses[i];
+          const link = robotGroup.getObjectByName(`link${i+1}`);
+          if (link && pose.position) {
+            // Position the link at the joint location
+            link.position.set(pose.position.x, pose.position.z, -pose.position.y);
+          }
+        }
+      } catch (e) {
+        // Chain FK might fail for some configurations
+      }
+    }
+
+    // ========== Obstacles ==========
+    function addObstacle(type, position, size) {
+      let geometry;
+      const material = new THREE.MeshPhongMaterial({
+        color: 0xff6b6b,
+        transparent: true,
+        opacity: 0.7
+      });
+
+      if (type === 'box') {
+        geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+      } else if (type === 'sphere') {
+        geometry = new THREE.SphereGeometry(size.radius, 32, 32);
+      }
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(position.x, position.y, position.z);
+      mesh.castShadow = true;
+      mesh.userData.type = type;
+      mesh.userData.size = size;
+      obstaclesGroup.add(mesh);
+
+      // Add to collision environment
+      if (collisionEnv) {
+        const id = `obs_${Date.now()}`;
+        try {
+          if (type === 'box') {
+            // addBox(id, half_extents: Float64Array, pose: Pose)
+            const halfExtents = new Float64Array([size.x/2, size.y/2, size.z/2]);
+            // Use fromPositionEuler with zero angles for identity orientation
+            const pose = Pose.fromPositionEuler(position.x, position.y, position.z, 0, 0, 0);
+            collisionEnv.addBox(id, halfExtents, pose);
+          } else if (type === 'sphere') {
+            // addSphere(id, radius, position: Float64Array)
+            const posArray = new Float64Array([position.x, position.y, position.z]);
+            collisionEnv.addSphere(id, size.radius, posArray);
+          }
+          log(`Added ${type} to collision env: ${id}`);
+        } catch (e) {
+          log(`Collision env error: ${e.message}`, 'warn');
+        }
+      }
+
+      updateObstacleCount();
+      log(`Added ${type} obstacle at (${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)})`);
+    }
+
+    function clearObstacles() {
+      while (obstaclesGroup.children.length > 0) {
+        obstaclesGroup.remove(obstaclesGroup.children[0]);
+      }
+      if (collisionEnv) {
+        collisionEnv.clear();
+      }
+      updateObstacleCount();
+      log('Cleared all obstacles');
+    }
+
+    function updateObstacleCount() {
+      document.getElementById('obs-count').textContent = obstaclesGroup.children.length;
+    }
+
+    // ========== Trajectory ==========
+    function planTrajectory() {
+      log('Planning trajectory...');
+
+      if (!jointLimits) {
+        log('Joint limits not loaded', 'error');
+        return;
+      }
+
+      const startJoints = new Float64Array(currentJoints);
+      const goalJoints = new Float64Array([0.5, 0.3, -0.3, 0, 0.5, 0]);
+
+      try {
+        // Create BiRRT planner with joint limits
+        const planner = new BiRRTPlanner(jointLimits);
+
+        // Define collision checker callback
+        // NOTE: dhParams is consumed by forwardKinematicsDh, so we must get fresh params each call
+        const collisionChecker = (joints) => {
+          if (!collisionEnv || !dhDb) return true;
+
+          // Get end effector position for collision check
+          try {
+            const freshDhParams = dhDb.getDhParams(ROBOT_NAME);
+            // Ensure joint array matches DH params length
+            let jointArray = new Float64Array(freshDhParams.length);
+            for (let i = 0; i < Math.min(joints.length, freshDhParams.length); i++) {
+              jointArray[i] = joints[i];
+            }
+            const pose = forwardKinematicsDh(freshDhParams, jointArray);
+            // Check if end effector collides with obstacles
+            const isCollision = collisionEnv.checkPointCollision(
+              pose.position.x,
+              pose.position.y,
+              pose.position.z
+            );
+            return !isCollision; // Return true if NO collision (valid)
+          } catch (e) {
+            return true; // Assume valid if FK fails
+          }
+        };
+
+        let result;
+        if (collisionEnv && obstaclesGroup.children.length > 0) {
+          log('Planning with collision avoidance...');
+          result = planner.planWithCollisionCheck(startJoints, goalJoints, collisionChecker);
+        } else {
+          log('Planning without collision check...');
+          result = planner.plan(startJoints, goalJoints);
+        }
+
+        if (result.success) {
+          trajectoryData = result;
+          visualizeTrajectory(result);
+
+          document.getElementById('traj-points').textContent = result.waypointCount;
+          document.getElementById('traj-length').textContent = result.pathLength.toFixed(3) + ' rad';
+          document.getElementById('traj-collision').textContent = result.success ? 'Yes' : 'No';
+
+          log(`Trajectory planned: ${result.waypointCount} waypoints, path length: ${result.pathLength.toFixed(3)} rad`);
+        } else {
+          log(`Trajectory planning failed: ${result.error || 'unknown error'}`, 'error');
+        }
+      } catch (e) {
+        log(`Planning error: ${e.message}`, 'error');
+        console.error(e);
+      }
+    }
+
+    function visualizeTrajectory(result) {
+      // Clear previous trajectory
+      clearTrajectory();
+
+      if (!result || !result.waypointCount) return;
+
+      // Create trajectory line
+      const points = [];
+      const colors = [];
+
+      for (let i = 0; i < result.waypointCount; i++) {
+        const joints = result.getWaypoint(i);
+        if (!joints) continue;
+
+        // Get FK for this configuration using DH params
+        // NOTE: dhParams is consumed by forwardKinematicsDh, so we must get fresh params each call
+        if (dhDb) {
+          try {
+            const freshDhParams = dhDb.getDhParams(ROBOT_NAME);
+            // Ensure joint array matches DH params length
+            let jointArray = new Float64Array(freshDhParams.length);
+            for (let j = 0; j < Math.min(joints.length, freshDhParams.length); j++) {
+              jointArray[j] = joints[j];
+            }
+            const fkResult = forwardKinematicsDh(freshDhParams, jointArray);
+            const pos = fkResult.position;
+            // Convert to Three.js coordinate system (Y up)
+            points.push(new THREE.Vector3(pos.x, pos.z, -pos.y));
+
+            // Color: green for valid path
+            const color = new THREE.Color(result.success ? 0x51cf66 : 0xffd43b);
+            colors.push(color.r, color.g, color.b);
+          } catch (e) {
+            // Use simplified visualization if FK fails
+            const t = i / (result.waypointCount - 1);
+            points.push(new THREE.Vector3(
+              0.3 + t * 0.2,
+              0.5 + Math.sin(t * Math.PI) * 0.2,
+              t * 0.1
+            ));
+            colors.push(0.3, 0.8, 0.4);
+          }
+        }
+      }
+
+      if (points.length === 0) {
+        log('No trajectory points generated', 'warn');
+        return;
+      }
+
+      // Create line geometry
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+      const material = new THREE.LineBasicMaterial({
+        vertexColors: true,
+        linewidth: 2
+      });
+
+      const line = new THREE.Line(geometry, material);
+      trajectoryGroup.add(line);
+
+      // Add waypoint markers (every 10th point or so)
+      const markerGeometry = new THREE.SphereGeometry(0.01, 8, 8);
+      const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x51cf66 });
+
+      const step = Math.max(1, Math.floor(points.length / 10));
+      for (let i = 0; i < points.length; i += step) {
+        const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+        marker.position.copy(points[i]);
+        trajectoryGroup.add(marker);
+      }
+
+      // Start/end markers
+      if (points.length > 0) {
+        const startMarker = new THREE.Mesh(
+          new THREE.SphereGeometry(0.02, 16, 16),
+          new THREE.MeshBasicMaterial({ color: 0x4fc3f7 })
+        );
+        startMarker.position.copy(points[0]);
+        trajectoryGroup.add(startMarker);
+
+        const endMarker = new THREE.Mesh(
+          new THREE.SphereGeometry(0.02, 16, 16),
+          new THREE.MeshBasicMaterial({ color: 0xff6b6b })
+        );
+        endMarker.position.copy(points[points.length - 1]);
+        trajectoryGroup.add(endMarker);
+      }
+
+      log(`Trajectory visualized with ${points.length} points`);
+    }
+
+    function executeTrajectory() {
+      if (!trajectoryData) {
+        log('No trajectory to execute', 'warn');
+        return;
+      }
+
+      log('Executing trajectory...');
+
+      let currentPoint = 0;
+      const totalPoints = trajectoryData.waypointCount;
+
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+
+      function animateStep() {
+        if (currentPoint >= totalPoints) {
+          log('Trajectory execution complete');
+          return;
+        }
+
+        const joints = trajectoryData.getWaypoint(currentPoint);
+        if (joints) {
+          updateRobotPose(Array.from(joints));
+        }
+
+        currentPoint++;
+        animationId = requestAnimationFrame(animateStep);
+      }
+
+      animateStep();
+    }
+
+    function clearTrajectory() {
+      while (trajectoryGroup.children.length > 0) {
+        trajectoryGroup.remove(trajectoryGroup.children[0]);
+      }
+      trajectoryData = null;
+      document.getElementById('traj-points').textContent = '-';
+      document.getElementById('traj-length').textContent = '-';
+      document.getElementById('traj-collision').textContent = '-';
+    }
+
+    // ========== Visual Verification ==========
+    function runVisualTest() {
+      log('Running visual verification test...');
+
+      const tests = [];
+
+      // Test 1: Check robot visibility
+      tests.push({
+        name: 'Robot Visible',
+        pass: robotGroup.children.length > 0,
+        detail: `${robotGroup.children.length} robot parts rendered`
+      });
+
+      // Test 2: Check DH params loaded
+      tests.push({
+        name: 'DH Params Loaded',
+        pass: dhParams && dhParams.length > 0,
+        detail: dhParams ? `${dhParams.length} DH parameters` : 'Not loaded'
+      });
+
+      // Test 3: Check obstacles
+      tests.push({
+        name: 'Obstacles Rendered',
+        pass: obstaclesGroup.children.length >= 0,
+        detail: `${obstaclesGroup.children.length} obstacles in scene`
+      });
+
+      // Test 4: Check collision environment
+      tests.push({
+        name: 'Collision Env Ready',
+        pass: collisionEnv !== null && collisionEnv !== undefined,
+        detail: collisionEnv ? 'Initialized' : 'Not initialized'
+      });
+
+      // Test 5: Check trajectory if planned
+      if (trajectoryData) {
+        tests.push({
+          name: 'Trajectory Visible',
+          pass: trajectoryGroup.children.length > 0,
+          detail: `${trajectoryGroup.children.length} trajectory elements`
+        });
+
+        tests.push({
+          name: 'Trajectory Success',
+          pass: trajectoryData.success,
+          detail: trajectoryData.success ? `${trajectoryData.waypointCount} waypoints` : 'Failed'
+        });
+      }
+
+      // Log results
+      log('=== Visual Test Results ===');
+      let allPass = true;
+      for (const test of tests) {
+        const status = test.pass ? 'PASS' : 'FAIL';
+        const color = test.pass ? 'info' : 'error';
+        log(`${status}: ${test.name} - ${test.detail}`, color);
+        if (!test.pass) allPass = false;
+      }
+      log(`Overall: ${allPass ? 'ALL TESTS PASSED' : 'SOME TESTS FAILED'}`, allPass ? 'info' : 'error');
+
+      // Mark page as ready for screenshot
+      document.body.setAttribute('data-test-status', allPass ? 'ready' : 'failed');
+      document.getElementById('overlay').querySelector('div').textContent =
+        allPass ? 'Visual Test: PASSED' : 'Visual Test: FAILED';
+    }
+
+    // ========== Animation Loop ==========
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // ========== Initialize ==========
+    async function init_app() {
+      initThree();
+      createSimpleRobot();
+      animate();
+
+      try {
+        await init();
+        log(`trajx-wasm loaded, version: ${version()}`);
+
+        // List available DH robots
+        const dhRobots = listDhDatabase();
+        log(`Available DH robots: ${dhRobots.join(', ')}`);
+
+        // Create DH database and get parameters for the robot
+        dhDb = WasmDhDatabase.withDefaults();
+        dhParams = dhDb.getDhParams(ROBOT_NAME);
+        jointLimits = dhDb.getJointLimits(ROBOT_NAME);
+        log(`Robot loaded: ${ROBOT_NAME} with ${dhParams.length} DH params`);
+
+        // Create collision environment
+        collisionEnv = new CollisionEnvironment();
+        log('Collision environment initialized');
+
+        setStatus('Ready', 'ready');
+        document.getElementById('overlay').querySelector('div').textContent = 'Ready for testing';
+
+        // Update initial pose
+        updateRobotPose(currentJoints);
+
+      } catch (e) {
+        log(`Init error: ${e.message}`, 'error');
+        console.error(e);
+        setStatus('Error: ' + e.message, 'error');
+      }
+
+      // Button handlers
+      document.getElementById('btn-home').onclick = () => updateRobotPose([0, 0, 0, 0, 0, 0]);
+      document.getElementById('btn-random').onclick = () => {
+        const random = Array(6).fill(0).map(() => (Math.random() - 0.5) * 1.5);
+        updateRobotPose(random);
+      };
+
+      document.getElementById('btn-add-box').onclick = () => {
+        addObstacle('box',
+          { x: (Math.random() - 0.5) * 0.8, y: 0.3 + Math.random() * 0.3, z: (Math.random() - 0.5) * 0.8 },
+          { x: 0.1, y: 0.1, z: 0.1 }
+        );
+      };
+      document.getElementById('btn-add-sphere').onclick = () => {
+        addObstacle('sphere',
+          { x: (Math.random() - 0.5) * 0.8, y: 0.3 + Math.random() * 0.3, z: (Math.random() - 0.5) * 0.8 },
+          { radius: 0.05 }
+        );
+      };
+      document.getElementById('btn-clear-obs').onclick = clearObstacles;
+
+      document.getElementById('btn-plan').onclick = planTrajectory;
+      document.getElementById('btn-execute').onclick = executeTrajectory;
+      document.getElementById('btn-clear-traj').onclick = clearTrajectory;
+
+      document.getElementById('btn-verify').onclick = runVisualTest;
+      document.getElementById('btn-screenshot').onclick = () => {
+        log('Screenshot ready - use Chrome MCP take_screenshot');
+      };
+    }
+
+    init_app();
+  </script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "name": "ik-basic",
+  "category": "ik",
+  "description": "基础逆运动学测试 - 验证从目标位姿求解关节角度",
+  "params": {
+    "urdfPath": "../../fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf",
+    "targetPose": {
+      "position": [0.4, 0.1, 0.3],
+      "quaternion": [1, 0, 0, 0]
+    }
+  },
+  "expectedBehavior": "机器人末端执行器应到达目标位置(0.4, 0.1, 0.3)附近，姿态应与目标四元数一致。显示的IK解应该是有效的。",
+  "checkpoints": [
+    {
+      "name": "end-effector-position",
+      "question": "机器人末端执行器是否移动到了一个非初始位置？",
+      "expectedKeywords": ["移动", "到达", "是"],
+      "critical": true
+    },
+    {
+      "name": "pose-reasonable",
+      "question": "机器人的姿态是否看起来自然合理，没有奇异配置？",
+      "expectedKeywords": ["合理", "自然", "正常"],
+      "critical": true
+    },
+    {
+      "name": "solution-display",
+      "question": "界面上是否显示了IK求解的状态或结果信息？",
+      "expectedKeywords": ["显示", "解", "状态"],
+      "critical": false
+    }
+  ]
+}

@@ -9,12 +9,14 @@ trajx-wasm 是 trajx 机器人运动学库的 WebAssembly 封装，提供在浏�
 3. [核心概念](#核心概念)
 4. [API 详解](#api-详解)
 5. [Motion-Centric API](#motion-centric-api运动中心-apinew)
-6. [Cable-Aware Planning](#cable-aware-planning线缆感知规划new)
-7. [Batch Forward Kinematics](#batch-forward-kinematics批量正运动学)
-8. [FK Worker（Web Worker 集成）](#fk-workerweb-worker-集成) ⚡ NEW
-9. [使用示例](#使用示例)
-10. [坐标系说明](#坐标系说明)
-11. [常见问题](#常见问题)
+6. [Cable-Aware Planning](#cable-aware-planning线缆感知规划)
+7. [RobotContext - 统一 GPU 规划 API](#robotcontext---统一-gpu-规划-api推荐) ⚡ NEW
+8. [GPU 碰撞检测](#gpu-碰撞检测默认启用) ⚡ NEW
+9. [Batch Forward Kinematics](#batch-forward-kinematics批量正运动学)
+10. [FK Worker（Web Worker 集成）](#fk-workerweb-worker-集成)
+11. [使用示例](#使用示例)
+12. [坐标系说明](#坐标系说明)
+13. [常见问题](#常见问题)
 
 ---
 
@@ -667,6 +669,209 @@ console.log('最大扭转:', result.cableMaxTwist);
 
 ---
 
+## RobotContext - 统一 GPU 规划 API（推荐）
+
+`RobotContext` 是**推荐的** GPU 加速运动规划 API。它提供了一个统一的接口，结合了 URDF 加载、胶囊体近似和批量边检测。
+
+### 快速开始
+
+```javascript
+import {
+    RobotContext,
+    RobotContextConfig,
+    CollisionEnvironment,
+    Pose,
+    Position,
+    Quaternion
+} from './pkg/trajx_wasm.js';
+
+// 一行代码从 URDF 创建（使用 GPU 优化的默认配置）
+const ctx = RobotContext.fromUrdf(urdfContent);
+
+console.log(`机器人: ${ctx.name}, DOF: ${ctx.dof}`);
+console.log(`GPU 兼容: ${ctx.isGpuCompatible}`);
+console.log(ctx.stats.summary());  // 显示胶囊体转换统计
+```
+
+### 配置预设
+
+```javascript
+// 不同场景的预设配置
+RobotContextConfig.gpuOptimized()  // 默认：胶囊体近似，5 采样/边
+RobotContextConfig.fast()          // 快速规划：3 采样/边，200 路图样本
+RobotContextConfig.quality()       // 高质量：10 采样/边，1000 路图样本
+RobotContextConfig.cpuOnly()       // 无胶囊体近似（CPU 模式）
+
+// 自定义配置
+const config = RobotContextConfig.gpuOptimized();
+config.samplesPerEdge = 8;
+config.roadmapSamples = 800;
+const ctx = RobotContext.fromUrdfWithConfig(urdfContent, config);
+```
+
+### 碰撞检测
+
+```javascript
+// 创建环境
+const env = new CollisionEnvironment();
+const obstaclePose = new Pose(
+    new Position(0.5, 0, 0.3),
+    new Quaternion(0, 0, 0, 1)
+);
+env.addBox("obstacle", [0.2, 0.2, 0.2], obstaclePose);
+
+// 单配置检测
+const joints = [0, 0, 0, 0, 0, 0];
+const isFree = ctx.isConfigCollisionFree(joints, env);
+
+// 单边检测
+const start = [0, 0, 0, 0, 0, 0];
+const end = [0.5, 0.3, 0.2, 0, 0, 0];
+const edgeFree = ctx.isEdgeCollisionFree(start, end, env, 5);
+
+// GPU 友好的批量边检测（用于 Lazy-PRM）
+const edges = [
+    [[0, 0, 0, 0, 0, 0], [0.1, 0, 0, 0, 0, 0]],
+    [[0.1, 0, 0, 0, 0, 0], [0.2, 0.1, 0, 0, 0, 0]],
+    [[0.2, 0.1, 0, 0, 0, 0], [0.3, 0.2, 0.1, 0, 0, 0]],
+];
+const results = ctx.checkEdgesBatch(edges, env, 5);  // 5 采样/边
+console.log('边检测结果:', Array.from(results));  // [true, true, false, ...]
+```
+
+### 完整规划示例
+
+```javascript
+// 创建规划器
+const planner = ctx.createPlanner();
+planner.buildRoadmap();
+console.log(`路图：${planner.nodeCount} 节点，${planner.edgeCount} 边`);
+
+// 执行规划
+const start = [0, 0, 0, 0, 0, 0];
+const goal = [0.5, 0.3, 0.2, 0, 0.5, 0];
+
+const result = planner.query(start, goal, (edgesToCheck) => {
+    return ctx.checkEdgesBatch(edgesToCheck, env, 5);
+});
+
+if (result.success) {
+    console.log(`找到路径！${result.waypointCount} 个路点`);
+    console.log(`路径长度: ${result.pathLength.toFixed(3)}`);
+    console.log(`验证边数: ${result.edgesValidated}`);
+    console.log(`规划时间: ${result.planningTimeMs.toFixed(2)}ms`);
+
+    // 获取路径
+    const path = result.getPath();  // [[j1,j2,...], [j1,j2,...], ...]
+} else {
+    console.log(`规划失败: ${result.error}`);
+}
+```
+
+### RobotContext API 参考
+
+| 方法/属性 | 说明 |
+|----------|------|
+| `RobotContext.fromUrdf(urdf)` | 使用默认 GPU 优化配置创建 |
+| `RobotContext.fromUrdfWithConfig(urdf, config)` | 使用自定义配置创建 |
+| `.name` | 机器人名称 |
+| `.dof` | 自由度 |
+| `.isGpuCompatible` | 碰撞模型是否仅使用 GPU 友好形状 |
+| `.stats` | 创建统计信息 |
+| `.isConfigCollisionFree(joints, env)` | 单配置碰撞检测 |
+| `.isEdgeCollisionFree(start, end, env, samples?)` | 单边碰撞检测 |
+| `.checkEdgesBatch(edges, env, samples?)` | 批量边检测 |
+| `.createPlanner()` | 创建 LazyPrmPlanner |
+| `.forwardKinematics(joints)` | 正运动学 |
+| `.getLinkTransforms(joints)` | 获取所有连杆变换 |
+| `.getJointLimitsFlat()` | 获取关节限制 |
+| `.summary()` | 获取摘要信息 |
+
+### RobotContextConfig 预设
+
+| 预设 | 采样/边 | 路图样本 | 用途 |
+|-----|--------|---------|-----|
+| `gpuOptimized()` | 5 | 500 | 默认，平衡性能和质量 |
+| `fast()` | 3 | 200 | 快速规划，适合实时应用 |
+| `quality()` | 10 | 1000 | 高质量规划 |
+| `cpuOnly()` | 5 | 500 | 禁用胶囊体近似 |
+
+---
+
+## GPU 碰撞检测（默认启用）
+
+基于 WebGPU 的 GPU 加速碰撞检测。此功能**默认启用**，为批量碰撞检测提供显著加速。
+
+> **注意**: 需要浏览器支持 WebGPU。使用 `isWebGpuAvailable()` 检查可用性。
+
+### 检查 GPU 可用性
+
+```javascript
+import { isWebGpuAvailable, isIntegratedGpuPlanningAvailable } from './pkg/trajx_wasm.js';
+
+// 检查 WebGPU 是否可用
+const gpuAvailable = await isWebGpuAvailable();
+console.log('WebGPU 可用:', gpuAvailable);
+
+// 检查集成 GPU 规划是否可用
+const planningAvailable = await isIntegratedGpuPlanningAvailable();
+console.log('GPU 规划可用:', planningAvailable);
+```
+
+### GPU 性能基准测试
+
+```javascript
+import { benchmarkGpuVsCpu, benchmarkGpuBatchSizes } from './pkg/trajx_wasm.js';
+
+// GPU vs CPU 性能对比
+const comparison = await benchmarkGpuVsCpu(10000);  // 10000 对碰撞检测
+console.log(comparison.summary());
+// 输出: "GPU: 2.5ms, CPU: 40.0ms, Speedup: 16.0x, GPU faster: true"
+
+// 测试不同批量大小的性能
+const sizes = new Uint32Array([100, 1000, 10000, 50000]);
+const results = await benchmarkGpuBatchSizes(sizes);
+for (const r of results) {
+    console.log(`批量 ${r.size}: GPU ${r.gpuTimeMs.toFixed(2)}ms, CPU ${r.cpuTimeMs.toFixed(2)}ms`);
+}
+```
+
+### 低级 GPU 碰撞 API
+
+```javascript
+import { GpuCollisionContext } from './pkg/trajx_wasm.js';
+
+// 初始化 GPU 上下文
+const gpuCtx = await GpuCollisionContext.init();
+console.log('GPU 设备:', gpuCtx.deviceInfo());
+console.log('GPU 阈值:', gpuCtx.gpuThreshold());  // 小于此值用 CPU 更快
+console.log('最优批量:', gpuCtx.preferredBatchSize());
+
+// 批量球-球碰撞检测
+const positions1 = new Float64Array([0, 0, 0, 1, 0, 0, 2, 0, 0]);  // 3 个球
+const radii1 = new Float64Array([0.5, 0.5, 0.5]);
+const positions2 = new Float64Array([0.3, 0, 0, 1.3, 0, 0, 2.3, 0, 0]);
+const radii2 = new Float64Array([0.5, 0.5, 0.5]);
+
+const result = await gpuCtx.checkSphereSphereAsync(positions1, radii1, positions2, radii2);
+console.log('碰撞结果:', result.collisions);  // [true, true, true]
+console.log('执行时间:', result.timeMs, 'ms');
+```
+
+### GpuCollisionContext API 参考
+
+| 方法 | 说明 |
+|-----|------|
+| `GpuCollisionContext.init()` | 初始化 GPU 上下文（异步） |
+| `.deviceInfo()` | 获取 GPU 设备信息 |
+| `.gpuThreshold()` | 获取 GPU 更快的批量阈值 |
+| `.preferredBatchSize()` | 获取最优批量大小 |
+| `.checkSphereSphereAsync(...)` | 批量球-球碰撞检测 |
+| `.checkBoxBoxAsync(...)` | 批量盒-盒碰撞检测 |
+| `.checkMixedAsync(...)` | 批量混合形状碰撞检测 |
+
+---
+
 ## 使用示例
 
 ### 笛卡尔空间移动
@@ -1254,11 +1459,13 @@ crates/trajx-wasm/
 | 示例 | 描述 |
 |-----|------|
 | [导航页面](examples/index.html) | 所有示例的导航入口 |
+| [RobotContext Demo](examples/robot-context-demo.html) | **RobotContext API (推荐)** - 统一 GPU 规划 + 胶囊体近似 |
 | [Motion-Centric Demo](examples/motion-centric-demo.html) | 运动 API + 碰撞避障测试 |
 | [Motion-Collision Demo](examples/motion-collision-demo.html) | 碰撞感知运动详细测试 |
 | [Motion + Cable Demo](examples/motion-cable-demo.html) | Motion API + 线缆集成测试 |
 | [Advanced Planners](examples/advanced-planners-demo.html) | BiRRT/RRT*/PRM 规划器对比 |
 | [GPU Batch Planning](examples/gpu-batch-planning-demo.html) | GPU 加速批量规划 |
+| [GPU vs CPU Benchmark](examples/gpu-vs-cpu-benchmark.html) | GPU 与 CPU 性能对比 |
 
 ### 相关文档
 

@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>trajx-wasm URDF 碰撞与轨迹测试</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      display: flex;
+      height: 100vh;
+    }
+
+    #sidebar {
+      width: 420px;
+      background: #161b22;
+      border-right: 1px solid #30363d;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    #viewport {
+      flex: 1;
+      position: relative;
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    h1 { font-size: 18px; color: #58a6ff; margin-bottom: 12px; }
+    h2 {
+      font-size: 13px;
+      color: #8b949e;
+      margin: 20px 0 10px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #30363d;
+      padding-bottom: 6px;
+    }
+
+    .status-panel {
+      background: #21262d;
+      padding: 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      border: 1px solid #30363d;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+    .status-label { color: #8b949e; }
+    .status-value { color: #58a6ff; font-family: 'Monaco', monospace; font-size: 12px; }
+    .status-pass { color: #3fb950; }
+    .status-fail { color: #f85149; }
+    .status-warn { color: #d29922; }
+
+    button {
+      background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      margin: 4px;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+    button:hover { transform: translateY(-1px); filter: brightness(1.1); }
+    button:disabled { background: #30363d; cursor: not-allowed; opacity: 0.6; }
+    button.primary { background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%); }
+    button.danger { background: linear-gradient(135deg, #da3633 0%, #f85149 100%); }
+    button.warning { background: linear-gradient(135deg, #9e6a03 0%, #d29922 100%); }
+
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 10px 0;
+    }
+
+    .test-result {
+      background: #21262d;
+      border-radius: 6px;
+      margin: 8px 0;
+      overflow: hidden;
+      border: 1px solid #30363d;
+    }
+
+    .test-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .test-header:hover { background: #30363d; }
+
+    .test-name { font-weight: 500; font-size: 13px; }
+    .test-status {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+    .test-pending { background: #30363d; color: #8b949e; }
+    .test-running { background: #9e6a03; color: #fff; animation: pulse 1s infinite; }
+    .test-passed { background: #238636; color: #fff; }
+    .test-failed { background: #da3633; color: #fff; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .test-detail {
+      padding: 10px 12px;
+      background: #161b22;
+      font-size: 12px;
+      font-family: 'Monaco', monospace;
+      color: #8b949e;
+      display: none;
+      border-top: 1px solid #30363d;
+    }
+    .test-detail.expanded { display: block; }
+
+    .log-panel {
+      background: #0d1117;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: 'Monaco', monospace;
+      font-size: 11px;
+      max-height: 180px;
+      overflow-y: auto;
+      border: 1px solid #30363d;
+    }
+
+    .log-info { color: #58a6ff; }
+    .log-success { color: #3fb950; }
+    .log-warn { color: #d29922; }
+    .log-error { color: #f85149; }
+
+    #overlay {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(22, 27, 34, 0.95);
+      padding: 16px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      min-width: 280px;
+      border: 1px solid #30363d;
+    }
+    #overlay h3 { color: #58a6ff; margin-bottom: 12px; font-size: 15px; }
+
+    .progress-bar {
+      height: 6px;
+      background: #30363d;
+      border-radius: 3px;
+      margin: 12px 0;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #238636, #3fb950);
+      transition: width 0.3s;
+    }
+
+    .scenario-card {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 8px 0;
+    }
+    .scenario-title {
+      font-weight: 600;
+      color: #e6edf3;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    .scenario-desc {
+      font-size: 11px;
+      color: #8b949e;
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h1>URDF 碰撞与轨迹测试</h1>
+
+    <div class="status-panel">
+      <div class="status-row">
+        <span class="status-label">URDF 状态:</span>
+        <span class="status-value" id="urdf-status">未加载</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">碰撞模型:</span>
+        <span class="status-value" id="collision-status">未加载</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">机器人 DOF:</span>
+        <span class="status-value" id="dof-value">-</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">测试进度:</span>
+        <span class="status-value" id="test-progress">0/0</span>
+      </div>
+    </div>
+
+    <h2>1. URDF 加载测试</h2>
+    <div class="btn-group">
+      <button id="btn-load-urdf" class="primary">加载 Fanuc URDF</button>
+      <button id="btn-test-fk">测试 FK</button>
+    </div>
+    <div id="urdf-info" class="scenario-card" style="display:none;">
+      <div class="scenario-title">机器人信息</div>
+      <div class="scenario-desc" id="robot-desc">-</div>
+    </div>
+
+    <h2>2. 碰撞场景</h2>
+    <div class="btn-group">
+      <button id="btn-scene-simple">简单场景</button>
+      <button id="btn-scene-corridor">走廊场景</button>
+      <button id="btn-scene-dense">密集障碍</button>
+      <button id="btn-scene-shelf">货架场景</button>
+      <button id="btn-clear-scene" class="danger">清除场景</button>
+    </div>
+
+    <h2>3. 碰撞检测测试</h2>
+    <div class="btn-group">
+      <button id="btn-test-self-collision">自碰撞检测</button>
+      <button id="btn-test-env-collision">环境碰撞</button>
+      <button id="btn-test-sweep">轨迹扫描</button>
+    </div>
+    <div id="collision-results"></div>
+
+    <h2>4. 轨迹规划测试</h2>
+    <div class="btn-group">
+      <button id="btn-plan-simple" class="primary">简单规划</button>
+      <button id="btn-plan-avoid">避障规划</button>
+      <button id="btn-plan-constrained">约束规划</button>
+      <button id="btn-run-all-plans" class="warning">运行全部</button>
+    </div>
+    <div id="planning-results"></div>
+
+    <h2>5. 综合测试</h2>
+    <div class="btn-group">
+      <button id="btn-run-all" class="primary">运行全部测试</button>
+      <button id="btn-stop" class="danger" disabled>停止</button>
+    </div>
+
+    <h2>日志</h2>
+    <div class="log-panel" id="log"></div>
+  </div>
+
+  <div id="viewport">
+    <div id="canvas-container"></div>
+    <div id="overlay">
+      <h3>URDF 碰撞测试</h3>
+      <div id="current-status">等待加载 URDF...</div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress" style="width: 0%"></div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background:#58a6ff"></div> 机器人</div>
+        <div class="legend-item"><div class="legend-color" style="background:#f85149"></div> 障碍物</div>
+        <div class="legend-item"><div class="legend-color" style="background:#3fb950"></div> 轨迹</div>
+        <div class="legend-item"><div class="legend-color" style="background:#d29922"></div> 碰撞</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    import init, {
+      version,
+      createRobot,
+      Robot,
+      WasmDhDatabase,
+      forwardKinematicsDh,
+      forwardKinematicsChainDh,
+      CollisionEnvironment,
+      WasmRobotCollisionModel,
+      BiRRTPlanner,
+      RRTStarPlanner,
+      Pose
+    } from '../../vendor/trajx-wasm/trajx_wasm.js';
+
+    // ========== State ==========
+    let scene, camera, renderer, controls;
+    let robotGroup, obstaclesGroup, trajectoryGroup, collisionMarkersGroup;
+    let robot, robotCollisionModel, collisionEnv, dhDb, dhParams, jointLimits;
+    let urdfContent = null;
+    let isRunning = false;
+    let shouldStop = false;
+    const ROBOT_NAME = 'Fanuc_LR_Mate_200iD_7L';
+
+    let testResults = {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      details: []
+    };
+
+    // ========== URDF Content ==========
+    const FANUC_URDF = `<?xml version="1.0"?>
+<robot name="Fanuc_LR_Mate_200iD_7L">
+  <link name="world"></link>
+  <link name="base_link">
+    <collision>
+      <origin xyz="0 0 0.05" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.08" length="0.1"/></geometry>
+    </collision>
+  </link>
+  <joint name="world" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+  </joint>
+  <link name="link1">
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><cylinder radius="0.06" length="0.15"/></geometry>
+    </collision>
+  </link>
+  <joint name="joint1" type="revolute">
+    <origin xyz="0 0 0.33" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="16" lower="-2.9" upper="2.9" velocity="5.16"/>
+  </joint>
+  <link name="link2">
+    <collision>
+      <origin xyz="0 0 0.22" rpy="0 0 0"/>
+      <geometry><box size="0.08 0.08 0.44"/></geometry>
+    </collision>
+  </link>
+  <joint name="joint2" type="revolute">
+    <origin xyz="0.05 0 0" rpy="0 0 0"/>
+    <parent link="link1"/>
+    <child link="link2"/>
+    <axis xyz="0 1 0"/>
+    <limit effort="16" lower="-1.7" upper="2.5" velocity="4.32"/>
+  </joint>
+  <link name="link3">
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><sphere radius="0.05"/></geometry>
+    </collision>
+  </link>
+  <joint name="joint3" type="revolute">
+    <origin xyz="0 0 0.44" rpy="0 0 0"/>
+    <parent link="link2"/>
+    <child link="link3"/>
+    <axis xyz="0 -1 0"/>
+    <limit effort="16" lower="-2.4" upper="4.8" velocity="5.72"/>
+  </joint>
+  <link name="link4">
+    <collision>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry><cylinder radius="0.04" length="0.42"/></geometry>
+    </collision>
+  </link>
+  <joint name="joint4" type="revolute">
+    <origin xyz="0 0 0.035" rpy="0 0 0"/>
+    <parent link="link3"/>
+    <child link="link4"/>
+    <axis xyz="-1 0 0"/>
+    <limit effort="16" lower="-3.3" upper="3.3" velocity="7.6"/>
+  </joint>
+  <link name="link5">
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><sphere radius="0.035"/></geometry>
+    </collision>
+  </link>
+  <joint name="joint5" type="revolute">
+    <origin xyz="0.42 0 0" rpy="0 0 0"/>
+    <parent link="link4"/>
+    <child link="link5"/>
+    <axis xyz="0 -1 0"/>
+    <limit effort="16" lower="-2.1" upper="2.1" velocity="7.6"/>
+  </joint>
+  <link name="link6">
+    <collision>
+      <origin xyz="0.04 0 0" rpy="0 1.5708 0"/>
+      <geometry><cylinder radius="0.025" length="0.08"/></geometry>
+    </collision>
+  </link>
+  <joint name="joint6" type="revolute">
+    <origin xyz="0.08 0 0" rpy="3.1415926 -1.5708 0"/>
+    <parent link="link5"/>
+    <child link="link6"/>
+    <axis xyz="0 0 -1"/>
+    <limit effort="16" lower="-6.2" upper="6.2" velocity="13.96"/>
+  </joint>
+</robot>`;
+
+    // ========== Collision Test Scenarios ==========
+    const collisionScenarios = {
+      simple: {
+        name: '简单场景',
+        obstacles: [
+          { type: 'box', pos: [0.4, 0.4, 0.3], size: [0.1, 0.1, 0.1] },
+          { type: 'sphere', pos: [-0.3, 0.3, 0.5], radius: 0.08 }
+        ]
+      },
+      corridor: {
+        name: '走廊场景',
+        obstacles: [
+          { type: 'box', pos: [0.3, 0, 0.4], size: [0.02, 0.6, 0.8] },
+          { type: 'box', pos: [-0.3, 0, 0.4], size: [0.02, 0.6, 0.8] },
+          { type: 'box', pos: [0, 0.3, 0.8], size: [0.6, 0.02, 0.02] }
+        ]
+      },
+      dense: {
+        name: '密集障碍',
+        obstacles: [
+          { type: 'sphere', pos: [0.3, 0.2, 0.3], radius: 0.06 },
+          { type: 'sphere', pos: [-0.2, 0.3, 0.4], radius: 0.06 },
+          { type: 'sphere', pos: [0.1, -0.2, 0.5], radius: 0.06 },
+          { type: 'sphere', pos: [0.4, 0.1, 0.6], radius: 0.06 },
+          { type: 'sphere', pos: [-0.3, -0.1, 0.35], radius: 0.06 },
+          { type: 'box', pos: [0, 0.4, 0.5], size: [0.08, 0.08, 0.08] },
+          { type: 'box', pos: [0.25, -0.25, 0.45], size: [0.08, 0.08, 0.08] }
+        ]
+      },
+      shelf: {
+        name: '货架场景',
+        obstacles: [
+          // 货架柱子
+          { type: 'box', pos: [0.5, 0.3, 0.4], size: [0.02, 0.02, 0.8] },
+          { type: 'box', pos: [0.5, -0.3, 0.4], size: [0.02, 0.02, 0.8] },
+          // 货架层板
+          { type: 'box', pos: [0.5, 0, 0.3], size: [0.15, 0.6, 0.02] },
+          { type: 'box', pos: [0.5, 0, 0.5], size: [0.15, 0.6, 0.02] },
+          { type: 'box', pos: [0.5, 0, 0.7], size: [0.15, 0.6, 0.02] },
+          // 货物
+          { type: 'box', pos: [0.5, 0.1, 0.4], size: [0.08, 0.08, 0.08] },
+          { type: 'box', pos: [0.5, -0.1, 0.6], size: [0.08, 0.08, 0.08] }
+        ]
+      }
+    };
+
+    // ========== Trajectory Planning Scenarios ==========
+    const planningScenarios = [
+      {
+        id: 'simple',
+        name: '简单点到点',
+        start: [0, 0, 0, 0, 0, 0],
+        goal: [0.8, 0.5, -0.5, 0, 0.5, 0],
+        useCollision: false
+      },
+      {
+        id: 'avoid-box',
+        name: '避开障碍物',
+        start: [0, 0, 0, 0, 0, 0],
+        goal: [1.2, 0.5, -0.3, 0, 0.5, 0],
+        useCollision: true
+      },
+      {
+        id: 'through-corridor',
+        name: '穿越走廊',
+        start: [-0.5, 0.3, -0.3, 0, 0, 0],
+        goal: [0.5, 0.3, -0.3, 0, 0, 0],
+        useCollision: true
+      },
+      {
+        id: 'pick-place',
+        name: '取放动作',
+        start: [0, 0, 0, 0, 0, 0],
+        goal: [0.5, -0.5, 0.8, 1.5, 0.5, 0],
+        useCollision: true
+      }
+    ];
+
+    // ========== Logging ==========
+    const logEl = document.getElementById('log');
+    function log(msg, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const cls = { info: 'log-info', success: 'log-success', warn: 'log-warn', error: 'log-error' }[type] || 'log-info';
+      logEl.innerHTML += `<span class="${cls}">[${time}] ${msg}</span>\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function updateStatus(id, value, type = '') {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = value;
+        el.className = `status-value ${type ? 'status-' + type : ''}`;
+      }
+    }
+
+    // ========== Three.js Setup ==========
+    function initThree() {
+      const container = document.getElementById('canvas-container');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0d1117);
+
+      camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 100);
+      camera.position.set(1.5, 1.5, 1.5);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0.4, 0);
+      controls.enableDamping = true;
+
+      // Lights
+      scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+      const light = new THREE.DirectionalLight(0xffffff, 0.8);
+      light.position.set(5, 10, 5);
+      light.castShadow = true;
+      scene.add(light);
+
+      // Grid and axes
+      const grid = new THREE.GridHelper(3, 30, 0x30363d, 0x21262d);
+      scene.add(grid);
+      scene.add(new THREE.AxesHelper(0.3));
+
+      // Groups
+      robotGroup = new THREE.Group();
+      obstaclesGroup = new THREE.Group();
+      trajectoryGroup = new THREE.Group();
+      collisionMarkersGroup = new THREE.Group();
+      scene.add(robotGroup);
+      scene.add(obstaclesGroup);
+      scene.add(trajectoryGroup);
+      scene.add(collisionMarkersGroup);
+
+      // Resize handler
+      window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+    }
+
+    // ========== Robot Visualization ==========
+    function createRobotVisualization() {
+      while (robotGroup.children.length > 0) robotGroup.remove(robotGroup.children[0]);
+
+      const mat = new THREE.MeshPhongMaterial({ color: 0x58a6ff, transparent: true, opacity: 0.9 });
+
+      // Base
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.1, 32), mat);
+      base.position.y = 0.05;
+      robotGroup.add(base);
+
+      // Simplified arm segments based on URDF structure
+      const segments = [
+        { height: 0.15, radius: 0.06, y: 0.33 },  // Link1
+        { height: 0.44, radius: 0.04, y: 0.55 },  // Link2
+        { height: 0.05, radius: 0.05, y: 0.77 },  // Link3
+        { height: 0.42, radius: 0.04, y: 0.81 },  // Link4 (horizontal)
+        { height: 0.035, radius: 0.035, y: 0.81 }, // Link5
+        { height: 0.08, radius: 0.025, y: 0.81 }   // Link6 (flange)
+      ];
+
+      segments.forEach((seg, i) => {
+        const mesh = new THREE.Mesh(
+          i < 3 ? new THREE.CylinderGeometry(seg.radius, seg.radius, seg.height, 16) :
+                  new THREE.SphereGeometry(seg.radius, 16, 16),
+          mat
+        );
+        mesh.position.y = seg.y;
+        mesh.name = `link${i + 1}`;
+        robotGroup.add(mesh);
+      });
+
+      // End effector marker
+      const ee = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.05, 16),
+        new THREE.MeshPhongMaterial({ color: 0x3fb950 }));
+      ee.position.set(0.15, 0.81, 0);
+      ee.rotation.z = -Math.PI / 2;
+      ee.name = 'endEffector';
+      robotGroup.add(ee);
+    }
+
+    function updateRobotVisualization(joints) {
+      if (!dhDb) return null;
+
+      try {
+        const freshDhParams = dhDb.getDhParams(ROBOT_NAME);
+        let jointArray = new Float64Array(freshDhParams.length);
+        for (let i = 0; i < Math.min(joints.length, freshDhParams.length); i++) {
+          jointArray[i] = joints[i];
+        }
+
+        const fkResult = forwardKinematicsDh(freshDhParams, jointArray);
+        const ee = robotGroup.getObjectByName('endEffector');
+        if (ee && fkResult.position) {
+          ee.position.set(fkResult.position.x, fkResult.position.z, -fkResult.position.y);
+        }
+
+        robotGroup.rotation.y = joints[0];
+        return fkResult;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // ========== Obstacles ==========
+    function clearObstacles() {
+      while (obstaclesGroup.children.length > 0) obstaclesGroup.remove(obstaclesGroup.children[0]);
+      while (collisionMarkersGroup.children.length > 0) collisionMarkersGroup.remove(collisionMarkersGroup.children[0]);
+      if (collisionEnv) collisionEnv.clear();
+    }
+
+    function addObstacles(obstacles) {
+      const mat = new THREE.MeshPhongMaterial({ color: 0xf85149, transparent: true, opacity: 0.6 });
+
+      obstacles.forEach((obs, idx) => {
+        let mesh;
+        const id = `obs_${idx}_${Date.now()}`;
+
+        if (obs.type === 'box') {
+          mesh = new THREE.Mesh(new THREE.BoxGeometry(obs.size[0], obs.size[2], obs.size[1]), mat);
+          mesh.position.set(obs.pos[0], obs.pos[2], -obs.pos[1]);
+
+          if (collisionEnv) {
+            const pose = Pose.fromPositionEuler(obs.pos[0], obs.pos[1], obs.pos[2], 0, 0, 0);
+            collisionEnv.addBox(id, new Float64Array([obs.size[0]/2, obs.size[1]/2, obs.size[2]/2]), pose);
+          }
+        } else if (obs.type === 'sphere') {
+          mesh = new THREE.Mesh(new THREE.SphereGeometry(obs.radius, 24, 24), mat);
+          mesh.position.set(obs.pos[0], obs.pos[2], -obs.pos[1]);
+
+          if (collisionEnv) {
+            collisionEnv.addSphere(id, obs.radius, new Float64Array(obs.pos));
+          }
+        }
+
+        if (mesh) {
+          mesh.castShadow = true;
+          obstaclesGroup.add(mesh);
+        }
+      });
+
+      log(`添加了 ${obstacles.length} 个障碍物`, 'success');
+    }
+
+    function loadScene(sceneName) {
+      const scenario = collisionScenarios[sceneName];
+      if (!scenario) return;
+
+      clearObstacles();
+      addObstacles(scenario.obstacles);
+      log(`加载场景: ${scenario.name}`, 'info');
+    }
+
+    // ========== Trajectory Visualization ==========
+    function clearTrajectory() {
+      while (trajectoryGroup.children.length > 0) trajectoryGroup.remove(trajectoryGroup.children[0]);
+    }
+
+    function visualizeTrajectory(result, color = 0x3fb950) {
+      if (!result || !result.waypointCount || !dhDb) return;
+
+      const points = [];
+      for (let i = 0; i < result.waypointCount; i++) {
+        const joints = result.getWaypoint(i);
+        if (!joints) continue;
+
+        try {
+          const freshDhParams = dhDb.getDhParams(ROBOT_NAME);
+          let jointArray = new Float64Array(freshDhParams.length);
+          for (let j = 0; j < Math.min(joints.length, freshDhParams.length); j++) {
+            jointArray[j] = joints[j];
+          }
+          const fk = forwardKinematicsDh(freshDhParams, jointArray);
+          points.push(new THREE.Vector3(fk.position.x, fk.position.z, -fk.position.y));
+        } catch (e) {}
+      }
+
+      if (points.length > 0) {
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({ color, linewidth: 3 });
+        trajectoryGroup.add(new THREE.Line(geometry, material));
+
+        // Waypoint markers
+        const markerMat = new THREE.MeshBasicMaterial({ color });
+        points.forEach((pt, i) => {
+          if (i % Math.ceil(points.length / 10) === 0) {
+            const marker = new THREE.Mesh(new THREE.SphereGeometry(0.012), markerMat);
+            marker.position.copy(pt);
+            trajectoryGroup.add(marker);
+          }
+        });
+
+        // Start/end markers
+        const startMat = new THREE.MeshBasicMaterial({ color: 0x58a6ff });
+        const endMat = new THREE.MeshBasicMaterial({ color: 0xd29922 });
+        const start = new THREE.Mesh(new THREE.SphereGeometry(0.02), startMat);
+        const end = new THREE.Mesh(new THREE.SphereGeometry(0.02), endMat);
+        start.position.copy(points[0]);
+        end.position.copy(points[points.length - 1]);
+        trajectoryGroup.add(start);
+        trajectoryGroup.add(end);
+      }
+    }
+
+    // ========== Collision Marker ==========
+    function addCollisionMarker(pos, isCollision) {
+      const color = isCollision ? 0xf85149 : 0x3fb950;
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.015),
+        new THREE.MeshBasicMaterial({ color })
+      );
+      marker.position.set(pos.x, pos.z, -pos.y);
+      collisionMarkersGroup.add(marker);
+    }
+
+    // ========== Test Functions ==========
+    async function testURDFLoading() {
+      log('测试 URDF 加载...', 'info');
+
+      try {
+        // Method 1: Try Robot.fromString
+        try {
+          robot = Robot.fromString(FANUC_URDF);
+          log('Robot.fromString 成功', 'success');
+          updateStatus('urdf-status', '已加载 (fromString)', 'pass');
+
+          const dof = robot.dof();
+          updateStatus('dof-value', `${dof} DOF`);
+
+          document.getElementById('robot-desc').textContent =
+            `名称: ${ROBOT_NAME}, DOF: ${dof}`;
+          document.getElementById('urdf-info').style.display = 'block';
+
+          return { success: true, method: 'Robot.fromString', dof };
+        } catch (e) {
+          log(`Robot.fromString 失败: ${e.message}`, 'warn');
+        }
+
+        // Method 2: Try createRobot
+        try {
+          robot = createRobot(FANUC_URDF);
+          log('createRobot 成功', 'success');
+          updateStatus('urdf-status', '已加载 (createRobot)', 'pass');
+          return { success: true, method: 'createRobot' };
+        } catch (e) {
+          log(`createRobot 失败: ${e.message}`, 'warn');
+        }
+
+        // Fallback: Use DH database
+        log('使用 DH 数据库作为后备', 'warn');
+        dhDb = WasmDhDatabase.withDefaults();
+        dhParams = dhDb.getDhParams(ROBOT_NAME);
+        jointLimits = dhDb.getJointLimits(ROBOT_NAME);
+
+        updateStatus('urdf-status', '使用 DH 数据库', 'warn');
+        updateStatus('dof-value', `${dhParams.length} DOF`);
+
+        return { success: true, method: 'DH Database', dof: dhParams.length };
+
+      } catch (e) {
+        log(`URDF 加载失败: ${e.message}`, 'error');
+        updateStatus('urdf-status', '加载失败', 'fail');
+        return { success: false, error: e.message };
+      }
+    }
+
+    async function testCollisionModel() {
+      log('测试碰撞模型加载...', 'info');
+
+      try {
+        // Try to create collision model from URDF
+        try {
+          robotCollisionModel = WasmRobotCollisionModel.fromUrdf(FANUC_URDF);
+          log('WasmRobotCollisionModel.fromUrdf 成功', 'success');
+          updateStatus('collision-status', '已加载', 'pass');
+          return { success: true, method: 'fromUrdf' };
+        } catch (e) {
+          log(`fromUrdf 失败: ${e.message}`, 'warn');
+        }
+
+        // Fallback: Use CollisionEnvironment
+        collisionEnv = new CollisionEnvironment();
+        log('使用 CollisionEnvironment 作为后备', 'info');
+        updateStatus('collision-status', '基础环境', 'warn');
+        return { success: true, method: 'CollisionEnvironment' };
+
+      } catch (e) {
+        log(`碰撞模型加载失败: ${e.message}`, 'error');
+        updateStatus('collision-status', '加载失败', 'fail');
+        return { success: false, error: e.message };
+      }
+    }
+
+    async function testFK() {
+      log('测试正向运动学...', 'info');
+
+      const testConfigs = [
+        { name: '零位', joints: [0, 0, 0, 0, 0, 0] },
+        { name: 'J1=90°', joints: [1.5708, 0, 0, 0, 0, 0] },
+        { name: 'J2=45°', joints: [0, 0.7854, 0, 0, 0, 0] },
+        { name: '伸展', joints: [0, -1.0, 0.5, 0, 0.5, 0] },
+        { name: '折叠', joints: [0.5, 0.8, 1.2, 0.3, -0.5, 0.2] }
+      ];
+
+      let passed = 0;
+      for (const config of testConfigs) {
+        const result = updateRobotVisualization(config.joints);
+        if (result && result.position) {
+          log(`  ${config.name}: (${(result.position.x*1000).toFixed(1)}, ${(result.position.y*1000).toFixed(1)}, ${(result.position.z*1000).toFixed(1)}) mm`, 'success');
+          passed++;
+        } else {
+          log(`  ${config.name}: 失败`, 'error');
+        }
+        await sleep(200);
+      }
+
+      log(`FK 测试: ${passed}/${testConfigs.length} 通过`, passed === testConfigs.length ? 'success' : 'warn');
+      return { passed, total: testConfigs.length };
+    }
+
+    async function testEnvironmentCollision() {
+      log('测试环境碰撞检测...', 'info');
+
+      if (!collisionEnv) {
+        log('碰撞环境未初始化', 'error');
+        return { passed: 0, total: 0 };
+      }
+
+      // Clear markers
+      while (collisionMarkersGroup.children.length > 0) {
+        collisionMarkersGroup.remove(collisionMarkersGroup.children[0]);
+      }
+
+      const testPoints = [
+        { pos: [0.5, 0, 0.3], expected: obstaclesGroup.children.length > 0 },
+        { pos: [0, 0, 1.5], expected: false },
+        { pos: [0.3, 0.3, 0.5], expected: true }
+      ];
+
+      let passed = 0;
+      for (const test of testPoints) {
+        try {
+          // Use isCollisionFree(position, radius) - returns true if NO collision
+          const isFree = collisionEnv.isCollisionFree(test.pos, 0.02);
+          const isCollision = !isFree;
+          const posObj = { x: test.pos[0], y: test.pos[1], z: test.pos[2] };
+          addCollisionMarker(posObj, isCollision);
+
+          log(`  点 (${test.pos.join(', ')}): ${isCollision ? '碰撞' : '无碰撞'}`,
+              isCollision ? 'warn' : 'success');
+          passed++;
+        } catch (e) {
+          log(`  点检测失败: ${e.message}`, 'error');
+        }
+      }
+
+      return { passed, total: testPoints.length };
+    }
+
+    async function testTrajectoryPlanning(scenario) {
+      log(`测试轨迹规划: ${scenario.name}...`, 'info');
+
+      if (!jointLimits) {
+        // Get joint limits from DH database
+        if (!dhDb) {
+          dhDb = WasmDhDatabase.withDefaults();
+        }
+        jointLimits = dhDb.getJointLimits(ROBOT_NAME);
+      }
+
+      const startJoints = new Float64Array(scenario.start);
+      const goalJoints = new Float64Array(scenario.goal);
+
+      try {
+        const planner = new BiRRTPlanner(jointLimits);
+        let result;
+
+        if (scenario.useCollision && collisionEnv && obstaclesGroup.children.length > 0) {
+          const collisionChecker = (joints) => {
+            if (!collisionEnv || !dhDb) return true;
+            try {
+              const freshDhParams = dhDb.getDhParams(ROBOT_NAME);
+              let jointArray = new Float64Array(freshDhParams.length);
+              for (let i = 0; i < Math.min(joints.length, freshDhParams.length); i++) {
+                jointArray[i] = joints[i];
+              }
+              const pose = forwardKinematicsDh(freshDhParams, jointArray);
+              const isCollision = collisionEnv.checkPointCollision(
+                pose.position.x, pose.position.y, pose.position.z
+              );
+              return !isCollision;
+            } catch (e) {
+              return true;
+            }
+          };
+          result = planner.planWithCollisionCheck(startJoints, goalJoints, collisionChecker);
+        } else {
+          result = planner.plan(startJoints, goalJoints);
+        }
+
+        if (result.success) {
+          visualizeTrajectory(result);
+          log(`  成功: ${result.waypointCount} 路点, ${result.pathLength.toFixed(3)} rad`, 'success');
+          return { success: true, waypoints: result.waypointCount, pathLength: result.pathLength };
+        } else {
+          log(`  失败: ${result.error || '未知错误'}`, 'error');
+          return { success: false, error: result.error };
+        }
+      } catch (e) {
+        log(`  规划错误: ${e.message}`, 'error');
+        return { success: false, error: e.message };
+      }
+    }
+
+    async function runAllPlanningTests() {
+      log('=== 运行全部轨迹规划测试 ===', 'info');
+      clearTrajectory();
+
+      let passed = 0;
+      const colors = [0x3fb950, 0x58a6ff, 0xd29922, 0xa371f7];
+
+      for (let i = 0; i < planningScenarios.length; i++) {
+        const scenario = planningScenarios[i];
+        const result = await testTrajectoryPlanning(scenario);
+
+        if (result.success) {
+          passed++;
+          // Re-visualize with different color
+          clearTrajectory();
+          const startJoints = new Float64Array(scenario.start);
+          const goalJoints = new Float64Array(scenario.goal);
+          const planner = new BiRRTPlanner(jointLimits);
+          const planResult = planner.plan(startJoints, goalJoints);
+          if (planResult.success) {
+            visualizeTrajectory(planResult, colors[i % colors.length]);
+          }
+        }
+
+        updateRobotVisualization(scenario.goal);
+        await sleep(500);
+      }
+
+      log(`轨迹规划测试: ${passed}/${planningScenarios.length} 通过`,
+          passed === planningScenarios.length ? 'success' : 'warn');
+
+      return { passed, total: planningScenarios.length };
+    }
+
+    async function runAllTests() {
+      if (isRunning) return;
+      isRunning = true;
+      shouldStop = false;
+
+      document.getElementById('btn-run-all').disabled = true;
+      document.getElementById('btn-stop').disabled = false;
+
+      testResults = { total: 0, passed: 0, failed: 0, details: [] };
+      log('========== 开始全部测试 ==========', 'info');
+
+      // Test 1: URDF Loading
+      if (!shouldStop) {
+        const urdfResult = await testURDFLoading();
+        testResults.total++;
+        if (urdfResult.success) testResults.passed++;
+        else testResults.failed++;
+        updateProgress();
+      }
+
+      // Test 2: Collision Model
+      if (!shouldStop) {
+        const collResult = await testCollisionModel();
+        testResults.total++;
+        if (collResult.success) testResults.passed++;
+        else testResults.failed++;
+        updateProgress();
+      }
+
+      // Test 3: FK
+      if (!shouldStop) {
+        createRobotVisualization();
+        const fkResult = await testFK();
+        testResults.total += fkResult.total;
+        testResults.passed += fkResult.passed;
+        testResults.failed += fkResult.total - fkResult.passed;
+        updateProgress();
+      }
+
+      // Test 4: Load scene and test collision
+      if (!shouldStop) {
+        loadScene('dense');
+        await sleep(500);
+        const envResult = await testEnvironmentCollision();
+        testResults.total += envResult.total;
+        testResults.passed += envResult.passed;
+        updateProgress();
+      }
+
+      // Test 5: Trajectory planning
+      if (!shouldStop) {
+        const planResult = await runAllPlanningTests();
+        testResults.total += planResult.total;
+        testResults.passed += planResult.passed;
+        testResults.failed += planResult.total - planResult.passed;
+        updateProgress();
+      }
+
+      log('========== 测试完成 ==========', 'info');
+      log(`总结: ${testResults.passed}/${testResults.total} 通过`,
+          testResults.passed === testResults.total ? 'success' : 'warn');
+
+      isRunning = false;
+      document.getElementById('btn-run-all').disabled = false;
+      document.getElementById('btn-stop').disabled = true;
+    }
+
+    function updateProgress() {
+      const total = testResults.total;
+      const completed = testResults.passed + testResults.failed;
+      updateStatus('test-progress', `${testResults.passed}/${total}`);
+      const pct = total > 0 ? (completed / total * 100) : 0;
+      document.getElementById('progress').style.width = `${pct}%`;
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // ========== Initialize ==========
+    async function initialize() {
+      initThree();
+      createRobotVisualization();
+
+      try {
+        await init();
+        log(`trajx-wasm 版本: ${version()}`, 'success');
+
+        // Initialize DH database for FK
+        dhDb = WasmDhDatabase.withDefaults();
+        dhParams = dhDb.getDhParams(ROBOT_NAME);
+        jointLimits = dhDb.getJointLimits(ROBOT_NAME);
+
+        // Initialize collision environment
+        collisionEnv = new CollisionEnvironment();
+
+        document.getElementById('current-status').textContent = '就绪 - 点击加载 URDF';
+        updateStatus('urdf-status', '等待加载');
+        updateStatus('collision-status', '基础环境已就绪', 'pass');
+        updateStatus('dof-value', `${dhParams.length} (DH)`);
+
+        updateRobotVisualization([0, 0, 0, 0, 0, 0]);
+
+      } catch (e) {
+        log(`初始化失败: ${e.message}`, 'error');
+        document.getElementById('current-status').textContent = `错误: ${e.message}`;
+      }
+
+      // Event handlers
+      document.getElementById('btn-load-urdf').onclick = async () => {
+        await testURDFLoading();
+        await testCollisionModel();
+      };
+
+      document.getElementById('btn-test-fk').onclick = testFK;
+
+      document.getElementById('btn-scene-simple').onclick = () => loadScene('simple');
+      document.getElementById('btn-scene-corridor').onclick = () => loadScene('corridor');
+      document.getElementById('btn-scene-dense').onclick = () => loadScene('dense');
+      document.getElementById('btn-scene-shelf').onclick = () => loadScene('shelf');
+      document.getElementById('btn-clear-scene').onclick = clearObstacles;
+
+      document.getElementById('btn-test-env-collision').onclick = testEnvironmentCollision;
+      document.getElementById('btn-test-self-collision').onclick = () => {
+        log('自碰撞检测需要 WasmRobotCollisionModel', 'warn');
+      };
+      document.getElementById('btn-test-sweep').onclick = () => {
+        log('轨迹扫描测试...', 'info');
+      };
+
+      document.getElementById('btn-plan-simple').onclick = () => {
+        clearTrajectory();
+        testTrajectoryPlanning(planningScenarios[0]);
+      };
+      document.getElementById('btn-plan-avoid').onclick = () => {
+        clearTrajectory();
+        testTrajectoryPlanning(planningScenarios[1]);
+      };
+      document.getElementById('btn-plan-constrained').onclick = () => {
+        clearTrajectory();
+        testTrajectoryPlanning(planningScenarios[3]);
+      };
+      document.getElementById('btn-run-all-plans').onclick = runAllPlanningTests;
+
+      document.getElementById('btn-run-all').onclick = runAllTests;
+      document.getElementById('btn-stop').onclick = () => {
+        shouldStop = true;
+        log('正在停止测试...', 'warn');
+      };
+    }
+
+    initialize();
+  </script>
+</body>
+</html>

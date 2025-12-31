@@ -51,6 +51,8 @@ function BoxShape({ params, color, opacity, wireframe, isSelected, isHovered }: 
   const effectiveColor = isHovered ? '#ffffff' : isSelected ? '#00ff00' : color;
   const effectiveOpacity = isHovered ? Math.min(opacity + 0.2, 1) : opacity;
 
+  // Three.js BoxGeometry args are [width, height, depth] = [x, y, z]
+  // Keep consistent with Three.js convention
   return (
     <mesh>
       <boxGeometry args={[params.width, params.height, params.depth]} />

@@ -13,10 +13,10 @@
  */
 
 import * as React from 'react';
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { Line } from '@react-three/drei';
-import { useRobotSolver } from '../kinematics/useTrajx';
+import { useHybridSolver } from '../kinematics/useTrajx';
 import type { Pose, TrajectoryData } from '../types';
 import type { WorkspaceAnalysis } from '../kinematics/types';
 
@@ -56,8 +56,10 @@ interface PathSegment {
 export interface TrajectoryFKProps {
   /** Robot ID for kinematics */
   robotId: string;
-  /** Robot name for solver creation */
-  robotName: string;
+  /** Robot name for solver creation (deprecated - use urdfContent instead) */
+  robotName?: string;
+  /** URDF content for solver creation (preferred over robotName) */
+  urdfContent?: string;
 
   /** Trajectory data with joint positions over time */
   trajectoryData: TrajectoryData;
@@ -255,6 +257,7 @@ function CurrentPositionIndicator({
 export function TrajectoryFK({
   robotId,
   robotName,
+  urdfContent,
   trajectoryData,
   showPath = true,
   pathWidth = 2,
@@ -272,60 +275,139 @@ export function TrajectoryFK({
   onComputed,
   onWaypointClick,
 }: TrajectoryFKProps): React.JSX.Element | null {
-  // Get solver
-  const { solver, ready, fk, analyzeWorkspace } = useRobotSolver({
+  // Get solver using useHybridSolver (which supports URDF content)
+  const {
+    ready,
+    fk: hybridFk,
+    urdfSolver,
+    jointLimits,
+  } = useHybridSolver({
     robotId,
-    robotName,
+    urdfContent: urdfContent || null,
+    dhRobotName: robotName,
+    coordinateSystem: 'Z-up',
   });
+
+  // Simple workspace analysis based on joint limits
+  const analyzeWorkspace = useCallback(
+    (joints: number[]): WorkspaceAnalysis | null => {
+      if (!jointLimits) return null;
+
+      // Calculate joint limit margins
+      const jointLimitMargins = joints.map((joint, i) => {
+        const lower = jointLimits.lower[i] ?? -Math.PI;
+        const upper = jointLimits.upper[i] ?? Math.PI;
+        const range = upper - lower;
+        const fromLower = (joint - lower) / range;
+        const fromUpper = (upper - joint) / range;
+        return Math.min(fromLower, fromUpper);
+      });
+
+      // Approximate manipulability (simplified - based on joint limit margins)
+      const manipulability = jointLimitMargins.reduce((a, b) => a * b, 1);
+
+      return {
+        isValid: true,
+        manipulability,
+        isNearSingular: manipulability < 0.01,
+        minSingularValue: manipulability,
+        jointLimitMargins,
+        conditionNumber: 1 / Math.max(manipulability, 0.001),
+      };
+    },
+    [jointLimits]
+  );
 
   // Computed waypoints
   const [waypoints, setWaypoints] = useState<TrajectoryWaypoint[]>([]);
 
+  // Clamp joints to limits to avoid FK errors
+  const clampJoints = useCallback(
+    (joints: number[]): number[] => {
+      if (!jointLimits) return joints;
+      return joints.map((joint, i) => {
+        const lower = jointLimits.lower[i] ?? -Math.PI;
+        const upper = jointLimits.upper[i] ?? Math.PI;
+        return Math.max(lower, Math.min(upper, joint));
+      });
+    },
+    [jointLimits]
+  );
+
   // Compute FK for all trajectory points
   useEffect(() => {
-    if (!ready || !solver || !trajectoryData.positions.length) {
+    if (!ready || !hybridFk || !trajectoryData.positions.length) {
       setWaypoints([]);
       return;
     }
 
     const computed: TrajectoryWaypoint[] = [];
 
+    // Debug: Log first few FK results to verify coordinate system
+    const debugEnabled = trajectoryData.positions.length > 0;
+
     for (let i = 0; i < trajectoryData.positions.length; i++) {
-      const joints = trajectoryData.positions[i];
+      const rawJoints = trajectoryData.positions[i];
       const time = trajectoryData.times[i];
 
-      // Compute FK
-      const fkResult = fk(joints);
-      if (!fkResult) continue;
+      // Clamp joints to limits to prevent FK errors
+      const joints = clampJoints(rawJoints);
 
-      // Analyze workspace
-      const workspace = analyzeWorkspace(joints);
+      try {
+        // Compute FK using hybrid solver
+        const fkResult = hybridFk(joints);
+        if (!fkResult) continue;
 
-      // Determine status
-      const status = getStatus(workspace, singularityThreshold, jointLimitWarningThreshold);
+        // Debug: Log first 3 waypoints to verify FK coordinate system
+        if (debugEnabled && i < 3) {
+          const wasClamped = rawJoints.some((j, idx) => j !== joints[idx]);
+          console.log(`[TrajectoryFK Debug] Waypoint ${i}:`, {
+            rawJoints: rawJoints.map(j => j.toFixed(3)),
+            clampedJoints: wasClamped ? joints.map(j => j.toFixed(3)) : 'no clamping needed',
+            fk: {
+              x: fkResult.pose.position.x.toFixed(4),
+              y: fkResult.pose.position.y.toFixed(4),
+              z: fkResult.pose.position.z.toFixed(4),
+            },
+          });
+        }
 
-      computed.push({
-        time,
-        joints,
-        pose: fkResult.pose,
-        position: new THREE.Vector3(
-          fkResult.pose.position.x,
-          fkResult.pose.position.y,
-          fkResult.pose.position.z
-        ),
-        workspace,
-        status,
-        manipulability: workspace?.manipulability ?? 0,
-      });
+        // Analyze workspace
+        const workspace = analyzeWorkspace(joints);
+
+        // Determine status - mark as error if original joints were clamped
+        const wasClamped = rawJoints.some((j, idx) => j !== joints[idx]);
+        const status = wasClamped
+          ? 'error'
+          : getStatus(workspace, singularityThreshold, jointLimitWarningThreshold);
+
+        computed.push({
+          time,
+          joints,
+          pose: fkResult.pose,
+          position: new THREE.Vector3(
+            fkResult.pose.position.x,
+            fkResult.pose.position.y,
+            fkResult.pose.position.z
+          ),
+          workspace,
+          status,
+          manipulability: workspace?.manipulability ?? 0,
+        });
+      } catch (error) {
+        // Skip waypoints that fail FK computation
+        console.warn(`TrajectoryFK: FK failed for waypoint ${i}:`, error);
+      }
     }
 
     setWaypoints(computed);
     onComputed?.(computed);
   }, [
     ready,
-    solver,
+    urdfSolver,
     trajectoryData,
-    fk,
+    hybridFk,
+    clampJoints,
     analyzeWorkspace,
     singularityThreshold,
     jointLimitWarningThreshold,

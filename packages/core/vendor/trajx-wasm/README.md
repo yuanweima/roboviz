@@ -21,7 +21,8 @@ Provides high-performance FK/IK and path planning in the browser.
 - **Three.js compatible**: Matrix output for direct mesh transforms
 - **Motion-Centric API**: Fluent API for motion planning (`WasmMotion.to(goal).run(robot)`)
 - **Cable-Aware Planning**: Track and constrain cable twist during robot motion
-- **GPU-Accelerated Planning (NEW)**: Lazy-PRM planner with batch collision checking for high-performance planning
+- **GPU-Accelerated Planning**: Lazy-PRM planner with batch collision checking for high-performance planning
+- **RobotContext API (NEW)**: Unified API for GPU-accelerated planning with automatic capsule approximation
 
 ## Installation
 
@@ -86,6 +87,43 @@ async function main() {
 }
 
 main();
+```
+
+### GPU-Accelerated Planning (Recommended)
+
+For high-performance planning with collision checking, use the `RobotContext` API:
+
+```typescript
+import init, { RobotContext, CollisionEnvironment, Pose, Position, Quaternion } from 'trajx-wasm';
+
+async function gpuPlanning() {
+  await init();
+
+  // One-line setup from URDF with automatic capsule approximation
+  const ctx = RobotContext.fromUrdf(URDF);
+  console.log(`Robot: ${ctx.name}, DOF: ${ctx.dof}, GPU Compatible: ${ctx.isGpuCompatible}`);
+
+  // Create environment with obstacles
+  const env = new CollisionEnvironment();
+  env.addBox("obstacle", [0.2, 0.2, 0.2], new Pose(new Position(0.5, 0, 0.3), new Quaternion(0, 0, 0, 1)));
+
+  // Quick collision check
+  const isFree = ctx.isConfigCollisionFree([0, 0, 0, 0, 0, 0], env);
+
+  // Create planner and find path
+  const planner = ctx.createPlanner();
+  planner.buildRoadmap();
+
+  const result = planner.query(
+    [0, 0, 0, 0, 0, 0],           // start
+    [1, 0.5, 0.3, 0, 0.5, 0],     // goal
+    (edges) => ctx.checkEdgesBatch(edges, env, 5)  // batch collision callback
+  );
+
+  if (result.success) {
+    console.log(`Path found: ${result.waypointCount} waypoints in ${result.planningTimeMs.toFixed(1)}ms`);
+  }
+}
 ```
 
 ## React Integration
@@ -719,14 +757,16 @@ console.log('Coverage ratio:', stats.avg_coverage_ratio);
 console.log('New env GPU compatible:', capsuleEnv.isGpuCompatible());
 ```
 
-### Building with GPU Planning Feature
+### GPU Planning Feature
+
+GPU planning is now enabled by default. To build without it (smaller size):
 
 ```bash
-# Build with GPU planning support
-wasm-pack build --target web --features "collision,gpu-planning"
+# Collision only (no GPU planning)
+./build.sh collision
 
-# Or use build script
-./build.sh collision gpu-planning
+# Or manually
+wasm-pack build --target web --no-default-features --features "console_error_panic_hook,collision"
 ```
 
 ## Tool System
@@ -1015,6 +1055,98 @@ async function planWithCollision() {
 - `LazyPrmConfig` - Low-level planner configuration
 - `LazyPrmResult` - Low-level planning result
 
+### RobotContext - Unified GPU Planning API (Recommended)
+
+`RobotContext` is the **recommended API** for GPU-accelerated motion planning. It provides a unified interface that combines URDF loading, capsule approximation for GPU collision, and batch edge checking.
+
+```typescript
+import { RobotContext, RobotContextConfig, CollisionEnvironment } from 'trajx-wasm';
+
+// One-line setup from URDF (uses GPU-optimized defaults)
+const ctx = RobotContext.fromUrdf(urdfContent);
+
+// Or with custom config
+const config = RobotContextConfig.gpuOptimized();
+const ctx = RobotContext.fromUrdfWithConfig(urdfContent, config);
+
+// Quick collision check
+const joints = [0, 0, 0, 0, 0, 0];
+const isFree = ctx.isConfigCollisionFree(joints, env);
+
+// GPU-friendly batch edge checking (for Lazy-PRM)
+const edges = [
+    [[0,0,0,0,0,0], [1,0,0,0,0,0]],
+    [[1,0,0,0,0,0], [1,1,0,0,0,0]],
+];
+const results = ctx.checkEdgesBatch(edges, env, 5);  // 5 samples per edge
+
+// Create planner directly from context
+const planner = ctx.createPlanner();
+planner.buildRoadmap();
+const result = planner.query(start, goal, (edges) => ctx.checkEdgesBatch(edges, env, 5));
+```
+
+- `RobotContext` - Unified context for GPU planning
+  - `RobotContext.fromUrdf(urdf)` - Create with default GPU-optimized config
+  - `RobotContext.fromUrdfWithConfig(urdf, config)` - Create with custom config
+  - `.name` - Robot name
+  - `.dof` - Degrees of freedom
+  - `.isGpuCompatible` - Whether collision model uses only GPU-friendly shapes
+  - `.stats` - Creation statistics (shapes converted, capsules generated)
+  - `.isConfigCollisionFree(joints, env)` - Check single configuration
+  - `.isEdgeCollisionFree(start, end, env, samples?)` - Check single edge
+  - `.checkEdgesBatch(edges, env, samples?)` - Batch edge checking for planning
+  - `.createPlanner()` - Create LazyPrmPlanner
+  - `.forwardKinematics(joints)` - Compute end-effector pose
+  - `.getLinkTransforms(joints)` - Get all link transforms
+  - `.getJointLimitsFlat()` - Get joint limits as flat array
+  - `.summary()` - Get human-readable summary
+- `RobotContextConfig` - Configuration presets
+  - `RobotContextConfig.gpuOptimized()` - Default: capsule approximation, 5 samples/edge
+  - `RobotContextConfig.fast()` - Quick planning: 3 samples/edge, 200 roadmap samples
+  - `RobotContextConfig.quality()` - Thorough: 10 samples/edge, 1000 roadmap samples
+  - `RobotContextConfig.cpuOnly()` - No capsule approximation
+  - `.samplesPerEdge` - Get/set edge samples
+  - `.roadmapSamples` - Get/set roadmap samples
+- `RobotContextStats` - Creation statistics
+  - `.shapesConverted` - Number of shapes converted to capsules
+  - `.capsulesGenerated` - Number of capsules generated
+  - `.shapesUnchanged` - Number of shapes kept as-is
+  - `.avgCoverageRatio` - Average capsule coverage
+  - `.summary()` - Get formatted summary
+
+### GPU Collision (enabled by default)
+
+GPU-accelerated collision detection using WebGPU. This feature is **enabled by default** and provides significant speedup for batch collision checking.
+
+> **Note**: Requires WebGPU support in the browser. Check availability with `isWebGpuAvailable()`.
+
+- `isWebGpuAvailable()` - Check if WebGPU is available (async)
+- `isIntegratedGpuPlanningAvailable()` - Check GPU planning availability (async)
+- `GpuCollisionContext` - Low-level GPU collision context
+  - `GpuCollisionContext.init()` - Initialize GPU context (async)
+  - `.deviceInfo()` - Get GPU device info
+  - `.gpuThreshold()` - Get batch size threshold for GPU to be faster
+  - `.preferredBatchSize()` - Get optimal batch size
+  - `.checkSphereSphereAsync(...)` - Batch sphere-sphere collision (async)
+  - `.checkBoxBoxAsync(...)` - Batch box-box collision (async)
+  - `.checkMixedAsync(...)` - Batch mixed shape collision (async)
+- `benchmarkGpuVsCpu(numPairs)` - Run GPU vs CPU performance comparison
+- `benchmarkGpuBatchSizes(sizes)` - Run benchmarks at multiple batch sizes
+- `getGpuCollisionCheckerTemplate(samplesPerEdge)` - Get template code for GPU collision checker
+- `GpuVsCpuComparison` - Benchmark result
+  - `.gpuTimeMs` - GPU time in milliseconds
+  - `.cpuTimeMs` - CPU time in milliseconds
+  - `.collisionPairs` - Number of pairs tested
+  - `.speedup` - Speedup factor (cpu_time / gpu_time)
+  - `.gpuFaster` - Whether GPU was faster
+  - `.summary()` - Get formatted summary string
+- `IntegratedGpuPlannerConfig` - Configuration presets
+  - `IntegratedGpuPlannerConfig.fast()` - Fast preset
+  - `IntegratedGpuPlannerConfig.balanced()` - Balanced preset
+  - `IntegratedGpuPlannerConfig.quality()` - Quality preset
+  - `IntegratedGpuPlannerConfig.cpuOnly()` - CPU-only preset
+
 ### Task-Space Planning
 
 - `TaskSpaceRRTPlanner` - Plan in Cartesian space with IK
@@ -1099,7 +1231,7 @@ Requires:
 ```bash
 cd crates/trajx-wasm
 
-# Default build (web target, release)
+# Default build (web target, release, includes collision + gpu-planning)
 ./build.sh
 
 # Development build (faster, with debug info)
@@ -1108,8 +1240,11 @@ cd crates/trajx-wasm
 # Build and start local server
 ./build.sh serve
 
-# With collision feature
+# Collision only (no GPU planning, smaller size)
 ./build.sh collision
+
+# Build without collision (minimal size)
+./build.sh no-collision
 
 # Clean build artifacts
 ./build.sh clean
@@ -1118,13 +1253,14 @@ cd crates/trajx-wasm
 ### Manual build
 
 ```bash
+# Default build (includes collision + gpu-planning)
 wasm-pack build --target web
 
-# With collision feature
-wasm-pack build --target web --features collision
+# Collision only (no GPU planning)
+wasm-pack build --target web --no-default-features --features "console_error_panic_hook,collision"
 
-# With GPU planning feature
-wasm-pack build --target web --features "collision,gpu-planning"
+# Without collision (minimal size)
+wasm-pack build --target web --no-default-features --features console_error_panic_hook
 ```
 
 ## Examples
@@ -1144,11 +1280,13 @@ These standalone HTML demos showcase specific features with interactive UI:
 | Demo | Description |
 |------|-------------|
 | **`examples/index.html`** | Navigation page - Links to all demos |
+| **`examples/robot-context-demo.html`** | **RobotContext API (NEW)** - Unified GPU planning with capsule approximation |
 | **`examples/motion-centric-demo.html`** | Motion-Centric API - WasmMotion, WasmPath, WasmSequence with collision-aware planning |
 | **`examples/motion-collision-demo.html`** | Collision-Aware Motion - Detailed collision checking workflow and API warnings |
 | **`examples/motion-cable-demo.html`** | Motion + Cable Integration - WasmMotion.cableAware(), WasmSequence cable tracking |
 | **`examples/advanced-planners-demo.html`** | BiRRT, RRT*, PRM - Compare planning algorithms with 2D visualization |
 | **`examples/gpu-batch-planning-demo.html`** | GPU Batch Planning - Lazy-PRM with batch collision checking |
+| **`examples/gpu-vs-cpu-benchmark.html`** | GPU vs CPU Benchmark - Performance comparison with WebGPU |
 | **`examples/collision-demo.html`** | CollisionEnvironment API - Add/remove obstacles, check collisions |
 | **`examples/batch-collision-demo.html`** | BatchCollisionChecker - Multi-configuration checking (1000+ in ~3ms) |
 | **`examples/motion-validator-demo.html`** | WasmConfigurationSpace & WasmDiscreteMotionValidator |

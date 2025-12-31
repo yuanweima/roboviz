@@ -14,7 +14,7 @@
 
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRobotSolver } from '../kinematics/useTrajx';
+import { useHybridSolver } from '../kinematics/useTrajx';
 import type { Pose } from '../types';
 import type { MultiIkResult, IkResult } from '../kinematics/types';
 
@@ -25,8 +25,10 @@ import type { MultiIkResult, IkResult } from '../kinematics/types';
 export interface CartesianControlPanelProps {
   /** Robot ID for kinematics solver */
   robotId: string;
-  /** Robot name from database */
-  robotName: string;
+  /** Robot name from database (deprecated - use urdfContent instead) */
+  robotName?: string;
+  /** URDF content for solver creation (preferred over robotName) */
+  urdfContent?: string;
 
   /** Initial target pose */
   initialPose?: Pose;
@@ -224,6 +226,7 @@ function SolutionSelector({ solutions, selectedIndex, isAnalytical, onSelect }: 
 export function CartesianControlPanel({
   robotId,
   robotName,
+  urdfContent,
   initialPose = DEFAULT_POSE,
   currentJoints,
   positionLimits = DEFAULT_POSITION_LIMITS,
@@ -243,10 +246,12 @@ export function CartesianControlPanel({
   // Euler angles for display
   const [euler, setEuler] = useState(() => quaternionToEuler(initialPose.orientation));
 
-  // Solver
-  const { ready, ik, ikAll } = useRobotSolver({
+  // Solver - use useHybridSolver (which supports URDF content)
+  const { ready, ikAll } = useHybridSolver({
     robotId,
-    robotName,
+    urdfContent: urdfContent || null,
+    dhRobotName: robotName,
+    coordinateSystem: 'Z-up',
   });
 
   // Compute IK when target changes

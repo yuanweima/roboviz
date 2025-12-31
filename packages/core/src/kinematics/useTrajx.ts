@@ -902,12 +902,13 @@ export function useUrdfSolver(options: UseUrdfSolverOptions): UseUrdfSolverRetur
 /**
  * Coordinate system options for kinematics operations.
  *
- * - 'Y-up': Three.js / WebGL standard (Y is up, right-handed)
- * - 'Z-up': URDF / ROS standard (Z is up, right-handed)
+ * - 'Z-up': URDF / ROS / RoboViz scene standard (Z is up, right-handed)
+ *   This is the default since the RoboViz scene is configured as Z-up.
+ * - 'Y-up': Legacy Three.js / WebGL standard (Y is up, right-handed)
+ *   Only needed for external Y-up coordinate sources.
  *
- * When using RoboViz with Three.js, you typically work in Y-up coordinates,
- * but URDF/trajx-wasm internally uses Z-up. The useHybridSolver hook can
- * automatically convert between these coordinate systems.
+ * Note: The RoboViz scene (Canvas, OrbitControls, camera) is configured as Z-up,
+ * matching URDF/trajx-wasm. No coordinate conversion is needed in most cases.
  */
 export type CoordinateSystem = 'Y-up' | 'Z-up';
 
@@ -1062,14 +1063,14 @@ export interface UseHybridSolverOptions {
   /**
    * Coordinate system for input/output poses.
    *
-   * - 'Y-up' (default): Three.js / WebGL standard. Use this when working with
-   *   poses from Three.js scene (e.g., trajectory points, workpiece positions).
-   *   The hook will automatically convert to/from URDF's Z-up internally.
+   * - 'Z-up' (default): URDF / ROS / RoboViz scene standard. The scene is configured
+   *   as Z-up, so no conversion is needed. Use this for most cases.
    *
-   * - 'Z-up': URDF / ROS standard. Use this if you're already working in
-   *   URDF coordinates (no conversion applied).
+   * - 'Y-up': Legacy Three.js / WebGL standard. Only use this if you're working with
+   *   Y-up coordinates from external sources. The hook will automatically convert
+   *   to/from URDF's Z-up internally.
    *
-   * @default 'Y-up'
+   * @default 'Z-up'
    */
   coordinateSystem?: CoordinateSystem;
 }
@@ -1173,10 +1174,11 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
     urdfContent,
     dhRobotName: forcedDhName,
     autoCreate = true,
-    coordinateSystem = 'Y-up',
+    coordinateSystem = 'Z-up',
   } = options;
 
   // Whether to convert coordinates (Y-up input needs conversion to Z-up for solver)
+  // Note: Scene is Z-up, so default is no conversion needed
   const needsCoordinateConversion = coordinateSystem === 'Y-up';
 
   const [urdfSolver, setUrdfSolver] = useState<UrdfRobotSolver | null>(null);
