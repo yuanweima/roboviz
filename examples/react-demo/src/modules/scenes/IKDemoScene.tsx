@@ -14,6 +14,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useControls, button } from 'leva';
+import { Html } from '@react-three/drei';
 import { RoboViz, Robot } from '@aspect/roboviz-react';
 import {
   GhostRobot,
@@ -130,9 +131,10 @@ function StatusPanel({
         minWidth: 220,
         fontSize: 12,
         color: THEME.text,
+        pointerEvents: 'auto', // Enable pointer events for this panel
       }}
     >
-      <h3 style={{ margin: '0 0 12px 0', fontSize: 14 }}>IK Status</h3>
+      <div style={{ margin: '0 0 12px 0', fontSize: 14, fontWeight: 'bold' }}>IK Status</div>
 
       {/* Ready state */}
       <div style={{ marginBottom: 8 }}>
@@ -335,15 +337,17 @@ function IKDemoSceneContent({ urdfContent }: { urdfContent: string }) {
       {/* Target position marker */}
       <TargetMarker position={targetPosition} status={ghostStatus} />
 
-      {/* Status panel */}
-      <StatusPanel
-        ready={ready}
-        computing={computing}
-        status={ghostStatus}
-        workspace={workspace}
-        isNearSingular={isNearSingular}
-        hasAnalyticalIk={hasAnalyticalIk}
-      />
+      {/* Status panel - wrapped in Html for R3F compatibility */}
+      <Html fullscreen style={{ pointerEvents: 'none' }}>
+        <StatusPanel
+          ready={ready}
+          computing={computing}
+          status={ghostStatus}
+          workspace={workspace}
+          isNearSingular={isNearSingular}
+          hasAnalyticalIk={hasAnalyticalIk}
+        />
+      </Html>
     </>
   );
 }

@@ -12,11 +12,11 @@
  */
 
 import * as React from 'react';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import { Line } from '@react-three/drei';
 import { GhostRobot, GhostRobotTrajectory, type GhostStatus } from './GhostRobot';
-import { useRobotSolver } from '../kinematics/useTrajx';
+import { useHybridSolver } from '../kinematics/useTrajx';
 import {
   planLinearMotion,
   type LinearMotionConfig,
@@ -72,8 +72,10 @@ export interface PathSegment {
 export interface LinearMotionPreviewProps {
   /** Robot ID for kinematics */
   robotId: string;
-  /** Robot name for solver creation */
-  robotName: string;
+  /** Robot name for solver creation (deprecated - use urdfContent instead) */
+  robotName?: string;
+  /** URDF content for solver creation (preferred) - for internal FK/workspace analysis */
+  solverUrdfContent?: string;
   /** Starting joint configuration */
   startJoints: number[];
   /** Target end-effector pose */
@@ -190,6 +192,7 @@ function sampleKeyframeIndices(totalPoints: number, keyframeCount: number): numb
 export function LinearMotionPreview({
   robotId,
   robotName,
+  solverUrdfContent,
   startJoints,
   targetPose,
   urdfPath,
@@ -216,11 +219,49 @@ export function LinearMotionPreview({
   onWaypointClick,
   onGhostClick,
 }: LinearMotionPreviewProps): React.JSX.Element | null {
-  // Solver
-  const { solver, ready, fk, analyzeWorkspace } = useRobotSolver({
+  // Solver - use useHybridSolver (which supports URDF content)
+  const { ready, fk: hybridFk, jointLimits } = useHybridSolver({
     robotId,
-    robotName,
+    urdfContent: solverUrdfContent || urdfContent || null,
+    dhRobotName: robotName,
+    coordinateSystem: 'Z-up',
   });
+
+  // Simple workspace analysis based on joint limits
+  const analyzeWorkspace = useCallback(
+    (joints: number[]): WorkspaceAnalysis | null => {
+      if (!jointLimits) return null;
+
+      // Calculate joint limit margins
+      const jointLimitMargins = joints.map((joint, i) => {
+        const lower = jointLimits.lower[i] ?? -Math.PI;
+        const upper = jointLimits.upper[i] ?? Math.PI;
+        const range = upper - lower;
+        const fromLower = (joint - lower) / range;
+        const fromUpper = (upper - joint) / range;
+        return Math.min(fromLower, fromUpper);
+      });
+
+      // Approximate manipulability (simplified - based on joint limit margins)
+      const manipulability = jointLimitMargins.reduce((a, b) => a * b, 1);
+
+      return {
+        isValid: true,
+        manipulability,
+        isNearSingular: manipulability < 0.01,
+        minSingularValue: manipulability,
+        jointLimitMargins,
+        conditionNumber: 1 / Math.max(manipulability, 0.001),
+      };
+    },
+    [jointLimits]
+  );
+
+  // Wrapper for FK
+  const fk = useCallback(
+    (joints: number[]) => hybridFk(joints),
+    [hybridFk]
+  );
 
   // State
   const [planResult, setPlanResult] = useState<LinearMotionResult | null>(null);
@@ -229,7 +270,7 @@ export function LinearMotionPreview({
 
   // Plan linear motion when inputs change
   useEffect(() => {
-    if (!ready || !solver) return;
+    if (!ready) return;
 
     setIsPlanning(true);
 
@@ -270,7 +311,6 @@ export function LinearMotionPreview({
     }
   }, [
     ready,
-    solver,
     robotId,
     startJoints,
     targetPose,

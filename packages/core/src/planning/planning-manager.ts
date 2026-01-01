@@ -40,6 +40,12 @@ interface TrajxBiRRTPlanner {
     goal: Float64Array,
     checker: (joints: Float64Array) => boolean
   ): TrajxPlanResult;
+  /** Plan with dense-path collision checking - validates all intermediate points */
+  planDenseWithCollisionCheck(
+    start: Float64Array,
+    goal: Float64Array,
+    checker: (joints: Float64Array) => boolean
+  ): TrajxPlanResult;
   free(): void;
 }
 
@@ -117,11 +123,13 @@ interface TrajxPathMetrics {
 }
 
 interface TrajxPipelineResult {
-  readonly success: boolean;
-  readonly waypointCount: number;
-  readonly originalWaypointCount: number;
+  readonly numWaypoints: number;
+  readonly postProcessed: boolean;
+  readonly processingTimeMs: number;
+  readonly dof: number;
   readonly metrics?: TrajxPathMetrics;
-  getPathFlat(): Float64Array;
+  readonly path: Float64Array;
+  getWaypoint?(index: number): Float64Array;
   free(): void;
 }
 
@@ -425,6 +433,14 @@ export class MotionPlanningManager {
 
       this.emitProgress(onProgress, 'complete', 1, `Planning complete in ${totalTimeMs.toFixed(0)}ms`);
 
+      // Validate all waypoints have correct DOF before returning
+      const expectedDof = request.startJoints.length;
+      const invalidWaypoints = processedPath.filter(wp => wp.joints.length !== expectedDof);
+      if (invalidWaypoints.length > 0) {
+        console.error(`[PlanningManager] Found ${invalidWaypoints.length} waypoints with incorrect joint count (expected ${expectedDof}). Filtering...`);
+        processedPath = processedPath.filter(wp => wp.joints.length === expectedDof);
+      }
+
       return {
         success: true,
         path: processedPath,
@@ -490,9 +506,18 @@ export class MotionPlanningManager {
       const startArray = new Float64Array(startJoints);
       const goalArray = new Float64Array(goalJoints);
 
-      // Wrap collision checker for trajx
+      // Wrap collision checker for trajx with stats tracking
+      let collisionCheckCount = 0;
+      let collisionDetectedCount = 0;
       const trajxChecker = collisionChecker
-        ? (joints: Float64Array) => collisionChecker(Array.from(joints))
+        ? (joints: Float64Array) => {
+            collisionCheckCount++;
+            const isValid = collisionChecker(Array.from(joints));
+            if (!isValid) {
+              collisionDetectedCount++;
+            }
+            return isValid;
+          }
         : undefined;
 
       switch (planner.type) {
@@ -508,8 +533,10 @@ export class MotionPlanningManager {
           const birrt = new this.trajx.BiRRTPlanner(limits, wasmConfig);
 
           try {
+            // Use planDenseWithCollisionCheck for proper edge collision checking
+            // This validates all intermediate points along the path, not just nodes
             result = trajxChecker
-              ? birrt.planWithCollisionCheck(startArray, goalArray, trajxChecker)
+              ? birrt.planDenseWithCollisionCheck(startArray, goalArray, trajxChecker)
               : birrt.plan(startArray, goalArray);
           } finally {
             birrt.free();
@@ -584,8 +611,21 @@ export class MotionPlanningManager {
         return { success: false, path: [], error: result.errorMessage || 'Planning failed' };
       }
 
-      // Convert result to PathWaypoint[]
-      const path = this.flatArrayToWaypoints(result.getPathFlat(), dof);
+      // Get raw path from WASM
+      // WASM format: [dof, n_waypoints, j1_1, j2_1, ..., j1_2, j2_2, ...]
+      // First two elements are metadata, actual path data starts at index 2
+      const rawPath = result.getPathFlat();
+      const wasmDof = rawPath[0];
+      const actualPathData = rawPath.slice(2); // Skip metadata
+
+      // Validate WASM metadata matches our expectation
+      if (wasmDof !== dof) {
+        console.warn(`[PlanningManager] DOF mismatch: WASM=${wasmDof}, expected=${dof}`);
+      }
+
+      // Convert result to PathWaypoint[] (using actual path data, not raw)
+      // Pass jointLimits to enable validation (helps catch metadata-as-joints bugs)
+      const path = this.flatArrayToWaypoints(actualPathData, dof, jointLimits);
 
       return {
         success: true,
@@ -659,12 +699,16 @@ export class MotionPlanningManager {
           ? pipeline.processWithCollisionCheck(pathFlat, dof, trajxChecker)
           : pipeline.process(pathFlat, dof);
 
-        if (!result.success) {
+        // WasmPipelineResult doesn't have a success field - check if we got a valid path
+        if (!result.path || result.path.length === 0) {
           return { path };
         }
 
         // Convert back to waypoints
-        const processedPath = this.flatArrayToWaypoints(result.getPathFlat(), dof);
+        // WasmPipelineResult.path returns flat array WITHOUT metadata prefix
+        // (unlike PlanningResult.getPathFlat which has [dof, numWaypoints, ...])
+        const processedPathFlat = result.path;
+        const processedPath = this.flatArrayToWaypoints(processedPathFlat, dof);
 
         // Build metrics
         let metrics: PathMetrics | undefined;
@@ -672,10 +716,10 @@ export class MotionPlanningManager {
           metrics = {
             pathLength: result.metrics.pathLength,
             smoothness: result.metrics.smoothness,
-            waypointCount: result.waypointCount,
+            waypointCount: result.numWaypoints,
             originalWaypointCount: originalCount,
             improvementRatio: result.metrics.improvementRatio,
-            waypointReductionRatio: 1 - result.waypointCount / originalCount,
+            waypointReductionRatio: 1 - result.numWaypoints / originalCount,
           };
         }
 
@@ -781,12 +825,50 @@ export class MotionPlanningManager {
     return null;
   }
 
-  private flatArrayToWaypoints(flat: Float64Array, dof: number): PathWaypoint[] {
+  /**
+   * Convert flat joint array to PathWaypoint array.
+   *
+   * IMPORTANT: This expects PURE joint data WITHOUT metadata prefix.
+   * WASM's getPathFlat() returns [dof, n_waypoints, j1_1, j2_1, ...] format,
+   * so the caller MUST slice off the first 2 elements before calling this.
+   *
+   * @param flat - Pure joint data (no metadata prefix)
+   * @param dof - Degrees of freedom
+   * @param jointLimits - Optional joint limits for validation
+   */
+  private flatArrayToWaypoints(
+    flat: Float64Array,
+    dof: number,
+    jointLimits?: { lower: number[]; upper: number[] }
+  ): PathWaypoint[] {
     const waypoints: PathWaypoint[] = [];
-    const numWaypoints = flat.length / dof;
+
+    // Validate that flat array is divisible by dof
+    if (flat.length % dof !== 0) {
+      console.error(`[flatArrayToWaypoints] Invalid flat array length: ${flat.length} is not divisible by dof=${dof}. Truncating to valid length.`);
+    }
+
+    // Use Math.floor to ensure we only create complete waypoints
+    const numWaypoints = Math.floor(flat.length / dof);
 
     for (let i = 0; i < numWaypoints; i++) {
       const joints = Array.from(flat.slice(i * dof, (i + 1) * dof));
+
+      // Validate first waypoint joints are within reasonable bounds
+      // This catches metadata-as-joints bug early
+      if (i === 0 && jointLimits) {
+        const outOfBounds = joints.some((j, idx) =>
+          j < jointLimits.lower[idx] || j > jointLimits.upper[idx]
+        );
+        if (outOfBounds) {
+          console.warn(
+            `[flatArrayToWaypoints] First waypoint joints out of limits - ` +
+            `possible metadata prefix in data? joints=${joints.map(j => j.toFixed(3))}, ` +
+            `limits=[${jointLimits.lower.map(l => l.toFixed(3))}] to [${jointLimits.upper.map(u => u.toFixed(3))}]`
+          );
+        }
+      }
+
       waypoints.push({ joints });
     }
 

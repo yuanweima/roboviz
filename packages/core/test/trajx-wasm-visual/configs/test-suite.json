@@ -1,0 +1,414 @@
+{
+  "testSuites": {
+    "fk": {
+      "name": "Forward Kinematics Tests",
+      "tests": [
+        {
+          "id": "fk-zero",
+          "name": "零位姿态",
+          "jointAngles": [0, 0, 0, 0, 0, 0],
+          "expectedPosition": { "x": 0.55, "y": 0, "z": 0.805 },
+          "toleranceMm": 5
+        },
+        {
+          "id": "fk-j1-90",
+          "name": "J1旋转90度",
+          "jointAngles": [1.5708, 0, 0, 0, 0, 0],
+          "description": "基座旋转90度，末端应在Y轴正方向"
+        },
+        {
+          "id": "fk-j2-45",
+          "name": "J2旋转45度",
+          "jointAngles": [0, 0.7854, 0, 0, 0, 0],
+          "description": "肩关节旋转，手臂抬起"
+        },
+        {
+          "id": "fk-extended",
+          "name": "伸展姿态",
+          "jointAngles": [0, -1.5708, 0, 0, 0, 0],
+          "description": "手臂完全伸展（奇异点附近）"
+        },
+        {
+          "id": "fk-folded",
+          "name": "折叠姿态",
+          "jointAngles": [0, 0.5, 1.5, 0, 0.5, 0],
+          "description": "手臂折叠状态"
+        },
+        {
+          "id": "fk-random-1",
+          "name": "随机姿态1",
+          "jointAngles": [0.3, -0.5, 0.8, 0.2, -0.3, 0.1]
+        },
+        {
+          "id": "fk-random-2",
+          "name": "随机姿态2",
+          "jointAngles": [-0.5, 0.3, -0.4, 0.6, 0.2, -0.5]
+        },
+        {
+          "id": "fk-joint-limits-lower",
+          "name": "下限附近",
+          "jointAngles": [-2.7, -1.9, -1.2, -3.1, -2.0, -6.2],
+          "description": "接近关节下限"
+        },
+        {
+          "id": "fk-joint-limits-upper",
+          "name": "上限附近",
+          "jointAngles": [2.7, 1.9, 2.7, 3.1, 2.0, 6.2],
+          "description": "接近关节上限"
+        }
+      ]
+    },
+    "obstacles": {
+      "name": "Obstacle Configuration Tests",
+      "tests": [
+        {
+          "id": "obs-single-box",
+          "name": "单个立方体",
+          "obstacles": [
+            { "type": "box", "position": [0.3, 0.3, 0], "size": [0.1, 0.1, 0.1] }
+          ]
+        },
+        {
+          "id": "obs-single-sphere",
+          "name": "单个球体",
+          "obstacles": [
+            { "type": "sphere", "position": [0.3, 0.4, 0], "radius": 0.05 }
+          ]
+        },
+        {
+          "id": "obs-multiple",
+          "name": "多个障碍物",
+          "obstacles": [
+            { "type": "box", "position": [0.3, 0.3, 0.1], "size": [0.1, 0.1, 0.1] },
+            { "type": "box", "position": [-0.3, 0.3, 0.1], "size": [0.1, 0.1, 0.1] },
+            { "type": "sphere", "position": [0, 0.5, 0.2], "radius": 0.08 },
+            { "type": "sphere", "position": [0.2, 0.4, -0.2], "radius": 0.06 }
+          ]
+        },
+        {
+          "id": "obs-wall",
+          "name": "墙壁障碍",
+          "obstacles": [
+            { "type": "box", "position": [0.4, 0.3, 0], "size": [0.02, 0.5, 0.5] }
+          ],
+          "description": "测试穿越墙壁的轨迹规划"
+        },
+        {
+          "id": "obs-corridor",
+          "name": "走廊环境",
+          "obstacles": [
+            { "type": "box", "position": [0.3, 0.3, 0.2], "size": [0.02, 0.4, 0.4] },
+            { "type": "box", "position": [0.3, 0.3, -0.2], "size": [0.02, 0.4, 0.4] }
+          ],
+          "description": "两堵墙形成走廊"
+        },
+        {
+          "id": "obs-dense",
+          "name": "密集障碍",
+          "obstacles": [
+            { "type": "sphere", "position": [0.25, 0.35, 0], "radius": 0.04 },
+            { "type": "sphere", "position": [0.35, 0.35, 0], "radius": 0.04 },
+            { "type": "sphere", "position": [0.30, 0.40, 0.05], "radius": 0.04 },
+            { "type": "sphere", "position": [0.30, 0.30, -0.05], "radius": 0.04 },
+            { "type": "sphere", "position": [0.30, 0.45, 0], "radius": 0.04 },
+            { "type": "sphere", "position": [0.20, 0.35, 0.05], "radius": 0.04 }
+          ],
+          "description": "密集球体障碍群"
+        }
+      ]
+    },
+    "trajectory": {
+      "name": "Trajectory Planning Tests",
+      "tests": [
+        {
+          "id": "traj-simple",
+          "name": "简单轨迹",
+          "start": [0, 0, 0, 0, 0, 0],
+          "goal": [0.5, 0.3, -0.3, 0, 0.5, 0],
+          "obstacles": []
+        },
+        {
+          "id": "traj-long",
+          "name": "长距离轨迹",
+          "start": [-1.5, -0.5, 0.5, -1.0, -0.5, 0],
+          "goal": [1.5, 0.5, -0.5, 1.0, 0.5, 0],
+          "obstacles": []
+        },
+        {
+          "id": "traj-avoid-box",
+          "name": "绕过立方体",
+          "start": [0, 0, 0, 0, 0, 0],
+          "goal": [1.0, 0.5, -0.3, 0, 0.5, 0],
+          "obstacles": [
+            { "type": "box", "position": [0.35, 0.35, 0], "size": [0.15, 0.15, 0.15] }
+          ]
+        },
+        {
+          "id": "traj-through-gap",
+          "name": "穿过缝隙",
+          "start": [0, 0, 0, 0, 0, 0],
+          "goal": [0, 0.8, 0, 0, 0, 0],
+          "obstacles": [
+            { "type": "box", "position": [0.2, 0.3, 0], "size": [0.3, 0.02, 0.3] },
+            { "type": "box", "position": [-0.2, 0.3, 0], "size": [0.3, 0.02, 0.3] }
+          ],
+          "description": "从两个障碍物之间穿过"
+        },
+        {
+          "id": "traj-complex",
+          "name": "复杂环境",
+          "start": [0, 0, 0, 0, 0, 0],
+          "goal": [1.2, 0.6, -0.5, 0.3, 0.8, 0],
+          "obstacles": [
+            { "type": "box", "position": [0.3, 0.3, 0], "size": [0.1, 0.1, 0.1] },
+            { "type": "sphere", "position": [0.5, 0.4, 0.1], "radius": 0.06 },
+            { "type": "box", "position": [0.2, 0.5, -0.1], "size": [0.08, 0.08, 0.08] }
+          ]
+        }
+      ]
+    },
+    "robots": {
+      "name": "Multi-Robot Tests",
+      "robots": [
+        "Fanuc_LR_Mate_200iD_7L",
+        "Fanuc_LR_Mate_200iD",
+        "UR5",
+        "UR10",
+        "JAKA_Zu7",
+        "JAKA_S12"
+      ],
+      "commonTests": [
+        {
+          "id": "robot-fk-zero",
+          "jointAngles": [0, 0, 0, 0, 0, 0],
+          "description": "测试各机器人的零位FK"
+        },
+        {
+          "id": "robot-fk-mid",
+          "jointAngles": [0.5, -0.3, 0.5, 0, 0.3, 0],
+          "description": "测试中间位置FK"
+        }
+      ]
+    },
+    "ik": {
+      "name": "Inverse Kinematics Tests",
+      "tests": [
+        {
+          "id": "ik-reachable",
+          "name": "可达位置",
+          "targetPose": { "x": 0.4, "y": 0.1, "z": 0.3, "qw": 1, "qx": 0, "qy": 0, "qz": 0 },
+          "seedJoints": [0, 0, 0, 0, 0, 0],
+          "shouldSucceed": true
+        },
+        {
+          "id": "ik-unreachable",
+          "name": "不可达位置",
+          "targetPose": { "x": 2.0, "y": 0, "z": 0, "qw": 1, "qx": 0, "qy": 0, "qz": 0 },
+          "seedJoints": [0, 0, 0, 0, 0, 0],
+          "shouldSucceed": false
+        },
+        {
+          "id": "ik-rotated",
+          "name": "旋转姿态",
+          "targetPose": { "x": 0.3, "y": 0.2, "z": 0.4, "qw": 0.707, "qx": 0, "qy": 0.707, "qz": 0 },
+          "seedJoints": [0, 0.5, -0.5, 0, 0.5, 0]
+        },
+        {
+          "id": "ik-verify-fk",
+          "name": "IK结果FK验证",
+          "description": "先做IK，再用结果做FK，验证位置误差",
+          "targetPose": { "x": 0.35, "y": 0.15, "z": 0.35, "qw": 1, "qx": 0, "qy": 0, "qz": 0 },
+          "maxPositionErrorMm": 1.0
+        }
+      ]
+    },
+    "collision": {
+      "name": "Collision Detection Tests",
+      "tests": [
+        {
+          "id": "coll-no-collision",
+          "name": "无碰撞",
+          "jointAngles": [0, 0, 0, 0, 0, 0],
+          "obstacles": [
+            { "type": "sphere", "position": [1.0, 1.0, 1.0], "radius": 0.1 }
+          ],
+          "expectedCollision": false
+        },
+        {
+          "id": "coll-has-collision",
+          "name": "有碰撞",
+          "jointAngles": [0, 0, 0, 0, 0, 0],
+          "obstacles": [
+            { "type": "sphere", "position": [0.55, 0, 0.8], "radius": 0.1 }
+          ],
+          "expectedCollision": true,
+          "description": "障碍物在末端执行器位置"
+        },
+        {
+          "id": "coll-near-miss",
+          "name": "接近但不碰撞",
+          "jointAngles": [0, 0, 0, 0, 0, 0],
+          "obstacles": [
+            { "type": "sphere", "position": [0.55, 0.15, 0.8], "radius": 0.05 }
+          ],
+          "expectedCollision": false,
+          "description": "障碍物接近但不碰撞"
+        }
+      ]
+    },
+    "extremePoses": {
+      "name": "Extreme Pose Tests",
+      "tests": [
+        {
+          "id": "extreme-singularity-1",
+          "name": "奇异点1 - 手臂完全伸直",
+          "jointAngles": [0, 0, 0, 0, 0, 0],
+          "description": "J2=J3=0时手臂完全伸直，接近奇异点"
+        },
+        {
+          "id": "extreme-singularity-2",
+          "name": "奇异点2 - 腕部对齐",
+          "jointAngles": [0, 0, 0, 0, 0, 0],
+          "description": "J4和J6轴对齐时的奇异点"
+        },
+        {
+          "id": "extreme-folded-back",
+          "name": "极限折叠 - 肘部后弯",
+          "jointAngles": [0, 1.5, 3.0, 0, 1.5, 0],
+          "description": "手臂折叠，末端朝向基座下方"
+        },
+        {
+          "id": "extreme-all-max",
+          "name": "所有关节最大值",
+          "jointAngles": [2.9, 2.5, 4.8, 3.3, 2.1, 6.2],
+          "description": "所有关节接近正向限位"
+        },
+        {
+          "id": "extreme-all-min",
+          "name": "所有关节最小值",
+          "jointAngles": [-2.9, -1.7, -2.4, -3.3, -2.1, -6.2],
+          "description": "所有关节接近负向限位"
+        },
+        {
+          "id": "extreme-j1-full-rotation",
+          "name": "J1完整旋转",
+          "jointAngles": [2.9, 0, 0, 0, 0, 0],
+          "description": "基座旋转到极限位置"
+        },
+        {
+          "id": "extreme-j6-full-rotation",
+          "name": "J6完整旋转",
+          "jointAngles": [0, 0, 0, 0, 0, 6.2],
+          "description": "末端旋转到极限位置（355°）"
+        },
+        {
+          "id": "extreme-workspace-boundary",
+          "name": "工作空间边界",
+          "jointAngles": [0, -1.7, 0, 0, 0, 0],
+          "description": "手臂向后倾斜到极限"
+        }
+      ]
+    },
+    "meshVisualization": {
+      "name": "Mesh Visualization Tests",
+      "tests": [
+        {
+          "id": "mesh-load-all",
+          "name": "加载所有网格",
+          "expectedMeshes": ["base_link", "link1", "link2", "link3", "link4", "link5", "link6"],
+          "description": "验证所有7个STL网格文件正确加载"
+        },
+        {
+          "id": "mesh-colors",
+          "name": "网格颜色",
+          "expectedColors": {
+            "base_link": [0.4, 0.4, 0.4],
+            "link1": [1, 1, 1],
+            "link2": [1, 1, 0],
+            "link3": [1, 1, 1],
+            "link4": [1, 1, 1],
+            "link5": [1, 1, 1],
+            "link6": [0.149, 0.149, 0.149]
+          },
+          "description": "验证URDF定义的材质颜色"
+        },
+        {
+          "id": "mesh-hierarchy",
+          "name": "网格层级结构",
+          "description": "验证连杆父子关系：base_link -> link1 -> link2 -> ... -> link6"
+        },
+        {
+          "id": "mesh-joint-connection",
+          "name": "关节连接",
+          "poses": [
+            { "joints": [0.5, 0, 0, 0, 0, 0], "check": "link1随J1旋转" },
+            { "joints": [0, 0.5, 0, 0, 0, 0], "check": "link2随J2旋转" },
+            { "joints": [0, 0, 0.5, 0, 0, 0], "check": "link3随J3旋转" }
+          ],
+          "description": "验证各关节旋转时对应连杆及其子连杆正确移动"
+        },
+        {
+          "id": "mesh-no-gaps",
+          "name": "无网格缝隙",
+          "description": "验证关节处网格之间没有明显缝隙"
+        },
+        {
+          "id": "mesh-no-overlap",
+          "name": "无网格重叠",
+          "description": "验证网格之间没有穿透重叠"
+        }
+      ]
+    },
+    "coordinateSystem": {
+      "name": "Coordinate System Tests",
+      "tests": [
+        {
+          "id": "coord-robotics-to-threejs",
+          "name": "坐标系转换",
+          "description": "验证机器人坐标系(Z-up)正确转换为Three.js坐标系(Y-up)"
+        },
+        {
+          "id": "coord-fk-visual-match",
+          "name": "FK与视觉位置匹配",
+          "poses": [
+            { "joints": [0, 0, 0, 0, 0, 0], "expectedFK": { "x": 550, "y": 0, "z": 805 } },
+            { "joints": [1.5708, 0, 0, 0, 0, 0], "expectedFK": { "x": 0, "y": 550, "z": 805 } }
+          ],
+          "toleranceMm": 5
+        },
+        {
+          "id": "coord-obstacle-placement",
+          "name": "障碍物坐标",
+          "description": "验证障碍物在Three.js场景中的位置与指定坐标一致"
+        }
+      ]
+    }
+  },
+  "visualChecks": {
+    "robot": [
+      "机器人模型是否完整可见",
+      "所有连杆是否正确连接",
+      "关节旋转方向是否正确",
+      "STL网格是否正确加载",
+      "网格颜色是否符合URDF定义",
+      "极限位置下网格是否保持连接"
+    ],
+    "obstacles": [
+      "障碍物是否正确渲染",
+      "障碍物位置是否正确",
+      "透明度是否合适",
+      "多个障碍物是否都可见"
+    ],
+    "trajectory": [
+      "轨迹线是否可见",
+      "起点终点标记是否正确",
+      "轨迹是否绕过障碍物",
+      "轨迹执行时机器人是否沿路径移动"
+    ],
+    "fk": [
+      "FK显示值是否与视觉位置匹配",
+      "J1旋转90°后X轴值是否接近0",
+      "关节角度显示是否正确"
+    ]
+  }
+}

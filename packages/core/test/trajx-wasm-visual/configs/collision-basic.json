@@ -1,0 +1,37 @@
+{
+  "name": "collision-basic",
+  "category": "collision",
+  "description": "基础碰撞检测测试 - 验证机器人与简单障碍物的碰撞检测",
+  "params": {
+    "urdfPath": "../../fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf",
+    "jointAngles": [0, 0, 0, 0, 0, 0],
+    "obstacles": [
+      {
+        "type": "box",
+        "position": [0.3, 0, 0.3],
+        "dimensions": [0.1, 0.1, 0.1]
+      }
+    ]
+  },
+  "expectedBehavior": "场景中应显示机器人和一个立方体障碍物。碰撞检测系统应正确识别障碍物。如果机器人与障碍物接触，应有视觉指示。",
+  "checkpoints": [
+    {
+      "name": "obstacle-visible",
+      "question": "场景中是否可以看到障碍物（立方体）？",
+      "expectedKeywords": ["可以", "看到", "障碍物", "立方体"],
+      "critical": true
+    },
+    {
+      "name": "robot-and-obstacle-separate",
+      "question": "机器人和障碍物是否正确分开显示，没有严重的穿透？",
+      "expectedKeywords": ["分开", "正确", "没有穿透"],
+      "critical": true
+    },
+    {
+      "name": "collision-indicator",
+      "question": "是否有任何碰撞状态的视觉指示（如颜色变化、标记等）？",
+      "expectedKeywords": ["指示", "颜色", "标记"],
+      "critical": false
+    }
+  ]
+}

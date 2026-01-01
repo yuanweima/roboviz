@@ -15,7 +15,7 @@
 import * as React from 'react';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { GhostRobot, type GhostStatus, GHOST_STATUS_COLORS } from './GhostRobot';
-import { useRobotSolver } from '../kinematics/useTrajx';
+import { useHybridSolver } from '../kinematics/useTrajx';
 import type { Pose, Vector3Like, Vector3 } from '../types';
 import type {
   IkResult,
@@ -61,11 +61,13 @@ export interface IKGhostRobotProps {
   // Robot configuration
   /** Robot ID for kinematics solver */
   robotId: string;
-  /** Robot name for solver creation (e.g., 'fanuc_m20ia') */
-  robotName: string;
+  /** Robot name for solver creation (deprecated - use solverUrdfContent instead) */
+  robotName?: string;
+  /** URDF content for solver creation (preferred over robotName) - for IK/workspace analysis */
+  solverUrdfContent?: string;
   /** URL path to URDF file (for visualization) */
   urdfPath?: string;
-  /** URDF content as string */
+  /** URDF content as string (for visualization) */
   urdfContent?: string;
   /** Mesh data for loading from memory */
   meshData?: MeshDataMap;
@@ -164,6 +166,7 @@ export function IKGhostRobot({
   id = 'ik-ghost',
   robotId,
   robotName,
+  solverUrdfContent,
   urdfPath,
   urdfContent,
   meshData,
@@ -187,11 +190,53 @@ export function IKGhostRobot({
   onSolutionHover,
   onReachabilityChange,
 }: IKGhostRobotProps): React.JSX.Element | null {
-  // Get solver
-  const { solver, ready, ikAll, analyzeWorkspace, isReachable } = useRobotSolver({
+  // Get solver - use useHybridSolver (which supports URDF content)
+  const { ready, ikAll: hybridIkAll, jointLimits } = useHybridSolver({
     robotId,
-    robotName,
+    urdfContent: solverUrdfContent || urdfContent || null,
+    dhRobotName: robotName,
+    coordinateSystem: 'Z-up',
   });
+
+  // Simple workspace analysis based on joint limits
+  const analyzeWorkspace = useCallback(
+    (joints: number[]): WorkspaceAnalysis | null => {
+      if (!jointLimits) return null;
+
+      // Calculate joint limit margins
+      const jointLimitMargins = joints.map((joint, i) => {
+        const lower = jointLimits.lower[i] ?? -Math.PI;
+        const upper = jointLimits.upper[i] ?? Math.PI;
+        const range = upper - lower;
+        const fromLower = (joint - lower) / range;
+        const fromUpper = (upper - joint) / range;
+        return Math.min(fromLower, fromUpper);
+      });
+
+      // Approximate manipulability (simplified - based on joint limit margins)
+      const manipulability = jointLimitMargins.reduce((a, b) => a * b, 1);
+
+      return {
+        isValid: true,
+        manipulability,
+        isNearSingular: manipulability < 0.01,
+        minSingularValue: manipulability,
+        jointLimitMargins,
+        conditionNumber: 1 / Math.max(manipulability, 0.001),
+      };
+    },
+    [jointLimits]
+  );
+
+  // Wrapper for ikAll
+  const ikAll = useCallback(
+    (pose: Pose, seed?: number[]): MultiIkResult | null => {
+      const result = hybridIkAll(pose, seed);
+      if (!result) return null;
+      return result;
+    },
+    [hybridIkAll]
+  );
 
   // State
   const [solutions, setSolutions] = useState<IKSolution[]>([]);
@@ -200,7 +245,7 @@ export function IKGhostRobot({
 
   // Compute IK when target changes
   useEffect(() => {
-    if (!ready || !solver) {
+    if (!ready) {
       return;
     }
 
@@ -262,7 +307,6 @@ export function IKGhostRobot({
     });
   }, [
     ready,
-    solver,
     targetPose,
     seedJoints,
     maxSolutions,

@@ -52,10 +52,26 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
   private abortController: AbortController | null = null;
 
   // trajx-wasm module reference (loaded dynamically)
-  private trajxWasm: typeof import('../../wasm/trajx_wasm') | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private trajxWasm: any = null;
   // Robot instance for FK computation (using 'any' because Robot has private constructor)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private robot: any = null;
+
+  // NEW: RobotContext for unified GPU planning (replaces GpuPlanningContext + WasmRobotCollisionModel)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private robotContext: any = null;
+  // Collision environment for batch checking
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private wasmCollisionEnv: any = null;
+  // Track if using native GPU planning
+  private useNativeGpuPlanning = true;
+
+  // Legacy: Keep for backwards compatibility (deprecated, use robotContext instead)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private gpuPlanningContext: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private robotCollisionModel: any = null;
 
   constructor(config: GpuPlanningEngineConfig) {
     this.config = {
@@ -100,16 +116,125 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
     });
 
     try {
-      // Dynamically import trajx-wasm
-      this.trajxWasm = await import('../../wasm/trajx_wasm');
+      // Dynamically import trajx-wasm from npm package (NOT local vendor copy)
+      // The npm package is properly configured for bundlers to resolve the WASM file
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const trajxModule = await import('trajx-wasm') as any;
+
+      // Check if WASM is already initialized (e.g., by KinematicsManager/useTrajx)
+      // Note: is_ready() throws if WASM hasn't been loaded yet, so we wrap in try-catch
+      let alreadyInitialized = false;
+      try {
+        if (typeof trajxModule.is_ready === 'function') {
+          alreadyInitialized = trajxModule.is_ready();
+        }
+      } catch {
+        // is_ready() throws when wasm module isn't loaded - that's expected
+        alreadyInitialized = false;
+      }
+
+      if (!alreadyInitialized) {
+        // Initialize WASM binary - MUST call default() before using any classes
+        if (typeof trajxModule.default === 'function') {
+          await trajxModule.default();
+        } else {
+          throw new Error('trajx-wasm default init function not found');
+        }
+
+        // Optional: Initialize panic hooks for better error messages
+        if (typeof trajxModule.init === 'function') {
+          try {
+            trajxModule.init();
+          } catch {
+            // Ignore panic hook init errors - not critical
+          }
+        }
+      }
+
+      this.trajxWasm = trajxModule;
 
       // Load robot from URDF for FK computation
       if (this.config.robotUrdf) {
         try {
-          this.robot = this.trajxWasm.Robot.fromString(this.config.robotUrdf);
+          this.robot = trajxModule.Robot.fromString(this.config.robotUrdf);
+
+          // Initialize GPU Planning using NEW RobotContext API (recommended)
+          this.updateProgress({
+            phase: 'initializing',
+            message: 'Setting up GPU planning context...',
+          });
+
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const wasm = this.trajxWasm as any;
+
+            // Try NEW RobotContext API first (recommended, auto capsule approximation)
+            // Note: This will fail if URDF has mesh (STL) collision geometry that can't be loaded in browser
+            let robotContextInitialized = false;
+            if (wasm.RobotContext && wasm.RobotContextConfig && wasm.CollisionEnvironment) {
+              try {
+                // Create RobotContext with GPU-optimized preset
+                // Note: RobotContextConfig properties are read-only, use presets instead
+                const RobotContextConfig = wasm.RobotContextConfig;
+                const config = RobotContextConfig.gpuOptimized();
+
+                const RobotContext = wasm.RobotContext;
+                this.robotContext = RobotContext.fromUrdfWithConfig(this.config.robotUrdf, config);
+
+                // Create empty collision environment (will be populated via setCollisionWorld)
+                const CollisionEnvironment = wasm.CollisionEnvironment;
+                this.wasmCollisionEnv = new CollisionEnvironment();
+
+                this.useNativeGpuPlanning = true;
+                robotContextInitialized = true;
+                console.log(`[GpuPlanningEngine] RobotContext initialized: ${this.robotContext.name}, DOF: ${this.robotContext.dof}, GPU Compatible: ${this.robotContext.isGpuCompatible}`);
+                console.log(`[GpuPlanningEngine] Stats: ${this.robotContext.stats.summary()}`);
+              } catch (robotContextError) {
+                // RobotContext failed (likely due to STL mesh in URDF), fall through to legacy API
+                console.warn('[GpuPlanningEngine] RobotContext failed (URDF may have mesh collision geometry):', robotContextError);
+                this.robotContext = null;
+              }
+            }
+
+            // Fallback to legacy GpuPlanningContext API (uses JS-side capsule model)
+            if (!robotContextInitialized && wasm.GpuPlanningContextConfig && wasm.GpuPlanningContext &&
+                wasm.CollisionEnvironment && wasm.WasmRobotCollisionModel) {
+              // Create GPU planning context config
+              const GpuPlanningContextConfig = wasm.GpuPlanningContextConfig;
+              const gpuConfig = new GpuPlanningContextConfig();
+              const params = this.config.defaultParams || {};
+              if (params.numSamples) gpuConfig.num_samples = params.numSamples;
+              if (params.numNeighbors) gpuConfig.k_neighbors = params.numNeighbors;
+
+              // Create the GPU planning context
+              const GpuPlanningContext = wasm.GpuPlanningContext;
+              this.gpuPlanningContext = new GpuPlanningContext(
+                this.robot,
+                gpuConfig
+              );
+
+              // Create empty collision environment (will be populated via setCollisionWorld)
+              const CollisionEnvironment = wasm.CollisionEnvironment;
+              this.wasmCollisionEnv = new CollisionEnvironment();
+
+              // Robot collision model will be created in setCollisionWorld when robotCapsules are provided
+              this.robotCollisionModel = null;
+
+              this.useNativeGpuPlanning = true;
+              console.log('[GpuPlanningEngine] Legacy GPU planning context initialized (robot collision model pending)');
+            } else if (!robotContextInitialized) {
+              // Neither RobotContext nor legacy API available
+              console.warn('[GpuPlanningEngine] Native GPU planning types not available, using JS fallback');
+              this.useNativeGpuPlanning = false;
+            }
+          } catch (gpuError) {
+            console.warn('[GpuPlanningEngine] Failed to initialize native GPU planning:', gpuError);
+            this.useNativeGpuPlanning = false;
+          }
         } catch (robotError) {
           console.warn('Failed to load robot from URDF for FK:', robotError);
           // Continue without robot - collision checking will be limited
+          this.useNativeGpuPlanning = false;
         }
       }
 
@@ -119,7 +244,7 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
       this._state.initialized = true;
       this.updateProgress({
         phase: 'idle',
-        message: 'Ready',
+        message: this.useNativeGpuPlanning ? 'Ready (GPU batch mode)' : 'Ready (JS fallback)',
       });
 
       this.emitEvent({ type: 'initialized', timestamp: Date.now() });
@@ -137,6 +262,27 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
     this.progressCallbacks.clear();
     this.eventCallbacks.clear();
     this.capsuleTransformer = null;
+
+    // Clean up native GPU planning resources
+    // NEW: RobotContext cleanup
+    if (this.robotContext) {
+      this.robotContext.free();
+      this.robotContext = null;
+    }
+    // Legacy cleanup
+    if (this.gpuPlanningContext) {
+      this.gpuPlanningContext.free();
+      this.gpuPlanningContext = null;
+    }
+    if (this.robotCollisionModel) {
+      this.robotCollisionModel.free();
+      this.robotCollisionModel = null;
+    }
+    if (this.wasmCollisionEnv) {
+      this.wasmCollisionEnv.free();
+      this.wasmCollisionEnv = null;
+    }
+
     if (this.robot) {
       this.robot.free();
       this.robot = null;
@@ -149,12 +295,210 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
   // Collision World Management
   // ============================================================================
 
+  /**
+   * Build WASM robot collision model from JS-side capsule data
+   * This is used when URDF files only have mesh geometries which cannot be loaded in browser
+   */
+  private buildWasmRobotCollisionModel(robotCapsules: RobotCapsuleModel): void {
+    if (!this.trajxWasm) return;
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const wasm = this.trajxWasm as any;
+      const WasmRobotCollisionModel = wasm.WasmRobotCollisionModel;
+      const Position = wasm.Position;
+      const Quaternion = wasm.Quaternion;
+      const Pose = wasm.Pose;
+
+      // Create empty robot collision model
+      const robotName = this.robot?.name || 'robot';
+      this.robotCollisionModel = new WasmRobotCollisionModel(robotName);
+
+      // Add capsule geometries for each link
+      // Capsule is defined by two endpoints (point1, point2) and radius
+      for (const capsule of robotCapsules.capsules) {
+        const linkName = capsule.linkName;
+        const radius = capsule.radius;
+
+        // Calculate capsule center and length from endpoints
+        const p1 = capsule.point1;
+        const p2 = capsule.point2;
+
+        // Center position (midpoint of endpoints)
+        const centerX = (p1[0] + p2[0]) / 2;
+        const centerY = (p1[1] + p2[1]) / 2;
+        const centerZ = (p1[2] + p2[2]) / 2;
+
+        // Length (distance between endpoints)
+        const dx = p2[0] - p1[0];
+        const dy = p2[1] - p1[1];
+        const dz = p2[2] - p1[2];
+        const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const halfHeight = length / 2;
+
+        // Calculate orientation quaternion (align cylinder Z-axis with capsule axis)
+        // Default cylinder is along Z-axis, we need to rotate it to align with (dx, dy, dz)
+        let qw = 1, qx = 0, qy = 0, qz = 0;
+        if (length > 1e-6) {
+          // Normalize direction
+          const nx = dx / length;
+          const ny = dy / length;
+          const nz = dz / length;
+
+          // Rotation from Z-axis (0, 0, 1) to capsule direction
+          // Using quaternion from two vectors formula
+          const dot = nz; // (0,0,1) · (nx,ny,nz) = nz
+          if (dot > 0.9999) {
+            // Already aligned with Z
+            qw = 1; qx = 0; qy = 0; qz = 0;
+          } else if (dot < -0.9999) {
+            // Opposite to Z, rotate 180° around X
+            qw = 0; qx = 1; qy = 0; qz = 0;
+          } else {
+            // Cross product (0,0,1) × (nx,ny,nz) = (-ny, nx, 0)
+            const crossX = -ny;
+            const crossY = nx;
+            const crossZ = 0;
+            qw = 1 + dot;
+            qx = crossX;
+            qy = crossY;
+            qz = crossZ;
+            // Normalize quaternion
+            const qLen = Math.sqrt(qw * qw + qx * qx + qy * qy + qz * qz);
+            qw /= qLen; qx /= qLen; qy /= qLen; qz /= qLen;
+          }
+        }
+
+        // Create Pose object using Position and Quaternion classes
+        // Quaternion constructor order is (x, y, z, w)
+        const position = new Position(centerX, centerY, centerZ);
+        const quaternion = new Quaternion(qx, qy, qz, qw);
+        const origin = new Pose(position, quaternion);
+
+        // Add as cylinder geometry (capsule approximation)
+        this.robotCollisionModel.addCylinderGeometry(linkName, radius, halfHeight, origin);
+      }
+
+      // Set up allowed collision matrix for adjacent links
+      // Get link names and allow collisions between parent-child pairs
+      const linkNames = robotCapsules.capsules.map(c => c.linkName);
+      for (let i = 0; i < linkNames.length - 1; i++) {
+        this.robotCollisionModel.allowLinkPair(linkNames[i], linkNames[i + 1]);
+      }
+
+      console.log(`[GpuPlanningEngine] Built WASM robot collision model from JS capsules: ${this.robotCollisionModel.totalGeometries} geometries`);
+    } catch (error) {
+      console.warn('[GpuPlanningEngine] Failed to build WASM robot collision model:', error);
+      this.robotCollisionModel = null;
+    }
+  }
+
   setCollisionWorld(world: CollisionWorld): void {
     this._state.collisionWorld = world;
 
-    // Update capsule transformer with new robot capsules if provided
+    // Update capsule transformer with new robot capsules if provided (for JS fallback)
     if (world.robotCapsules) {
       this.capsuleTransformer = new CapsuleTransformer(world.robotCapsules);
+      console.log(`[GpuPlanningEngine] Created capsule transformer with ${world.robotCapsules.capsules.length} capsules`);
+
+      // Build WASM robot collision model from JS-side capsule data
+      // Only needed for legacy GpuPlanningContext API (not RobotContext which auto-generates capsules)
+      if (this.useNativeGpuPlanning && this.trajxWasm && !this.robotContext && !this.robotCollisionModel) {
+        this.buildWasmRobotCollisionModel(world.robotCapsules);
+      }
+    } else if (!this.robotContext) {
+      // Only warn if not using RobotContext (which auto-generates capsules)
+      console.warn('[GpuPlanningEngine] No robot capsules provided - JS fallback collision checking will be limited');
+    }
+
+    // Sync collision world to WASM environment for native GPU planning
+    if (this.useNativeGpuPlanning && this.wasmCollisionEnv && this.trajxWasm) {
+      try {
+        // Clear existing obstacles
+        this.wasmCollisionEnv.clear();
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const wasm = this.trajxWasm as any;
+
+        let addedCount = 0;
+
+        // Add obstacles from world
+        for (const [id, obj] of world.objects) {
+          if (!obj.enabled) continue;
+
+          // Skip objects without valid params
+          if (!obj.params) {
+            console.warn(`[GpuPlanningEngine] Skipping object '${id}' (${obj.type}): missing params`);
+            continue;
+          }
+
+          const pos = obj.transform.position;
+          const Pose = wasm.Pose;
+
+          switch (obj.type) {
+            case 'sphere': {
+              const params = obj.params as { type: 'sphere'; radius: number };
+              if (typeof params.radius !== 'number' || params.radius <= 0) {
+                console.warn(`[GpuPlanningEngine] Skipping sphere '${id}': invalid radius`, params.radius);
+                continue;
+              }
+              const position = new Float64Array([pos[0], pos[1], pos[2]]);
+              this.wasmCollisionEnv.addSphere(id, params.radius, position);
+              addedCount++;
+              console.log(`[GpuPlanningEngine] Added sphere '${id}': radius=${params.radius}, pos=[${pos[0].toFixed(3)}, ${pos[1].toFixed(3)}, ${pos[2].toFixed(3)}]`);
+              break;
+            }
+            case 'box': {
+              const params = obj.params as { type: 'box'; width: number; height: number; depth: number };
+              if (!params.width || !params.height || !params.depth) {
+                console.warn(`[GpuPlanningEngine] Skipping box '${id}': invalid dimensions`, params);
+                continue;
+              }
+              // Three.js convention: width=X, height=Y, depth=Z
+              // halfExtents order is [x, y, z]
+              const halfExtents = new Float64Array([params.width / 2, params.height / 2, params.depth / 2]);
+              const pose = Pose.fromPositionEuler(pos[0], pos[1], pos[2], 0, 0, 0);
+              this.wasmCollisionEnv.addBox(id, halfExtents, pose);
+              addedCount++;
+              console.log(`[GpuPlanningEngine] Added box '${id}': halfExtents=[${(params.width/2).toFixed(3)}, ${(params.height/2).toFixed(3)}, ${(params.depth/2).toFixed(3)}], pos=[${pos[0].toFixed(3)}, ${pos[1].toFixed(3)}, ${pos[2].toFixed(3)}]`);
+              break;
+            }
+            case 'cylinder': {
+              const params = obj.params as { type: 'cylinder'; radius: number; height: number };
+              if (!params.radius || !params.height) {
+                console.warn(`[GpuPlanningEngine] Skipping cylinder '${id}': invalid params`, params);
+                continue;
+              }
+              const pose = Pose.fromPositionEuler(pos[0], pos[1], pos[2], 0, 0, 0);
+              this.wasmCollisionEnv.addCylinder(id, params.radius, params.height, pose);
+              addedCount++;
+              console.log(`[GpuPlanningEngine] Added cylinder '${id}': radius=${params.radius}, height=${params.height}`);
+              break;
+            }
+            case 'capsule': {
+              const params = obj.params as { type: 'capsule'; radius: number; height: number };
+              if (!params.radius || !params.height) {
+                console.warn(`[GpuPlanningEngine] Skipping capsule '${id}': invalid params`, params);
+                continue;
+              }
+              // Capsule defined by two endpoints (Z-up, vertical capsule)
+              const point1 = new Float64Array([pos[0], pos[1], pos[2] - params.height / 2]);
+              const point2 = new Float64Array([pos[0], pos[1], pos[2] + params.height / 2]);
+              this.wasmCollisionEnv.addCapsule(id, params.radius, point1, point2);
+              addedCount++;
+              console.log(`[GpuPlanningEngine] Added capsule '${id}': radius=${params.radius}, height=${params.height}`);
+              break;
+            }
+            // Note: mesh type requires more complex handling
+          }
+        }
+
+        // Verify obstacles were added
+        const obstacleIds = this.wasmCollisionEnv.obstacleIds?.() || [];
+        console.log(`[GpuPlanningEngine] Collision environment updated: ${addedCount} obstacles added, verified IDs:`, obstacleIds);
+      } catch (syncError) {
+        console.warn('Failed to sync collision world to WASM environment:', syncError);
+      }
     }
 
     this.emitEvent({
@@ -192,17 +536,27 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
           // Transform capsules to world coordinates
           const worldCapsules = transformer.transform(linkTransforms);
 
-          // Check self-collision
+          // Check self-collision (with safety margin for robustness)
+          // Note: Capsule models are approximations - use negative margin to avoid false positives
+          // The self-collision pairs should be carefully defined to only check links that can actually collide
           const selfCollisionResult = checkSelfCollision(
             worldCapsules,
-            transformer.getSelfCollisionPairs()
+            transformer.getSelfCollisionPairs(),
+            -0.05  // Negative margin = allow 50mm overlap tolerance for coarse capsule models
           );
           if (selfCollisionResult.hasCollision) {
+            console.warn('[GpuPlanningEngine] Self-collision detected:', selfCollisionResult.collidingPairs);
             return true;
           }
 
+          // Get links to ignore for environment collision (e.g., base link)
+          const ignoredLinksForEnv = new Set(transformer.getIgnoredLinksForEnv());
+
+          // Filter capsules for environment collision checking
+          const envCheckCapsules = worldCapsules.filter(c => !ignoredLinksForEnv.has(c.linkIndex));
+
           // Check collision with environment objects
-          for (const [, obj] of world.objects) {
+          for (const [objId, obj] of world.objects) {
             if (!obj.enabled) continue;
 
             const objPos = obj.transform.position;
@@ -210,8 +564,10 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
             switch (obj.type) {
               case 'sphere': {
                 const params = obj.params as { type: 'sphere'; radius: number };
-                for (const capsule of worldCapsules) {
-                  if (capsuleSphereCollision(capsule, objPos, params.radius)) {
+                for (const capsule of envCheckCapsules) {
+                  // Use negative margin to reduce false positives from coarse capsule approximations
+                  if (capsuleSphereCollision(capsule, objPos, params.radius, -0.02)) {
+                    console.warn(`[GpuPlanningEngine] Collision with sphere '${objId}' at link ${capsule.linkIndex}`);
                     return true;
                   }
                 }
@@ -224,8 +580,10 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
                   params.height / 2,
                   params.depth / 2,
                 ];
-                for (const capsule of worldCapsules) {
-                  if (capsuleBoxCollision(capsule, objPos, halfExtents)) {
+                for (const capsule of envCheckCapsules) {
+                  // Use negative margin to reduce false positives from coarse capsule approximations
+                  if (capsuleBoxCollision(capsule, objPos, halfExtents, -0.02)) {
+                    console.warn(`[GpuPlanningEngine] Collision with box '${objId}' at link ${capsule.linkIndex}`);
                     return true;
                   }
                 }
@@ -240,8 +598,10 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
                   point1: [objPos[0], objPos[1] - params.height / 2, objPos[2]],
                   point2: [objPos[0], objPos[1] + params.height / 2, objPos[2]],
                 };
-                for (const robotCapsule of worldCapsules) {
-                  if (capsulesCollision(robotCapsule, cylinderCapsule)) {
+                for (const robotCapsule of envCheckCapsules) {
+                  // Use negative margin to reduce false positives
+                  if (capsulesCollision(robotCapsule, cylinderCapsule, -0.02)) {
+                    console.warn(`[GpuPlanningEngine] Collision with cylinder '${objId}' at link ${robotCapsule.linkIndex}`);
                     return true;
                   }
                 }
@@ -255,8 +615,10 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
                   point1: [objPos[0], objPos[1] - params.height / 2, objPos[2]],
                   point2: [objPos[0], objPos[1] + params.height / 2, objPos[2]],
                 };
-                for (const robotCapsule of worldCapsules) {
-                  if (capsulesCollision(robotCapsule, envCapsule)) {
+                for (const robotCapsule of envCheckCapsules) {
+                  // Use negative margin to reduce false positives
+                  if (capsulesCollision(robotCapsule, envCapsule, -0.02)) {
+                    console.warn(`[GpuPlanningEngine] Collision with capsule '${objId}' at link ${robotCapsule.linkIndex}`);
                     return true;
                   }
                 }
@@ -267,8 +629,10 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
                 // For now, use bounding sphere approximation
                 const params = obj.params as { type: 'mesh'; boundingSphere?: { center: [number, number, number]; radius: number } };
                 if (params.boundingSphere) {
-                  for (const capsule of worldCapsules) {
-                    if (capsuleSphereCollision(capsule, objPos, params.boundingSphere.radius)) {
+                  for (const capsule of envCheckCapsules) {
+                    // Use negative margin to reduce false positives
+                    if (capsuleSphereCollision(capsule, objPos, params.boundingSphere.radius, -0.02)) {
+                      console.warn(`[GpuPlanningEngine] Collision with mesh '${objId}' at link ${capsule.linkIndex}`);
                       return true;
                     }
                   }
@@ -680,7 +1044,27 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
     checker: CollisionCheckerFn,
     signal: AbortSignal
   ): Promise<{ path: JointConfiguration[]; collisionChecks: number; nodesExplored: number }> {
-    // Lazy-PRM implementation
+    // Try NEW RobotContext API first (recommended, with auto capsule approximation)
+    if (this.useNativeGpuPlanning && this.robotContext && this.wasmCollisionEnv) {
+      try {
+        return await this.executeRobotContextLazyPRM(start, goal, params, signal);
+      } catch (nativeError) {
+        console.warn('RobotContext GPU planning failed, trying legacy API:', nativeError);
+        // Fall through to legacy API
+      }
+    }
+
+    // Try legacy GpuPlanningContext API
+    if (this.useNativeGpuPlanning && this.gpuPlanningContext && this.robotCollisionModel && this.wasmCollisionEnv) {
+      try {
+        return await this.executeNativeGpuLazyPRM(start, goal, params, signal);
+      } catch (nativeError) {
+        console.warn('Native GPU planning failed, falling back to JS implementation:', nativeError);
+        // Fall through to JS implementation
+      }
+    }
+
+    // Fallback: JS Lazy-PRM implementation
     // 1. Build roadmap with random samples (no collision check yet)
     // 2. Query path from start to goal
     // 3. Lazily validate edges on the path
@@ -788,6 +1172,230 @@ export class GpuPlanningEngine implements IGpuPlanningEngine {
       path: validatedPath,
       collisionChecks,
       nodesExplored: samples.length,
+    };
+  }
+
+  /**
+   * Execute Lazy-PRM using native trajx-wasm GpuPlanningContext with batch edge checking.
+   * This uses the WASM-based Lazy-PRM which is optimized for GPU/batch collision checking.
+   */
+  private async executeNativeGpuLazyPRM(
+    start: number[],
+    goal: number[],
+    params: Required<PlannerParams>,
+    signal: AbortSignal
+  ): Promise<{ path: JointConfiguration[]; collisionChecks: number; nodesExplored: number }> {
+    if (!this.gpuPlanningContext || !this.robotCollisionModel || !this.wasmCollisionEnv || !this.robot) {
+      throw new Error('Native GPU planning not initialized');
+    }
+
+    this.updateProgress({
+      phase: 'building-roadmap',
+      message: 'Building GPU-accelerated roadmap...',
+      phaseProgress: 0,
+    });
+
+    // Build roadmap if not already built
+    if (!this.gpuPlanningContext.isRoadmapBuilt()) {
+      this.gpuPlanningContext.buildRoadmap();
+    }
+
+    this.updateProgress({
+      phase: 'building-roadmap',
+      message: 'Roadmap built',
+      phaseProgress: 1,
+      nodesCount: this.gpuPlanningContext.nodeCount(),
+    });
+
+    // Create batch edge checker using the robot collision model
+    // This is the key function that enables batch collision checking
+    const samplesPerEdge = 5; // Number of samples along each edge to check
+    const batchEdgeChecker = this.robotCollisionModel.createBatchEdgeChecker(
+      this.wasmCollisionEnv,
+      this.robot,
+      samplesPerEdge
+    );
+
+    this.updateProgress({
+      phase: 'searching',
+      message: 'Planning with GPU batch collision checking...',
+      phaseProgress: 0,
+    });
+
+    // Convert to Float64Array for WASM
+    const startConfig = new Float64Array(start);
+    const goalConfig = new Float64Array(goal);
+
+    // Plan path using native GPU planning context with batch edge checker
+    const result = this.gpuPlanningContext.planPath(startConfig, goalConfig, batchEdgeChecker);
+
+    // Check for abort
+    if (signal.aborted) {
+      throw new Error('Planning aborted');
+    }
+
+    // Extract results
+    if (!result.success) {
+      const errorMsg = result.error() || 'GPU planning failed';
+      this.updateProgress({
+        phase: 'failed',
+        message: errorMsg,
+      });
+      return { path: [], collisionChecks: result.collisionChecks, nodesExplored: this.gpuPlanningContext.nodeCount() };
+    }
+
+    // Convert path from WASM result
+    const pathData = result.path();
+    const waypointCount = result.waypointCount;
+    const dof = this.config.dof;
+
+    const path: JointConfiguration[] = [];
+    for (let i = 0; i < waypointCount; i++) {
+      const joints: number[] = [];
+      for (let j = 0; j < dof; j++) {
+        joints.push(pathData[i * dof + j]);
+      }
+      path.push(joints);
+    }
+
+    this.updateProgress({
+      phase: 'completed',
+      message: `GPU planning complete: ${path.length} waypoints`,
+      phaseProgress: 1,
+      nodesCount: this.gpuPlanningContext.nodeCount(),
+      edgesValidated: result.edgesValidated,
+    });
+
+    return {
+      path,
+      collisionChecks: result.collisionChecks,
+      nodesExplored: this.gpuPlanningContext.nodeCount(),
+    };
+  }
+
+  /**
+   * Execute Lazy-PRM using the NEW RobotContext API with automatic capsule approximation.
+   * This is the recommended approach for GPU-accelerated motion planning.
+   *
+   * RobotContext provides:
+   * - Automatic capsule approximation from URDF (no manual capsule model needed)
+   * - Unified API for GPU planning
+   * - Batch edge checking with ctx.checkEdgesBatch(edges, env, samples)
+   */
+  private async executeRobotContextLazyPRM(
+    start: number[],
+    goal: number[],
+    params: Required<PlannerParams>,
+    signal: AbortSignal
+  ): Promise<{ path: JointConfiguration[]; collisionChecks: number; nodesExplored: number }> {
+    if (!this.robotContext || !this.wasmCollisionEnv) {
+      throw new Error('RobotContext not initialized');
+    }
+
+    this.updateProgress({
+      phase: 'building-roadmap',
+      message: 'Building roadmap with RobotContext API...',
+      phaseProgress: 0,
+    });
+
+    // Create planner from RobotContext
+    const planner = this.robotContext.createPlanner();
+
+    // Build roadmap (fast, no collision checking)
+    planner.buildRoadmap();
+
+    const nodeCount = planner.nodeCount;
+    const edgeCount = planner.edgeCount;
+
+    this.updateProgress({
+      phase: 'building-roadmap',
+      message: `Roadmap built: ${nodeCount} nodes, ${edgeCount} edges`,
+      phaseProgress: 1,
+      nodesCount: nodeCount,
+    });
+
+    // Check for abort
+    if (signal.aborted) {
+      planner.free();
+      throw new Error('Planning aborted');
+    }
+
+    this.updateProgress({
+      phase: 'searching',
+      message: 'Planning with RobotContext batch collision checking...',
+      phaseProgress: 0,
+    });
+
+    // Samples per edge for collision checking
+    const samplesPerEdge = 5;
+
+    // Create batch edge checker callback using RobotContext API
+    // This is the key function: ctx.checkEdgesBatch(edges, env, samples) returns boolean[]
+    const batchEdgeChecker = (edges: Array<[Float64Array, Float64Array]>): boolean[] => {
+      // Check for abort during edge checking
+      if (signal.aborted) {
+        return edges.map(() => false);
+      }
+
+      // Use RobotContext's batch edge checking
+      return this.robotContext.checkEdgesBatch(edges, this.wasmCollisionEnv, samplesPerEdge);
+    };
+
+    // Convert to Float64Array for WASM
+    const startConfig = new Float64Array(start);
+    const goalConfig = new Float64Array(goal);
+
+    // Query path using the planner with batch edge checker callback
+    const result = planner.query(startConfig, goalConfig, batchEdgeChecker);
+
+    // Check for abort
+    if (signal.aborted) {
+      planner.free();
+      throw new Error('Planning aborted');
+    }
+
+    // Extract results
+    if (!result.success) {
+      const errorMsg = result.error || 'RobotContext planning failed';
+      this.updateProgress({
+        phase: 'failed',
+        message: errorMsg,
+      });
+      planner.free();
+      return { path: [], collisionChecks: result.edgesValidated || 0, nodesExplored: nodeCount };
+    }
+
+    // Convert path from WASM result
+    // result.waypoints is an array of Float64Array
+    const waypoints = result.waypoints;
+    const waypointCount = result.waypointCount;
+    const dof = this.config.dof;
+
+    const path: JointConfiguration[] = [];
+    for (let i = 0; i < waypointCount; i++) {
+      const wp = waypoints[i];
+      const joints: number[] = [];
+      for (let j = 0; j < dof; j++) {
+        joints.push(wp[j]);
+      }
+      path.push(joints);
+    }
+
+    this.updateProgress({
+      phase: 'completed',
+      message: `RobotContext planning complete: ${path.length} waypoints in ${result.planningTimeMs?.toFixed(1) || '?'}ms`,
+      phaseProgress: 1,
+      nodesCount: nodeCount,
+      edgesValidated: result.edgesValidated || 0,
+    });
+
+    // Clean up planner
+    planner.free();
+
+    return {
+      path,
+      collisionChecks: result.edgesValidated || 0,
+      nodesExplored: nodeCount,
     };
   }
 

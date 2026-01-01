@@ -32,12 +32,14 @@ import {
   useGpuPlanning,
   useHybridSolver,
   CollisionWorldRenderer,
+  TrajectoryFK,
   type GhostStatus,
   type WorkspaceAnalysis,
   type GpuPlanningProgress,
   type GpuPlanningResult,
   type PlanningWaypoint,
   type RobotCapsuleModel,
+  type TrajectoryData,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 
@@ -116,6 +118,17 @@ const ROBOT_JOINT_LIMITS = {
 
 // Initial joint position (all zeros)
 const HOME_JOINTS = [0, 0, 0, 0, 0, 0];
+
+// Trajectory generation config - velocity and acceleration limits per joint
+// Based on typical Fanuc LR Mate 200iD/7L specs (conservative values)
+const TRAJECTORY_CONFIG = {
+  maxVelocity: [3.0, 3.0, 3.5, 5.0, 5.0, 7.0],       // rad/s per joint
+  maxAcceleration: [6.0, 6.0, 7.0, 10.0, 10.0, 14.0], // rad/s^2 per joint
+  timeStep: 0.01,  // 10ms sampling interval for smooth playback
+};
+
+// Playback configuration
+const PLAYBACK_DURATION = 3.0; // Total playback duration in seconds
 
 // ============================================================================
 // Robot Capsule Model for Collision Detection
@@ -527,6 +540,8 @@ interface SceneContentProps {
   collisionObjects: ReturnType<typeof useCollisionWorld>['objects'];
   plannedPath: Array<{ joints: number[] }>;
   pathIndex: number;
+  trajectoryData: TrajectoryData | null;
+  urdfContent: string | null;
 }
 
 function SceneContent({
@@ -541,6 +556,8 @@ function SceneContent({
   collisionObjects,
   plannedPath,
   pathIndex,
+  trajectoryData,
+  urdfContent,
 }: SceneContentProps) {
   // Connection line between workpoints
   const connectionPoints = useMemo(() => {
@@ -598,8 +615,19 @@ function SceneContent({
         <Line points={connectionPoints} color="#6366f1" lineWidth={2} dashed dashSize={0.04} gapSize={0.02} />
       )}
 
-      {/* Path visualization */}
-      <PathVisualization path={plannedPath} currentIndex={pathIndex} />
+      {/* Trajectory visualization using TrajectoryFK (end-effector path computed via FK) */}
+      {trajectoryData && urdfContent && trajectoryData.positions.length > 0 && (
+        <TrajectoryFK
+          robotId={ROBOT_ID}
+          urdfContent={urdfContent}
+          trajectoryData={trajectoryData}
+          showPath={true}
+          pathWidth={3}
+          showWaypoints={true}
+          pathColor="#a855f7"
+          colorByStatus={false}
+        />
+      )}
 
       {/* Lighting */}
       <ambientLight intensity={0.5} />
@@ -669,31 +697,42 @@ function usePathPlayback(path: Array<{ joints: number[] }> | null, onJointsUpdat
 // Playback Controller Component (inside Canvas)
 // ============================================================================
 
-const PLAYBACK_DURATION = 3.0; // Total playback duration in seconds
-
 function PlaybackController({
   path,
   onJointsUpdate,
   playbackState,
+  trajectoryData,
 }: {
   path: Array<{ joints: number[] }> | null;
   onJointsUpdate: (joints: number[]) => void;
-  playbackState: { setIsPlaying: (v: boolean) => void; setIndex: (v: number) => void };
+  playbackState: { setIsPlaying: (v: boolean) => void; setIndex: (v: number) => void; onComplete: () => void };
+  trajectoryData: TrajectoryData | null;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const timeRef = useRef(0);
+  const completedRef = useRef(false);
 
   useEffect(() => {
     playbackState.setIsPlaying = setIsPlaying;
     playbackState.setIndex = setCurrentIndex;
   }, [playbackState]);
 
+  // Reset completed flag when playback starts
+  useEffect(() => {
+    if (isPlaying) {
+      completedRef.current = false;
+    }
+  }, [isPlaying]);
+
   useFrame((_, delta) => {
     if (!isPlaying || !path || path.length === 0) return;
 
-    // Time-based playback: complete path in PLAYBACK_DURATION seconds
-    timeRef.current += delta / PLAYBACK_DURATION;
+    // Use trajectory duration if available, otherwise use default
+    const duration = trajectoryData?.duration || PLAYBACK_DURATION;
+
+    // Time-based playback using actual trajectory timing
+    timeRef.current += delta / duration;
 
     // Calculate progress (0 to 1)
     const progress = Math.min(timeRef.current, 1);
@@ -719,9 +758,14 @@ function PlaybackController({
 
     onJointsUpdate(interpolatedJoints);
 
-    if (progress >= 1) {
+    if (progress >= 1 && !completedRef.current) {
+      completedRef.current = true;
       setIsPlaying(false);
       timeRef.current = 0;
+      // Call completion callback
+      if (playbackState.onComplete) {
+        playbackState.onComplete();
+      }
     }
   });
 
@@ -742,9 +786,10 @@ export function GPUMotionPlanningScene() {
   const [urdfContent, setUrdfContent] = useState<string | null>(null);
   const [robotJoints, setRobotJoints] = useState<number[]>(HOME_JOINTS);
   const [plannedPath, setPlannedPath] = useState<Array<{ joints: number[] }>>([]);
+  const [trajectoryData, setTrajectoryData] = useState<TrajectoryData | null>(null);
   const [pathIndex, setPathIndex] = useState(0);
   const [isPlayingPath, setIsPlayingPath] = useState(false);
-  const playbackStateRef = useRef({ setIsPlaying: (_: boolean) => {}, setIndex: (_: number) => {} });
+  const playbackStateRef = useRef({ setIsPlaying: (_: boolean) => {}, setIndex: (_: number) => {}, onComplete: () => {} });
 
   // ========== WASM Init ==========
   const { ready: wasmReady } = useTrajx();
@@ -1029,14 +1074,61 @@ export function GPUMotionPlanningScene() {
 
       if (result.success) {
         setPlannedPath(result.path);
+
+        // Convert to TrajectoryData for visualization with proper timing
+        const trajData = pathToTrajectoryData(result.path);
+        setTrajectoryData(trajData);
+
         addLog('info', `Path found through ${sortedWorkpoints.length} waypoints: ${result.path.length} total waypoints in ${result.planningTimeMs.toFixed(0)}ms`);
       } else {
+        setTrajectoryData(null);
         addLog('error', `Planning failed: ${result.error || 'Unknown error'}`);
       }
     } catch (err) {
+      setTrajectoryData(null);
       addLog('error', `Planning error: ${err instanceof Error ? err.message : 'Unknown'}`);
     }
   }, [gpuPlanningReady, solver.ready, workpoints, robotJoints, computeAllIK, planThroughWaypoints, addLog]);
+
+  // Convert planned path to TrajectoryData format for TrajectoryFK visualization
+  // TrajectoryData uses: { duration, times, positions }
+  const pathToTrajectoryData = useCallback((path: Array<{ joints: number[] }>): TrajectoryData => {
+    if (path.length === 0) {
+      return { duration: 0, times: [], positions: [] };
+    }
+
+    // Compute timing using velocity limits
+    const { maxVelocity, timeStep } = TRAJECTORY_CONFIG;
+    const times: number[] = [];
+    const positions: number[][] = [];
+    let cumulativeTime = 0;
+
+    for (let i = 0; i < path.length; i++) {
+      const joints = path[i].joints;
+
+      if (i > 0) {
+        const prevJoints = path[i - 1].joints;
+        // Find maximum joint movement and divide by velocity to get segment time
+        let maxMoveTime = 0;
+        for (let j = 0; j < joints.length; j++) {
+          const delta = Math.abs(joints[j] - prevJoints[j]);
+          const moveTime = delta / maxVelocity[j];
+          maxMoveTime = Math.max(maxMoveTime, moveTime);
+        }
+        // Ensure minimum time step
+        cumulativeTime += Math.max(maxMoveTime, timeStep);
+      }
+
+      times.push(cumulativeTime);
+      positions.push(joints);
+    }
+
+    return {
+      duration: cumulativeTime,
+      times,
+      positions,
+    };
+  }, []);
 
   const executePath = useCallback(() => {
     if (plannedPath.length === 0) {
@@ -1046,9 +1138,15 @@ export function GPUMotionPlanningScene() {
     setPathIndex(0);
     playbackStateRef.current.setIndex(0);
     playbackStateRef.current.setIsPlaying(true);
+    // Set completion callback
+    playbackStateRef.current.onComplete = () => {
+      setIsPlayingPath(false);
+      addLog('info', 'Path execution completed');
+    };
     setIsPlayingPath(true);
-    addLog('info', 'Executing planned path...');
-  }, [plannedPath, addLog]);
+    const durationStr = trajectoryData?.duration?.toFixed(2) || PLAYBACK_DURATION.toFixed(2);
+    addLog('info', `Executing planned path (${durationStr}s)...`);
+  }, [plannedPath, trajectoryData, addLog]);
 
   const stopExecution = useCallback(() => {
     playbackStateRef.current.setIsPlaying(false);
@@ -1166,7 +1264,7 @@ export function GPUMotionPlanningScene() {
                 {isPlayingPath ? 'Stop' : `Execute Path (${plannedPath.length} pts)`}
               </button>
               <button
-                onClick={() => { setRobotJoints(HOME_JOINTS); setPlannedPath([]); }}
+                onClick={() => { setRobotJoints(HOME_JOINTS); setPlannedPath([]); setTrajectoryData(null); }}
                 style={{
                   padding: '8px 12px',
                   borderRadius: 4,
@@ -1230,11 +1328,14 @@ export function GPUMotionPlanningScene() {
               collisionObjects={collisionObjects}
               plannedPath={plannedPath}
               pathIndex={pathIndex}
+              trajectoryData={trajectoryData}
+              urdfContent={urdfContent}
             />
             <PlaybackController
               path={plannedPath.length > 0 ? plannedPath : null}
               onJointsUpdate={handleJointsUpdate}
               playbackState={playbackStateRef.current}
+              trajectoryData={trajectoryData}
             />
           </RoboViz>
         </div>
