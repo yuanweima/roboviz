@@ -192,3 +192,49 @@ export {
   type UseIKComputationOptions,
   type UseIKComputationReturn,
 } from './useIKComputation';
+
+// ============================================================================
+// Solver Provider (dependency injection for IK/FK solvers)
+// ============================================================================
+
+export {
+  SolverProvider,
+  useSolverContext,
+  useSolverContextOptional,
+  useSolverStatus,
+  type SolverProviderProps,
+} from './SolverContext';
+
+export type {
+  ISolverProvider,
+  SolverCapabilities,
+  SolverContextValue,
+} from './solver-provider-types';
+
+// Adapters
+export {
+  WasmSolverAdapter,
+  WasmSolverProvider,
+  type WasmSolverProviderProps,
+  RemoteSolverAdapter,
+  type RemoteSolverConfig,
+  RemoteSolverProvider,
+  type RemoteSolverProviderProps,
+} from './adapters';
+
+// ============================================================================
+// High-level IK Hooks (kinematics-only, no rendering dependency)
+// ============================================================================
+
+export {
+  usePoseIK,
+  type UsePoseIKOptions,
+  type UsePoseIKReturn,
+} from '../hooks/usePoseIK';
+
+export {
+  useIKDrag,
+  type UseIKDragOptions,
+  type IKDragResult,
+  type UseIKDragReturn,
+} from '../hooks/useIKDrag';

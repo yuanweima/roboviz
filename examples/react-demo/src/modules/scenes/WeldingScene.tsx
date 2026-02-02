@@ -15,6 +15,19 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { RoboViz, PropertyEditor, type PropertySchema } from '@aspect/roboviz-react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+// Rendering components and system
+import {
+  Robot,
+  EndEffector,
+  WeldingTorch,
+  WELDING_TORCH_METADATA,
+  computeTcpFromMetadata,
+  RenderPipeline,
+  EnvironmentSystem,
+  SKYBOX_PRESETS,
+  QUALITY_PRESETS,
+} from '@aspect/roboviz-core/rendering';
+// Process architecture and hooks (main entry)
 import {
   ProcessProvider,
   RobotProcessProvider,
@@ -22,8 +35,6 @@ import {
   useProcessPlayback,
   useProcessGhost,
   useRobotProcessState,
-  EndEffector,
-  Robot,
   registerProcess,
   weldingProcess,
   type PoseTrajectory,
@@ -31,17 +42,7 @@ import {
   type ProcessDefinition,
   DEFAULT_WELDING_SETTINGS,
   type WeldingMethod,
-  // Tools from core library
-  WeldingTorch,
-  WELDING_TORCH_METADATA,
-  computeTcpFromMetadata,
-  // History hook for undo/redo
   usePropertyHistory,
-  // Rendering system
-  RenderPipeline,
-  EnvironmentSystem,
-  SKYBOX_PRESETS,
-  QUALITY_PRESETS,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import {

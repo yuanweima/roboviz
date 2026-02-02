@@ -12,7 +12,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Stats } from '@react-three/drei';
 import { useControls, button } from 'leva';
 import * as THREE from 'three';
-import { RoboVizCore, Robot } from '@aspect/roboviz-core';
+import { RoboVizCore, Robot } from '@aspect/roboviz-core/rendering';
 import { useAppStore } from '../store';
 
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';

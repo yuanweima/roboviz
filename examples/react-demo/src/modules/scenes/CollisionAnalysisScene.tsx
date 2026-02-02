@@ -19,13 +19,15 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { RoboViz, CollisionTimeline, type PropertySchema, PropertyEditor } from '@aspect/roboviz-react';
 import * as THREE from 'three';
+// Rendering components
+import { EndEffector } from '@aspect/roboviz-core/rendering';
+// Process architecture, timeline types (main entry)
 import {
   ProcessProvider,
   RobotProcessProvider,
   ProcessScene,
   useProcessPlayback,
   useRobotProcessState,
-  EndEffector,
   type PoseTrajectory,
   type TimelineCollisionEvent,
   type TimeRange,

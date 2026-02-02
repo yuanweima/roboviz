@@ -8,7 +8,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber';
 import { useControls, button, folder } from 'leva';
 import * as THREE from 'three';
-import { RoboVizCore } from '@aspect/roboviz-core';
+import { RoboVizCore } from '@aspect/roboviz-core/rendering';
 import { useAppStore } from '../store';
 
 // ============================================================================

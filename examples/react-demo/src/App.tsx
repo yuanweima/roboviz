@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Leva } from 'leva';
-import { InteractionProvider } from '@aspect/roboviz-core';
+import { InteractionProvider } from '@aspect/roboviz-core/rendering';
 import { Sidebar } from './components/Sidebar';
 import { StatusBar } from './components/StatusBar';
 

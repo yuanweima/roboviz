@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "setup": "pnpm install && pnpm build",
+    "run": "cd examples/react-demo && pnpm exec vite --port $CONDUCTOR_PORT --host 0.0.0.0"
+  },
+  "runScriptMode": "nonconcurrent"
+}

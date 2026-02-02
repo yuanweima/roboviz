@@ -19,7 +19,7 @@ import {
   GhostRobot,
   GhostRobotTrajectory,
   type GhostStatus,
-} from '@aspect/roboviz-core';
+} from '@aspect/roboviz-core/rendering';
 import { useAppStore } from '../store';
 
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';
