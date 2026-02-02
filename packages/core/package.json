@@ -32,6 +32,11 @@
       "require": "./dist/protocol-entry.js"
     }
   },
+  "sideEffects": false,
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
   "files": [
     "dist"
   ],

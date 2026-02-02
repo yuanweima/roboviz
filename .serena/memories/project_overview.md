@@ -48,3 +48,23 @@ packages/core/src 主要模块:
 - `theme/` - 主题系统
 - `vision/` - 视觉流
 - `collision/` - 碰撞检测
+
+## 子入口架构
+`@aspect/roboviz-core` 通过 `package.json` exports 提供 5 个独立入口：
+| 入口 | 用途 | WASM 依赖 |
+|------|------|-----------|
+| `.` | 完整库 | 是 |
+| `./rendering` | 纯 3D 渲染 | 否 |
+| `./kinematics` | IK/FK 求解 + Provider | 是 |
+| `./planning` | 运动规划 + 碰撞检测 | 是 |
+| `./protocol` | JSON-RPC 协议层 | 是 |
+
+设计目的：仅需渲染时不引入 WASM 依赖，降低包体积。`trajx-wasm` 是可选 peerDependency。
+
+## Python SDK
+`roboviz` Python 包通过 JSON-RPC over WebSocket 与可视化服务器通信：
+- 模块化结构：`kinematics.py`, `motion.py`, `vision.py` 等
+- 使用 `pyproject.toml` + `hatchling` 构建
+- 支持可选依赖：`numpy`, `jupyter`
+- 处理 ROS `package://` URDF 路径解析
+- 包含 `py.typed` 标记支持静态类型检查

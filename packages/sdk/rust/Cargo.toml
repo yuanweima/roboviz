@@ -1,18 +1,40 @@
 [package]
 name = "roboviz-sdk"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Rust SDK for RoboViz remote control"
+description = "Rust SDK for RoboViz remote control via JSON-RPC over WebSocket"
 license = "MIT"
 repository = "https://github.com/yuanweima/roboviz"
+keywords = ["robotics", "visualization", "urdf", "3d", "websocket"]
+categories = ["science::robotics", "visualization"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
-tokio-tungstenite = "0.21"
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
 futures-util = "0.3"
 thiserror = "1.0"
+tracing = "0.1"
+url = "2.5"
 
 [dev-dependencies]
 tokio-test = "0.4"
+tracing-subscriber = "0.3"
+
+[features]
+default = ["native-tls"]
+native-tls = ["tokio-tungstenite/native-tls"]
+blocking = []
+
+[[example]]
+name = "basic_robot"
+path = "examples/basic_robot.rs"
+
+[[example]]
+name = "kinematics_example"
+path = "examples/kinematics_example.rs"
+
+[[example]]
+name = "motion_planning"
+path = "examples/motion_planning.rs"

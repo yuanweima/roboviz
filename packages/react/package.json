@@ -12,6 +12,11 @@
       "require": "./dist/index.js"
     }
   },
+  "sideEffects": false,
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
   "files": ["dist"],
   "scripts": {
     "dev": "tsup src/index.ts --watch",

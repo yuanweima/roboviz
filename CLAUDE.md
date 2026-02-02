@@ -73,7 +73,18 @@ useHybridSolver (high-level hook)
 ```
 Use `useHybridSolver` for most cases - it auto-selects best solver.
 
-### 4. React Three Fiber Patterns
+### 4. Provider Dependency Injection
+Heavy optional deps (WASM solvers, planners) are injected via Context Providers:
+```tsx
+// SolverProvider / PlannerProvider wrap components needing IK/planning
+<SolverProvider solver={solver}>
+  <Robot />        {/* works without provider too */}
+  <GhostRobot />   {/* gets IK capability from provider */}
+</SolverProvider>
+```
+Hooks use `useSolverContextOptional` to work in both modes (with/without provider).
+
+### 5. React Three Fiber Patterns
 Components inside `<Canvas>` must use R3F hooks:
 ```tsx
 // Inside Canvas: use drei/R3F hooks
@@ -112,6 +123,9 @@ See `docs/decisions/` for design decisions:
 | P001 | WASM getPathFlat() metadata | `slice(2)` before parsing |
 | P002 | Y-up vs Z-up mismatch | Use `coordinateSystem: 'Z-up'` |
 | P003 | Joint values clamped silently | Check logs for "out of limits" |
+| P004 | Hardcoded WASM deps bloat rendering-only usage | Use optional peerDeps + sub-entry points |
+| P005 | coordinates/ implicitly depends on kinematics | Move `useRobotKinematics` to `/kinematics` entry |
+| P006 | TS type inference fails in async `.then()` | Use explicit casting or `resolveSync` helper |
 
 ## Testing
 ```bash
