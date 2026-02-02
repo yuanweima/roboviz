@@ -204,3 +204,223 @@ class SafetyZoneData:
             "position": self.position.to_dict(),
             "opacity": self.opacity,
         }
+
+
+# =============================================================================
+# Kinematics Types
+# =============================================================================
+
+
+@dataclass
+class IKResult:
+    """Result of inverse kinematics computation."""
+    success: bool
+    joints: List[float]
+    error: Optional[float] = None
+    iterations: Optional[int] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "IKResult":
+        return cls(
+            success=data.get("success", False),
+            joints=data.get("joints", []),
+            error=data.get("error"),
+            iterations=data.get("iterations"),
+        )
+
+
+@dataclass
+class WorkspaceAnalysis:
+    """Workspace quality analysis result."""
+    manipulability: float
+    condition_number: float
+    is_near_singularity: bool
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "WorkspaceAnalysis":
+        return cls(
+            manipulability=data.get("manipulability", 0.0),
+            condition_number=data.get("conditionNumber", float("inf")),
+            is_near_singularity=data.get("isNearSingularity", False),
+        )
+
+
+@dataclass
+class ReachabilityResult:
+    """Result of reachability check."""
+    reachable: bool
+    distance: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ReachabilityResult":
+        return cls(
+            reachable=data.get("reachable", False),
+            distance=data.get("distance"),
+        )
+
+
+@dataclass
+class DHParam:
+    """Denavit-Hartenberg parameter for a single joint."""
+    a: float
+    alpha: float
+    d: float
+    theta: float
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "DHParam":
+        return cls(
+            a=data.get("a", 0.0),
+            alpha=data.get("alpha", 0.0),
+            d=data.get("d", 0.0),
+            theta=data.get("theta", 0.0),
+        )
+
+
+@dataclass
+class SolverInfo:
+    """Information about a created kinematics solver."""
+    success: bool
+    dof: int
+    supports_analytical_ik: bool
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "SolverInfo":
+        return cls(
+            success=data.get("success", False),
+            dof=data.get("dof", 0),
+            supports_analytical_ik=data.get("supportsAnalyticalIk", False),
+        )
+
+
+# =============================================================================
+# Motion Planning Types
+# =============================================================================
+
+
+@dataclass
+class LinearMotionConfig:
+    """Configuration for linear motion planning."""
+    max_step: float = 0.01
+    max_joint_step: float = 0.05
+    timeout: float = 5.0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "maxStep": self.max_step,
+            "maxJointStep": self.max_joint_step,
+            "timeout": self.timeout,
+        }
+
+
+@dataclass
+class MotionResult:
+    """Result of motion planning."""
+    success: bool
+    path: List[List[float]]
+    duration: Optional[float] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "MotionResult":
+        return cls(
+            success=data.get("success", False),
+            path=data.get("path", []),
+            duration=data.get("duration"),
+        )
+
+
+@dataclass
+class FeasibilityResult:
+    """Result of motion feasibility check."""
+    feasible: bool
+    reason: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "FeasibilityResult":
+        return cls(
+            feasible=data.get("feasible", False),
+            reason=data.get("reason"),
+        )
+
+
+@dataclass
+class JointPathResult:
+    """Result of cartesian-to-joint path conversion."""
+    success: bool
+    joint_path: List[List[float]]
+    failed_indices: List[int]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "JointPathResult":
+        return cls(
+            success=data.get("success", False),
+            joint_path=data.get("jointPath", []),
+            failed_indices=data.get("failedIndices", []),
+        )
+
+
+@dataclass
+class PathAnalysis:
+    """Result of path analysis."""
+    total_length: float
+    singularity_indices: List[int]
+    joint_limit_warnings: List[Dict[str, Any]]
+    manipulabilities: List[float]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PathAnalysis":
+        return cls(
+            total_length=data.get("totalLength", 0.0),
+            singularity_indices=data.get("singularityIndices", []),
+            joint_limit_warnings=data.get("jointLimitWarnings", []),
+            manipulabilities=data.get("manipulabilities", []),
+        )
+
+
+@dataclass
+class ValidationResult:
+    """Result of path validation."""
+    valid: bool
+    issues: List[str]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ValidationResult":
+        return cls(
+            valid=data.get("valid", False),
+            issues=data.get("issues", []),
+        )
+
+
+# =============================================================================
+# Collision Types
+# =============================================================================
+
+
+@dataclass
+class CollisionResult:
+    """Result of collision check."""
+    has_collision: bool
+    pairs: List[Dict[str, Any]]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CollisionResult":
+        return cls(
+            has_collision=data.get("hasCollision", False),
+            pairs=data.get("pairs", []),
+        )
+
+
+@dataclass
+class PathCollisionResult:
+    """Result of path collision check."""
+    has_collision: bool
+    first_collision_index: Optional[int] = None
+    collision_indices: List[int] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PathCollisionResult":
+        return cls(
+            has_collision=data.get("hasCollision", False),
+            first_collision_index=data.get("firstCollisionIndex"),
+            collision_indices=data.get("collisionIndices", []),
+        )

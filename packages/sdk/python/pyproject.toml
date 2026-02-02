@@ -4,28 +4,52 @@ build-backend = "hatchling.build"
 
 [project]
 name = "roboviz"
-version = "0.1.0"
-description = "Python SDK for RoboViz - Robot Visualization"
+version = "0.2.0"
+description = "Python SDK for RoboViz - 3D Robot Visualization"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
+authors = [
+    { name = "Aspect Robotics" },
+]
+keywords = ["robotics", "visualization", "urdf", "3d", "robot", "three.js"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "websockets>=12.0",
 ]
 
 [project.optional-dependencies]
+numpy = ["numpy>=1.20"]
+jupyter = ["ipython>=7.0"]
+all = ["numpy>=1.20", "ipython>=7.0"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
 ]
-# Legacy client needs websocket-client
 legacy = [
     "websocket-client>=1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/yuanweima/roboviz"
+Source = "https://github.com/yuanweima/roboviz"
+Issues = "https://github.com/yuanweima/roboviz/issues"
+
 [tool.hatch.build.targets.wheel]
 packages = ["roboviz"]
 
-# Include bundled viewer if it exists
-[tool.hatch.build.targets.wheel.sources]
-"roboviz" = "roboviz"
+[tool.hatch.build.targets.sdist]
+include = ["roboviz/**"]
