@@ -22,20 +22,26 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Callable
+from typing import Optional, List, Dict, Any, Callable, Tuple
 from dataclasses import dataclass, field
 
 from .server import EmbeddedServer
 from .types import (
     Vector3,
+    Pose,
     TrajectoryData,
     ObstacleData,
     ObstacleShape,
     WaypointData,
 )
+from .kinematics import KinematicsSolver
+from .motion import MotionPlanner
+from .scene_manager import SceneManager
+from .diagnostic import DiagnosticVisualizer
+from .performance import PerformanceMonitor
 
 
-def _load_urdf_with_meshes(urdf_path: str) -> tuple[str, Dict[str, str]]:
+def _load_urdf_with_meshes(urdf_path: str) -> Tuple[str, Dict[str, str]]:
     """
     Load URDF file and all referenced mesh files.
 
@@ -146,6 +152,31 @@ class RobotHandle:
         """
         result = self._viz._send_request("robot.getTcpPose", {"id": self.id})
         return result.get("pose")
+
+    def create_solver(self, robot_name: str) -> "KinematicsSolver":
+        """
+        Create a kinematics solver for this robot.
+
+        Args:
+            robot_name: Robot model name for DH parameter lookup
+                        (e.g. "Fanuc_LR_Mate_200iD_7L").
+
+        Returns:
+            KinematicsSolver instance.
+        """
+        return KinematicsSolver(self._viz, self.id, robot_name)
+
+    def create_planner(self) -> "MotionPlanner":
+        """
+        Create a motion planner for this robot.
+
+        Requires a kinematics solver to be already created via
+        ``create_solver()``.
+
+        Returns:
+            MotionPlanner instance.
+        """
+        return MotionPlanner(self._viz, self.id)
 
     def remove(self):
         """Remove this robot from the scene."""
@@ -748,6 +779,210 @@ class RoboViz:
                 self._callbacks[event] = []
 
     # =========================================================================
+    # Kinematics & Motion Planning Factory
+    # =========================================================================
+
+    def create_solver(self, robot_id: str, robot_name: str) -> KinematicsSolver:
+        """
+        Create a kinematics solver for a robot.
+
+        Args:
+            robot_id: Robot identifier (must match a loaded robot).
+            robot_name: Robot model name for DH parameter lookup.
+
+        Returns:
+            KinematicsSolver instance.
+        """
+        return KinematicsSolver(self, robot_id, robot_name)
+
+    def create_planner(self, robot_id: str) -> MotionPlanner:
+        """
+        Create a motion planner for a robot.
+
+        Requires a kinematics solver to be already created for that robot.
+
+        Args:
+            robot_id: Robot identifier.
+
+        Returns:
+            MotionPlanner instance.
+        """
+        return MotionPlanner(self, robot_id)
+
+    # =========================================================================
+    # Advanced Collision API
+    # =========================================================================
+
+    def check_collision(self, robot_id: Optional[str] = None) -> Any:
+        """
+        Check for collisions in the scene.
+
+        Args:
+            robot_id: Optional — check only for this robot. If None, checks all.
+
+        Returns:
+            CollisionResult with collision pairs.
+        """
+        from .types import CollisionResult
+        params: Dict[str, Any] = {}
+        if robot_id:
+            params["robotId"] = robot_id
+        result = self._send_request("collision.check", params)
+        return CollisionResult.from_dict(result)
+
+    def check_path_collision(self, robot_id: str, path: List[List[float]]) -> Any:
+        """
+        Check a joint path for collisions.
+
+        Args:
+            robot_id: Robot identifier.
+            path: Joint path (list of joint configurations).
+
+        Returns:
+            PathCollisionResult with collision indices.
+        """
+        from .types import PathCollisionResult
+        result = self._send_request("collision.checkPath", {
+            "robotId": robot_id,
+            "path": path,
+        })
+        return PathCollisionResult.from_dict(result)
+
+    def query_distance(self, object_a: str, object_b: str) -> float:
+        """
+        Query minimum distance between two objects.
+
+        Args:
+            object_a: First object ID.
+            object_b: Second object ID.
+
+        Returns:
+            Minimum distance in meters.
+        """
+        result = self._send_request("collision.queryDistance", {
+            "objectA": object_a,
+            "objectB": object_b,
+        })
+        return result.get("distance", float("inf"))
+
+    def start_continuous_collision_check(self, robot_id: str, interval_ms: int = 100) -> None:
+        """Start continuous collision checking for a robot."""
+        self._send_notification("collision.startContinuous", {
+            "robotId": robot_id,
+            "intervalMs": interval_ms,
+        })
+
+    def stop_continuous_collision_check(self, robot_id: str) -> None:
+        """Stop continuous collision checking."""
+        self._send_notification("collision.stopContinuous", {"robotId": robot_id})
+
+    # =========================================================================
+    # Advanced Frame Transform API
+    # =========================================================================
+
+    def get_frame_world_transform(self, frame_id: str) -> Dict[str, Any]:
+        """
+        Get a frame's transform in world coordinates.
+
+        Args:
+            frame_id: Frame identifier.
+
+        Returns:
+            Dict with 'position' and 'rotation' in world space.
+        """
+        return self._send_request("frame.getWorldTransform", {"id": frame_id})
+
+    def get_relative_transform(self, from_frame: str, to_frame: str) -> Dict[str, Any]:
+        """
+        Get the transform from one frame to another.
+
+        Args:
+            from_frame: Source frame ID.
+            to_frame: Target frame ID.
+
+        Returns:
+            Dict with 'position' and 'rotation' of to_frame relative to from_frame.
+        """
+        return self._send_request("frame.getRelativeTransform", {
+            "fromFrame": from_frame,
+            "toFrame": to_frame,
+        })
+
+    def transform_point(self, point: List[float], from_frame: str, to_frame: str) -> List[float]:
+        """
+        Transform a 3D point from one frame to another.
+
+        Args:
+            point: [x, y, z] in from_frame.
+            from_frame: Source frame ID.
+            to_frame: Target frame ID.
+
+        Returns:
+            [x, y, z] in to_frame.
+        """
+        result = self._send_request("frame.transformPoint", {
+            "point": {"x": point[0], "y": point[1], "z": point[2]},
+            "fromFrame": from_frame,
+            "toFrame": to_frame,
+        })
+        p = result.get("point", {})
+        return [p.get("x", 0), p.get("y", 0), p.get("z", 0)]
+
+    def transform_pose(self, pose: Pose, from_frame: str, to_frame: str) -> Pose:
+        """
+        Transform a pose from one frame to another.
+
+        Args:
+            pose: Pose in from_frame.
+            from_frame: Source frame ID.
+            to_frame: Target frame ID.
+
+        Returns:
+            Pose in to_frame.
+        """
+        from .types import Vector3 as V3, Quaternion as Q
+        result = self._send_request("frame.transformPose", {
+            "pose": pose.to_dict(),
+            "fromFrame": from_frame,
+            "toFrame": to_frame,
+        })
+        pos = result.get("position", {})
+        ori = result.get("orientation", {})
+        return Pose(
+            position=V3(pos.get("x", 0), pos.get("y", 0), pos.get("z", 0)),
+            orientation=Q(ori.get("w", 1), ori.get("x", 0), ori.get("y", 0), ori.get("z", 0)),
+        )
+
+    def get_frame_children(self, frame_id: str) -> List[str]:
+        """Get child frame IDs of a frame."""
+        result = self._send_request("frame.getChildren", {"id": frame_id})
+        return result.get("children", [])
+
+    def set_active_tool_frame(self, frame_id: str) -> None:
+        """Set the active tool frame."""
+        self._send_notification("frame.setActiveTool", {"id": frame_id})
+
+    def set_active_user_frame(self, frame_id: str) -> None:
+        """Set the active user frame."""
+        self._send_notification("frame.setActiveUser", {"id": frame_id})
+
+    # =========================================================================
+    # Manager Factories
+    # =========================================================================
+
+    def create_scene_manager(self) -> SceneManager:
+        """Create a scene manager for snapshots, export/import, undo/redo."""
+        return SceneManager(self)
+
+    def create_diagnostic(self) -> DiagnosticVisualizer:
+        """Create a diagnostic visualizer for workspace, singularity, etc."""
+        return DiagnosticVisualizer(self)
+
+    def create_performance_monitor(self) -> PerformanceMonitor:
+        """Create a performance monitor."""
+        return PerformanceMonitor(self)
+
+    # =========================================================================
     # Lifecycle API
     # =========================================================================
 
@@ -1096,3 +1331,68 @@ def clear_collision_geometries():
 def enable_collision_detection(enabled: bool = True):
     """Enable or disable collision detection."""
     get_instance().enable_collision_detection(enabled)
+
+
+# =============================================================================
+# Kinematics & Motion Planning API (Module-level)
+# =============================================================================
+
+def create_solver(robot_id: str, robot_name: str) -> KinematicsSolver:
+    """
+    Create a kinematics solver for a robot.
+
+    Args:
+        robot_id: Robot identifier (must match a loaded robot).
+        robot_name: Robot model name for DH parameter lookup
+                    (e.g. "Fanuc_LR_Mate_200iD_7L").
+
+    Returns:
+        KinematicsSolver instance.
+
+    Example:
+        >>> import roboviz as rv
+        >>> rv.init()
+        >>> robot = rv.add_robot("robot.urdf", id="arm")
+        >>> solver = rv.create_solver("arm", "MyRobot")
+        >>> pose = solver.fk([0, 0, 0, 0, 0, 0])
+    """
+    return get_instance().create_solver(robot_id, robot_name)
+
+
+def create_planner(robot_id: str) -> MotionPlanner:
+    """
+    Create a motion planner for a robot.
+
+    Requires a kinematics solver to be already created for that robot.
+
+    Args:
+        robot_id: Robot identifier.
+
+    Returns:
+        MotionPlanner instance.
+
+    Example:
+        >>> solver = rv.create_solver("arm", "MyRobot")
+        >>> planner = rv.create_planner("arm")
+        >>> result = planner.linear([0]*6, target_pose)
+    """
+    return get_instance().create_planner(robot_id)
+
+
+# =============================================================================
+# Manager Factories (Module-level)
+# =============================================================================
+
+def create_scene_manager() -> SceneManager:
+    """Create a scene manager for the global instance."""
+    return get_instance().create_scene_manager()
+
+
+def create_diagnostic() -> DiagnosticVisualizer:
+    """Create a diagnostic visualizer for the global instance."""
+    return get_instance().create_diagnostic()
+
+
+def create_performance_monitor() -> PerformanceMonitor:
+    """Create a performance monitor for the global instance."""
+    return get_instance().create_performance_monitor()

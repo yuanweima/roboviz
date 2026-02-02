@@ -20,6 +20,12 @@ For more control, use the RoboViz class directly:
     >>> viz = RoboViz(port=9000, open_browser=False)
     >>> robot = viz.add_robot("/robot.urdf")
     >>> viz.show()
+
+Kinematics & Motion Planning:
+    >>> solver = robot.create_solver("MyRobot")
+    >>> pose = solver.fk([0, 0, 0, 0, 0, 0])
+    >>> planner = robot.create_planner()
+    >>> result = planner.linear([0]*6, target_pose)
 """
 
 # Module-level API (recommended)
@@ -60,6 +66,13 @@ from .core import (
     remove_collision_geometry,
     clear_collision_geometries,
     enable_collision_detection,
+    # Kinematics & Motion Planning
+    create_solver,
+    create_planner,
+    # Manager factories
+    create_scene_manager,
+    create_diagnostic,
+    create_performance_monitor,
     # Classes
     RoboViz,
     RobotHandle,
@@ -78,12 +91,51 @@ from .types import (
     ObstacleData,
     ObstacleShape,
     SafetyZoneData,
+    # Kinematics types
+    IKResult,
+    WorkspaceAnalysis,
+    ReachabilityResult,
+    DHParam,
+    SolverInfo,
+    # Motion planning types
+    LinearMotionConfig,
+    MotionResult,
+    FeasibilityResult,
+    JointPathResult,
+    PathAnalysis,
+    ValidationResult,
+    # Collision types
+    CollisionResult,
+    PathCollisionResult,
+)
+
+# Kinematics & Motion Planning classes
+from .kinematics import KinematicsSolver
+from .motion import MotionPlanner
+from .scene_manager import SceneManager
+from .diagnostic import DiagnosticVisualizer
+from .performance import PerformanceMonitor
+from .vision import VisionManager
+from .multi_robot import RobotGroup
+from .jupyter import RoboVizWidget, show_inline
+from .async_client import AsyncRoboViz
+
+# NumPy support (optional — available when numpy is installed)
+from .numpy_support import (
+    joints_to_array,
+    array_to_joints,
+    pose_to_matrix,
+    matrix_to_pose,
+    trajectory_to_arrays,
+    arrays_to_trajectory,
+    point_cloud_from_array,
+    point_cloud_to_array,
 )
 
 # Legacy client (for backwards compatibility)
 from .client import RoboVizClient, RoboVizClientOptions
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Module-level API
@@ -123,9 +175,26 @@ __all__ = [
     "remove_collision_geometry",
     "clear_collision_geometries",
     "enable_collision_detection",
+    # Kinematics & Motion Planning (module-level)
+    "create_solver",
+    "create_planner",
     # Classes
     "RoboViz",
     "RobotHandle",
+    "KinematicsSolver",
+    "MotionPlanner",
+    "SceneManager",
+    "DiagnosticVisualizer",
+    "PerformanceMonitor",
+    "VisionManager",
+    "RobotGroup",
+    "RoboVizWidget",
+    "show_inline",
+    "AsyncRoboViz",
+    # Manager factories (module-level)
+    "create_scene_manager",
+    "create_diagnostic",
+    "create_performance_monitor",
     # Legacy
     "RoboVizClient",
     "RoboVizClientOptions",
@@ -141,4 +210,29 @@ __all__ = [
     "ObstacleData",
     "ObstacleShape",
     "SafetyZoneData",
+    # Kinematics types
+    "IKResult",
+    "WorkspaceAnalysis",
+    "ReachabilityResult",
+    "DHParam",
+    "SolverInfo",
+    # Motion planning types
+    "LinearMotionConfig",
+    "MotionResult",
+    "FeasibilityResult",
+    "JointPathResult",
+    "PathAnalysis",
+    "ValidationResult",
+    # Collision types
+    "CollisionResult",
+    "PathCollisionResult",
+    # NumPy support
+    "joints_to_array",
+    "array_to_joints",
+    "pose_to_matrix",
+    "matrix_to_pose",
+    "trajectory_to_arrays",
+    "arrays_to_trajectory",
+    "point_cloud_from_array",
+    "point_cloud_to_array",
 ]
