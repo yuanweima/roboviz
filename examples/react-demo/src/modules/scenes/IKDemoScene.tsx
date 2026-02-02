@@ -16,14 +16,19 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useControls, button } from 'leva';
 import { Html } from '@react-three/drei';
 import { RoboViz, Robot } from '@aspect/roboviz-react';
+// Rendering components and types (no kinematics dependency)
 import {
   GhostRobot,
-  usePoseIK,
-  // Types - use Z-up coordinate types for kinematics
-  type Pose3D,
   type GhostStatus,
+  type Pose3D,
+} from '@aspect/roboviz-core/rendering';
+// Kinematics hooks and types (IK solver, workspace analysis)
+import {
+  usePoseIK,
+  SolverProvider,
+  WasmSolverProvider,
   type WorkspaceAnalysis,
-} from '@aspect/roboviz-core';
+} from '@aspect/roboviz-core/kinematics';
 
 // =============================================================================
 // Configuration
@@ -421,17 +426,23 @@ export function IKDemoScene() {
       </div>
 
       <div className="canvas-wrapper" style={{ position: 'relative' }}>
-        <RoboViz
-          config={{
-            scene: {
-              background: THEME.background,
-              grid: { enabled: true, size: 2, divisions: 20, color: THEME.grid },
-            },
-            camera: { position: { x: 1.2, y: 0.8, z: 1.2 } },
-          }}
-        >
-          <IKDemoSceneContent urdfContent={urdfContent} />
-        </RoboViz>
+        {/* SolverProvider + WasmSolverProvider inject the IK/FK solver via context.
+            This is the recommended pattern for kinematics-dependent scenes. */}
+        <SolverProvider>
+          <WasmSolverProvider robotId={ROBOT_ID} urdfContent={urdfContent}>
+            <RoboViz
+              config={{
+                scene: {
+                  background: THEME.background,
+                  grid: { enabled: true, size: 2, divisions: 20, color: THEME.grid },
+                },
+                camera: { position: { x: 1.2, y: 0.8, z: 1.2 } },
+              }}
+            >
+              <IKDemoSceneContent urdfContent={urdfContent} />
+            </RoboViz>
+          </WasmSolverProvider>
+        </SolverProvider>
       </div>
     </div>
   );

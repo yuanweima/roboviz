@@ -18,31 +18,30 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useControls, button } from 'leva';
+// Rendering: theme system and core canvas
 import {
-  // Process architecture (unified ghost)
-  ProcessProvider,
-  RobotProcessProvider,
-  ProcessScene,
-  useProcessGhost,
-  useProcessRobot,
-  useRobotProcessState,
-  // Input device imports
-  useGamepadInput,
-  GamepadStatusPanel,
-  GAMEPAD_PRESETS,
-  StandardGamepadButton,
-  // Jog control panel
-  JogControlPanel,
-  useRobotJogControl,
-  // Theme system
+  RoboVizCore,
   RoboVizThemeProvider,
   darkTheme,
   lightTheme,
   industrialTheme,
   createRoboVizTheme,
   type RoboVizTheme,
-  // Core canvas component
-  RoboVizCore,
+} from '@aspect/roboviz-core/rendering';
+// Process, input devices, and jog control (main entry)
+import {
+  ProcessProvider,
+  RobotProcessProvider,
+  ProcessScene,
+  useProcessGhost,
+  useProcessRobot,
+  useRobotProcessState,
+  useGamepadInput,
+  GamepadStatusPanel,
+  GAMEPAD_PRESETS,
+  StandardGamepadButton,
+  JogControlPanel,
+  useRobotJogControl,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../store';
 

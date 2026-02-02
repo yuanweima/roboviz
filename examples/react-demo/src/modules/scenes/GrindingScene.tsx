@@ -17,6 +17,18 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { RoboViz, PropertyEditor, type PropertySchema } from '@aspect/roboviz-react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+// Rendering components and system
+import {
+  EndEffector,
+  GrindingWheel,
+  GRINDING_WHEEL_METADATA,
+  computeTcpFromMetadata,
+  RenderPipeline,
+  EnvironmentSystem,
+  SKYBOX_PRESETS,
+  QUALITY_PRESETS,
+} from '@aspect/roboviz-core/rendering';
+// Process architecture and hooks (main entry)
 import {
   ProcessProvider,
   RobotProcessProvider,
@@ -24,19 +36,8 @@ import {
   useProcessPlayback,
   useProcessGhost,
   useRobotProcessState,
-  EndEffector,
   type PoseTrajectory,
-  // Tools from core library
-  GrindingWheel,
-  GRINDING_WHEEL_METADATA,
-  computeTcpFromMetadata,
-  // History hook for undo/redo
   usePropertyHistory,
-  // Rendering system
-  RenderPipeline,
-  EnvironmentSystem,
-  SKYBOX_PRESETS,
-  QUALITY_PRESETS,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
 import {

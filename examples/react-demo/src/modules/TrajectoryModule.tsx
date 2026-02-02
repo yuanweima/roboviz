@@ -20,7 +20,8 @@ import {
   type TrajectoryPlayerState,
   type TrajectoryPlayerControls,
 } from '@aspect/roboviz-react';
-import { useHybridSolver } from '@aspect/roboviz-core';
+// Kinematics hooks (FK computation for TCP trail)
+import { useHybridSolver } from '@aspect/roboviz-core/kinematics';
 import { useAppStore } from '../store';
 
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';

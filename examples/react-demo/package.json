@@ -11,6 +11,7 @@
   "dependencies": {
     "@aspect/roboviz-core": "workspace:*",
     "@aspect/roboviz-react": "workspace:*",
+    "trajx-wasm": "file:../../packages/core/vendor/trajx-wasm",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^9.4.2",
     "leva": "^0.9.35",

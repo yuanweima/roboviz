@@ -286,8 +286,21 @@ export class MotionPlanningManager {
       this.trajx = trajxModule as unknown as TrajxModule;
       this.initialized = true;
     } catch (error) {
+      const msg = (error as Error).message ?? '';
+      if (
+        msg.includes('Cannot find module') ||
+        msg.includes('MODULE_NOT_FOUND') ||
+        msg.includes('Module not found')
+      ) {
+        console.warn(
+          '[MotionPlanningManager] trajx-wasm is not installed. ' +
+          'Local WASM planning is unavailable. Use a remote planner via PlannerProvider instead.'
+        );
+        this.initialized = true;
+        return;
+      }
       this.initPromise = null;
-      throw new Error(`Failed to initialize trajx-wasm: ${(error as Error).message}`);
+      throw new Error(`Failed to initialize trajx-wasm: ${msg}`);
     }
   }
 

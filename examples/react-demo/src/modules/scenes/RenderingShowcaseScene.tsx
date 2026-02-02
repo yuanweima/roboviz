@@ -37,6 +37,7 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { RoboViz, Robot } from '@aspect/roboviz-react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+// All rendering components and types from the /rendering sub-entry point
 import {
   RenderPipeline,
   InstancedRobotArms,
@@ -52,7 +53,7 @@ import {
   type MeshQuality,
   type EnvironmentSystemConfig,
   type SkyboxPreset,
-} from '@aspect/roboviz-core';
+} from '@aspect/roboviz-core/rendering';
 
 // ============================================================================
 // Theme

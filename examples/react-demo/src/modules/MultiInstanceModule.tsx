@@ -21,7 +21,7 @@ import {
   createRoboViz,
   type IRoboVizInstance,
 } from '@aspect/roboviz-react';
-import { Robot } from '@aspect/roboviz-core';
+import { Robot } from '@aspect/roboviz-core/rendering';
 import { useAppStore } from '../store';
 
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';

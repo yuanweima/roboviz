@@ -1247,10 +1247,29 @@ class KinematicsManager {
       // trajx-wasm has two init mechanisms:
       // 1. default export (__wbg_init) - loads the WASM binary (REQUIRED FIRST)
       // 2. named export init() - sets up panic hooks (optional, called after WASM loads)
-      const trajxModule = await import('trajx-wasm') as unknown as TrajxModule & {
-        default?: () => Promise<void>;
-        init?: () => void;
-      };
+      let trajxModule: (TrajxModule & { default?: () => Promise<void>; init?: () => void }) | null = null;
+
+      try {
+        trajxModule = await import('trajx-wasm') as unknown as TrajxModule & {
+          default?: () => Promise<void>;
+          init?: () => void;
+        };
+      } catch (importError) {
+        // trajx-wasm is not installed — this is fine when using SolverProvider
+        // with a remote or custom solver instead of local WASM
+        const msg = (importError as Error).message ?? '';
+        if (msg.includes('Cannot find module') || msg.includes('MODULE_NOT_FOUND') || msg.includes("Module not found")) {
+          console.warn(
+            '[KinematicsManager] trajx-wasm is not installed. ' +
+            'Local WASM kinematics will not be available. ' +
+            'Use <SolverProvider> with a remote or custom solver instead.'
+          );
+          this.initialized = true;
+          return;
+        }
+        // Re-throw if the error is something else (e.g., WASM compilation failure)
+        throw importError;
+      }
 
       // First: Call the default export to load WASM binary
       // This is the real initialization that loads the .wasm file

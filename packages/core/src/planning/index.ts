@@ -31,3 +31,17 @@ export * from './waypoint';
 // ============================================================================
 
 export * from './gpu';
+
+// ============================================================================
+// Planner Provider (injection pattern — parallel to SolverProvider)
+// ============================================================================
+
+export * from './planner-provider-types';
+export {
+  PlannerProvider,
+  usePlannerContext,
+  usePlannerContextOptional,
+  usePlannerStatus,
+  type PlannerProviderProps,
+} from './PlannerContext';
+export * from './adapters';

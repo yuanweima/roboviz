@@ -23,22 +23,36 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { useFrame } from '@react-three/fiber';
 import { RoboViz } from '@aspect/roboviz-react';
 import { TransformControls, Line } from '@react-three/drei';
+// Rendering components (no kinematics dependency)
 import {
   Robot,
   GhostRobot,
+  type GhostStatus,
+} from '@aspect/roboviz-core/rendering';
+// Kinematics hooks and types
+import {
   useTrajx,
   usePoseIK,
+  useHybridSolver,
+  SolverProvider,
+  WasmSolverProvider,
+  type WorkspaceAnalysis,
+} from '@aspect/roboviz-core/kinematics';
+// Planning hooks, collision, GPU planning, and planner provider
+import {
   useCollisionWorld,
   useGpuPlanning,
-  useHybridSolver,
   CollisionWorldRenderer,
-  TrajectoryFK,
-  type GhostStatus,
-  type WorkspaceAnalysis,
+  PlannerProvider,
+  WasmPlannerProvider,
   type GpuPlanningProgress,
   type GpuPlanningResult,
   type PlanningWaypoint,
   type RobotCapsuleModel,
+} from '@aspect/roboviz-core/planning';
+// Components with mixed dependencies (main entry)
+import {
+  TrajectoryFK,
   type TrajectoryData,
 } from '@aspect/roboviz-core';
 import { useAppStore } from '../../store';
@@ -1313,7 +1327,11 @@ export function GPUMotionPlanningScene() {
           </div>
         </div>
 
-        {/* 3D View */}
+        {/* 3D View - wrapped with Solver + Planner Providers */}
+        <SolverProvider>
+          <WasmSolverProvider robotId={ROBOT_ID} urdfContent={urdfContent}>
+            <PlannerProvider>
+              <WasmPlannerProvider robotId={ROBOT_ID}>
         <div style={{ flex: 1, borderRadius: 8, overflow: 'hidden', border: `1px solid ${THEME.primary}30` }}>
           <RoboViz config={{ scene: { background: THEME.background }, camera: { position: { x: 1.2, y: 0.8, z: 1 } } }}>
             <SceneContent
@@ -1339,6 +1357,10 @@ export function GPUMotionPlanningScene() {
             />
           </RoboViz>
         </div>
+              </WasmPlannerProvider>
+            </PlannerProvider>
+          </WasmSolverProvider>
+        </SolverProvider>
       </div>
     </div>
   );

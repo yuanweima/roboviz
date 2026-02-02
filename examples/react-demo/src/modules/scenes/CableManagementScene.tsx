@@ -12,13 +12,16 @@ import { RoboViz } from '@aspect/roboviz-react';
 import { useFrame } from '@react-three/fiber';
 import { Line, Text, Tube } from '@react-three/drei';
 import * as THREE from 'three';
+// Rendering components
+import { Robot } from '@aspect/roboviz-core/rendering';
+// Kinematics hooks and cable config
 import {
-  Robot,
-  generateCatenaryPath,
   useTrajxCableConfig,
   useHybridSolver,
   type CablePresetType,
-} from '@aspect/roboviz-core';
+} from '@aspect/roboviz-core/kinematics';
+// Cable utility from main entry (capabilities module)
+import { generateCatenaryPath } from '@aspect/roboviz-core';
 
 // ============================================================================
 // Theme

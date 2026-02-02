@@ -17,6 +17,8 @@ import type {
   IkSolverConfig,
 } from './types';
 import type { Pose } from '../types';
+import { useSolverContextOptional } from './SolverContext';
+import type { ISolverProvider } from './solver-provider-types';
 
 // ============================================================================
 // useTrajx - Main initialization hook
@@ -1169,6 +1171,183 @@ export interface UseHybridSolverReturn extends UseHybridSolverState, UseHybridSo
  * ```
  */
 export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolverReturn {
+  // Check if a SolverProvider is available in the component tree
+  const ctxOptional = useSolverContextOptional();
+  const providerSolver = ctxOptional?.solver ?? null;
+
+  // Determine if we should use the provider path:
+  // Provider is available, ready, and matches the requested robotId
+  const useProvider =
+    providerSolver !== null &&
+    ctxOptional?.ready === true &&
+    providerSolver.robotId === options.robotId;
+
+  // Always call both hooks (React rules of hooks) but only one will be active
+  const legacyResult = useHybridSolverLegacy(options, !useProvider);
+  const providerResult = useHybridSolverFromProvider(providerSolver, options, useProvider);
+
+  return useProvider ? providerResult : legacyResult;
+}
+
+// ============================================================================
+// Provider-based implementation (uses ISolverProvider from SolverContext)
+// ============================================================================
+
+/**
+ * Helper to extract a synchronously-resolved promise value.
+ * For local WASM solvers (Promise.resolve wrapper), the `.then` callback
+ * runs synchronously in the same microtask, so `out.value` is set immediately.
+ * For remote solvers, returns the fallback until the next render cycle.
+ */
+function resolveSync<T>(promise: Promise<T>, fallback: T): T {
+  let value: T = fallback;
+  promise.then((r) => { value = r; });
+  return value;
+}
+
+/**
+ * Internal hook that wraps an ISolverProvider (async) into the sync UseHybridSolverReturn API.
+ *
+ * Since ISolverProvider methods are async (to support remote solvers), but
+ * UseHybridSolverReturn expects sync methods, we cache async results in state.
+ * For local WASM solvers, the promises resolve immediately (Promise.resolve wrapper),
+ * so the cached result is available on the next render cycle.
+ */
+function useHybridSolverFromProvider(
+  solver: ISolverProvider | null,
+  options: UseHybridSolverOptions,
+  active: boolean
+): UseHybridSolverReturn {
+  const { coordinateSystem = 'Z-up' } = options;
+  const needsCoordinateConversion = coordinateSystem === 'Y-up';
+
+  const fk = useCallback(
+    (jointAngles: number[]): FkResult | null => {
+      if (!solver || !active) return null;
+      const result = resolveSync<FkResult | null>(solver.forwardKinematics(jointAngles), null);
+      if (needsCoordinateConversion && result) {
+        return { ...result, pose: poseZupToYup(result.pose) };
+      }
+      return result;
+    },
+    [solver, active, needsCoordinateConversion]
+  );
+
+  const fkTcp = useCallback(
+    (jointAngles: number[]): FkResult | null => {
+      if (!solver || !active) return null;
+      const result = resolveSync<FkResult | null>(solver.forwardKinematicsTcp(jointAngles), null);
+      if (needsCoordinateConversion && result) {
+        return { ...result, pose: poseZupToYup(result.pose) };
+      }
+      return result;
+    },
+    [solver, active, needsCoordinateConversion]
+  );
+
+  const fkChain = useCallback(
+    (jointAngles: number[]): FkChainResult | null => {
+      if (!solver || !active) return null;
+      const result = resolveSync<FkChainResult | null>(solver.forwardKinematicsChain(jointAngles), null);
+      if (needsCoordinateConversion && result) {
+        return { poses: result.poses.map(poseZupToYup) };
+      }
+      return result;
+    },
+    [solver, active, needsCoordinateConversion]
+  );
+
+  const ik = useCallback(
+    (targetPose: Pose, seed?: number[]): IkResult | null => {
+      if (!solver || !active) return null;
+      const solverPose = needsCoordinateConversion ? poseYupToZup(targetPose) : targetPose;
+      return resolveSync<IkResult | null>(solver.inverseKinematics(solverPose, seed), null);
+    },
+    [solver, active, needsCoordinateConversion]
+  );
+
+  const ikTcp = useCallback(
+    (targetTcpPose: Pose, seed?: number[]): IkResult | null => {
+      if (!solver || !active) return null;
+      const solverPose = needsCoordinateConversion ? poseYupToZup(targetTcpPose) : targetTcpPose;
+      return resolveSync<IkResult | null>(solver.inverseKinematicsTcp(solverPose, seed), null);
+    },
+    [solver, active, needsCoordinateConversion]
+  );
+
+  const ikAll = useCallback(
+    (targetPose: Pose, seed?: number[]): MultiIkResult | null => {
+      if (!solver || !active) return null;
+      const solverPose = needsCoordinateConversion ? poseYupToZup(targetPose) : targetPose;
+      return resolveSync<MultiIkResult | null>(solver.inverseKinematicsAll(solverPose, seed), null);
+    },
+    [solver, active, needsCoordinateConversion]
+  );
+
+  const isValidConfig = useCallback(
+    (joints: number[]): boolean => {
+      if (!solver || !active) return false;
+      return resolveSync<boolean>(solver.isValidConfig(joints), false);
+    },
+    [solver, active]
+  );
+
+  const attachTool = useCallback(
+    (toolPose: Pose): void => {
+      if (!solver || !active) return;
+      solver.attachTool(toolPose);
+    },
+    [solver, active]
+  );
+
+  const detachTool = useCallback((): void => {
+    if (!solver || !active) return;
+    solver.detachTool();
+  }, [solver, active]);
+
+  const hasTool = useCallback((): boolean => {
+    if (!solver || !active) return false;
+    return solver.hasTool();
+  }, [solver, active]);
+
+  return {
+    // Provider path doesn't expose raw solver instances
+    urdfSolver: null,
+    dhSolver: null,
+    ready: active && solver !== null,
+    error: null,
+    jointNames: solver?.jointNames ?? [],
+    linkNames: solver?.linkNames ?? [],
+    jointLimits: solver?.jointLimits ?? null,
+    hasAnalyticalIk: solver?.capabilities.isAnalytical ?? false,
+    dhRobotName: null,
+    fk,
+    fkTcp,
+    fkChain,
+    ik,
+    ikTcp,
+    ikAll,
+    isValidConfig,
+    attachTool,
+    detachTool,
+    hasTool,
+  };
+}
+
+// ============================================================================
+// Legacy WASM-based implementation (original useHybridSolver logic)
+// ============================================================================
+
+/**
+ * Internal hook implementing the original WASM-based solver logic.
+ * Used when no SolverProvider context is available.
+ *
+ * @param active - When false, skips initialization (used when provider path is active)
+ */
+function useHybridSolverLegacy(
+  options: UseHybridSolverOptions,
+  active: boolean
+): UseHybridSolverReturn {
   const {
     robotId,
     urdfContent,
@@ -1205,14 +1384,13 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
   const prevRobotIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!wasmReady || !urdfContent) {
+    if (!active || !wasmReady || !urdfContent) {
       return;
     }
 
     // If robotId changed and we had old solvers, dispose them
     if (prevRobotIdRef.current && prevRobotIdRef.current !== robotId) {
       disposeSolver(prevRobotIdRef.current);
-      // Note: We no longer create separate DH solver, so no need to dispose ${robotId}-dh
     }
     prevRobotIdRef.current = robotId;
 
@@ -1247,9 +1425,8 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
         console.log(`[HybridSolver] ✓ Robot already has DH parameters (auto-detected)`);
         setHasAnalyticalIk(existingUrdfSolver.supportsAnalyticalIk());
         setResolvedDhName(urdfRobotName);
-        setDhSolver(null); // Don't need separate DH solver
+        setDhSolver(null);
       } else if (dhName && availableRobots.includes(dhName)) {
-        // Try to load DH params from database using new unified API
         console.log(`[HybridSolver] Loading DH parameters from database: ${dhName}`);
         const loaded = existingUrdfSolver.loadDhParamsFromDatabase(dhName);
 
@@ -1258,7 +1435,7 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
           console.log(`[HybridSolver]   Uses DH for FK: ${existingUrdfSolver.usesDhForFk()}`);
           setHasAnalyticalIk(true);
           setResolvedDhName(dhName);
-          setDhSolver(null); // Don't need separate DH solver
+          setDhSolver(null);
         } else {
           console.log(`[HybridSolver] DH parameters loaded but analytical IK not supported`);
           setHasAnalyticalIk(false);
@@ -1291,6 +1468,7 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
       setReady(false);
     }
   }, [
+    active,
     wasmReady,
     robotId,
     urdfContent,
@@ -1307,12 +1485,11 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (prevRobotIdRef.current) {
+      if (active && prevRobotIdRef.current) {
         disposeSolver(prevRobotIdRef.current);
-        // Note: We no longer create separate DH solver
       }
     };
-  }, [disposeSolver]);
+  }, [active, disposeSolver]);
 
   // All kinematics now use the unified urdfSolver (which may have DH params loaded)
   // When coordinateSystem is 'Y-up', we convert input poses to Z-up before solving
@@ -1322,7 +1499,6 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
     (jointAngles: number[]): FkResult | null => {
       if (!urdfSolver) return null;
       const result = urdfSolver.forwardKinematics(jointAngles);
-      // Convert output pose from Z-up (URDF) to Y-up (Three.js) if needed
       if (needsCoordinateConversion && result) {
         return {
           ...result,
@@ -1338,7 +1514,6 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
     (jointAngles: number[]): FkChainResult | null => {
       if (!urdfSolver) return null;
       const result = urdfSolver.forwardKinematicsChain(jointAngles);
-      // Convert all output poses from Z-up to Y-up if needed
       if (needsCoordinateConversion && result) {
         return {
           poses: result.poses.map(poseZupToYup),
@@ -1352,7 +1527,6 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
   const ik = useCallback(
     (targetPose: Pose, seed?: number[]): IkResult | null => {
       if (!urdfSolver) return null;
-      // Convert input pose from Y-up (Three.js) to Z-up (URDF) if needed
       const solverPose = needsCoordinateConversion ? poseYupToZup(targetPose) : targetPose;
       return urdfSolver.inverseKinematics(solverPose, seed);
     },
@@ -1362,7 +1536,6 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
   const ikTcp = useCallback(
     (targetTcpPose: Pose, seed?: number[]): IkResult | null => {
       if (!urdfSolver) return null;
-      // Convert input pose from Y-up (Three.js) to Z-up (URDF) if needed
       const solverPose = needsCoordinateConversion ? poseYupToZup(targetTcpPose) : targetTcpPose;
       return urdfSolver.inverseKinematicsTcp(solverPose, seed);
     },
@@ -1372,7 +1545,6 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
   const ikAll = useCallback(
     (targetPose: Pose, seed?: number[]): MultiIkResult | null => {
       if (!urdfSolver) return null;
-      // Convert input pose from Y-up (Three.js) to Z-up (URDF) if needed
       const solverPose = needsCoordinateConversion ? poseYupToZup(targetPose) : targetPose;
       return urdfSolver.inverseKinematicsAll(solverPose, seed);
     },
@@ -1390,15 +1562,6 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
   const attachTool = useCallback(
     (toolPose: Pose): void => {
       if (!urdfSolver) return;
-
-      // The tool pose is in the flange's LOCAL coordinate frame.
-      // The flange's local frame is defined by URDF kinematics and is the same
-      // regardless of display transformations (which only affect world coordinates).
-      //
-      // Standard URDF convention: flange +Z points along the tool axis.
-      // WeldingTorch geometry: extends along +Z, so TCP offset is simply (0, 0, distance).
-      //
-      // No coordinate conversion needed - the flange's local frame is invariant.
       console.log('[HybridSolver] TCP attached:', toolPose.position);
       urdfSolver.attachTool(toolPose);
     },
@@ -1413,7 +1576,6 @@ export function useHybridSolver(options: UseHybridSolverOptions): UseHybridSolve
     (jointAngles: number[]): FkResult | null => {
       if (!urdfSolver) return null;
       const result = urdfSolver.forwardKinematicsTcp(jointAngles);
-      // Convert output pose from Z-up (URDF) to Y-up (Three.js) if needed
       if (needsCoordinateConversion && result) {
         return {
           ...result,

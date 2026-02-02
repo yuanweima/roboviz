@@ -15,14 +15,10 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useControls, button, folder } from 'leva';
+// Rendering components and theme system (no kinematics dependency)
 import {
   RoboVizCore,
   Robot,
-  JogControlPanel,
-  useTrajx,
-  useHybridSolver,
-  getKinematicsManager,
-  // Theme system imports
   RoboVizThemeProvider,
   darkTheme,
   lightTheme,
@@ -30,8 +26,18 @@ import {
   createRoboVizTheme,
   type RoboVizTheme,
   type Pose,
+} from '@aspect/roboviz-core/rendering';
+// Kinematics hooks and solver provider
+import {
+  useTrajx,
+  useHybridSolver,
+  getKinematicsManager,
+  SolverProvider,
+  WasmSolverProvider,
   type TrajxTool,
-} from '@aspect/roboviz-core';
+} from '@aspect/roboviz-core/kinematics';
+// JogControlPanel uses kinematics internally, from main entry
+import { JogControlPanel } from '@aspect/roboviz-core';
 import { useAppStore } from '../store';
 
 const URDF_PATH = '/fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf';
@@ -496,6 +502,9 @@ export function TrajxWasmModule() {
       </div>
 
       <div className="module-content" style={{ display: 'flex', gap: '16px' }}>
+        {/* SolverProvider + WasmSolverProvider inject IK/FK solver via context */}
+        <SolverProvider>
+          <WasmSolverProvider robotId={ROBOT_ID} urdfContent={urdfContent}>
         {/* Visualization */}
         <div className="canvas-wrapper" style={{ flex: 2 }}>
           <RoboVizCore
@@ -730,6 +739,8 @@ export function TrajxWasmModule() {
             </div>
           )}
         </div>
+          </WasmSolverProvider>
+        </SolverProvider>
       </div>
     </div>
   );
