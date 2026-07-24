@@ -1,119 +1,174 @@
+<div align="center">
+
 # RoboViz
 
-**trajx 运动学 / 运动规划引擎的 Web 可视化前端。**
+**In-browser visualization frontend for the [trajx](https://github.com/yuanweima/trajx) kinematics & motion-planning engine.**
 
-RoboViz 是一个基于 React Three Fiber 的库,在浏览器里渲染 URDF 机器人,并把 [trajx](../trajx)(Rust + WebGPU 运动学 / 规划内核,编译为 WASM)的 FK/IK、Ghost 预览、规划轨迹实时展示出来。它的定位很窄也很明确:**让 trajx 在网页中"看得见、可交互"**。
+[![Live demo](https://img.shields.io/badge/▶%20live%20demo-online-4a9eff?style=flat-square)](https://yuanweima.github.io/roboviz/)
+[![Deploy demo](https://img.shields.io/github/actions/workflow/status/yuanweima/roboviz/deploy-demo.yml?style=flat-square&label=pages)](https://github.com/yuanweima/roboviz/actions/workflows/deploy-demo.yml)
+[![React](https://img.shields.io/badge/React-18%20%7C%2019-61dafb?style=flat-square&logo=react&logoColor=white)](https://react.dev)
+[![Three.js](https://img.shields.io/badge/Three.js-r170-000000?style=flat-square&logo=three.js&logoColor=white)](https://threejs.org)
+[![WebGPU](https://img.shields.io/badge/WebGPU-powered-005a9c?style=flat-square)](https://www.w3.org/TR/webgpu/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![License](https://img.shields.io/badge/license-UNLICENSED-lightgrey?style=flat-square)](#license)
 
-> **状态:pre-release (0.1.0),尚未发布到公共 npm。** 包通过私有 GitHub Packages 分发;本地使用需先 `pnpm install && pnpm build`。README 中的用法示例面向已构建的本地 workspace。
+**[▶ Try the live demo](https://yuanweima.github.io/roboviz/)** · [Features](#features) · [Demos](#live-demos) · [Quickstart](#quickstart) · [Benchmarks](#benchmarks)
 
----
+**English** · [简体中文](./README.zh-CN.md)
 
-## 能做什么
-
-| 能力 | 说明 |
-|------|------|
-| **URDF 渲染** | 基于 `urdf-loader` + Three.js 加载并渲染机器人,Z-up(机器人/URDF 标准)坐标系 |
-| **正/逆运动学** | 通过 trajx-wasm 求解 FK/IK;`useHybridSolver` 自动选择解析/数值解 |
-| **IK 拖拽** | 拖动末端执行器,实时求解并更新关节角 |
-| **Ghost 预览** | 悬停/给定目标位姿时,以半透明 Ghost 机器人显示 IK 解,并标示可达性状态 |
-| **轨迹 FK 播放** | `TrajectoryFK` 按关节/位姿轨迹回放真实 FK 姿态 |
-| **运动规划可视化** | 展示 trajx 的采样规划器(RRT* / BiRRT / PRM)产出的路径,含 GPU 规划场景 |
-| **碰撞可视化** | 基础碰撞几何 / 安全区 / 接触点可视化 |
-| **Manipulability 指示** | 可操作度状态提示 |
-
-> 说明:RoboViz 有意**不**包含实时视觉流、多机器人协同、工业流程编排(焊接/打磨/检测)、后期处理渲染管线、以及多语言远程控制 SDK/协议——这些要么超出"展示 trajx"的范围,要么应归属 trajx 自身。历史版本曾包含它们,已在 0.1.0 精简中移除(见 git tag `pre-slim-2026-07-22`)。
+</div>
 
 ---
 
-## 包结构
+RoboViz renders URDF robots with **React Three Fiber** and shows **[trajx](https://github.com/yuanweima/trajx)** — a Rust + WebGPU kinematics / motion-planning engine compiled to WebAssembly — solving forward kinematics, analytical and GPU-batch inverse kinematics, and sampling-based motion planning, live in the browser. It is the official interactive demo and rendering layer for trajx.
 
-| 包 | 说明 |
-|---|------|
-| `@yuanweima/roboviz-core` | 核心:URDF 渲染组件、trajx 运动学/规划绑定、Ghost、轨迹、碰撞可视化 |
-| `@yuanweima/roboviz-react` | React 声明式组件与 hooks 封装 |
+> **Status — pre-release.** RoboViz is source-available in this repo. Its packages ship through **private GitHub Packages** (not public npm), and the engine `@yuanweima/trajx-wasm` (`0.9.0`) is proprietary. There is nothing to install to try it — just open the **[live demo](https://yuanweima.github.io/roboviz/)**.
 
-子入口(core):`@yuanweima/roboviz-core/kinematics`、`@yuanweima/roboviz-core/planning`,用于按需引入、避免拉入无关依赖。
+## Why RoboViz
 
----
+cuRobo gives you GPU acceleration but locks you into NVIDIA + Python. Pinocchio and MoveIt are excellent but can't run on the web. **trajx is the only engine that brings GPU-class kinematics to the browser** — and RoboViz is how you see and interact with it. No CUDA, no ROS, no backend: the whole engine runs client-side as a single WebAssembly module.
 
-## 快速开始(本地 workspace)
+## Live demos
+
+Everything below runs the real trajx engine in your browser — [try it](https://yuanweima.github.io/roboviz/).
+
+| Demo | What it shows |
+|------|----------------|
+| [**Batch IK Swarm**](https://yuanweima.github.io/roboviz/#/demo/batch-ik) | Hundreds of independent inverse-kinematics problems solved at once on the GPU (WebGPU), with live throughput. |
+| [**Batch FK Swarm**](https://yuanweima.github.io/roboviz/#/demo/batch-fk) | Thousands of robots' forward kinematics, computed per frame in one WebAssembly call. |
+| [**Interactive IK**](https://yuanweima.github.io/roboviz/#/demo/ik) | Drag a target; trajx solves analytical IK in real time and reports reachability. |
+| [**Motion Planning**](https://yuanweima.github.io/roboviz/#/demo/planning) | RRT\* / BiRRT / PRM compared and timed against obstacles. |
+
+## Features
+
+- ⚡ **GPU batch kinematics** — solve thousands of FK/IK per frame on WebGPU; Float32, zero-copy into an `InstancedMesh`.
+- 🎯 **Analytical IK, all solutions** — closed-form IK for 6-DOF spherical-wrist arms, up to 8 ranked, FK-verified solutions.
+- 🧭 **Sampling planners** — BiRRT, RRT\*, PRM and Task-Space RRT with pluggable collision, plus a GPU Lazy-PRM mode.
+- 🛡️ **WebGPU collision** *(experimental)* — GPU-resident FK→SDF batch collision with sphere / capsule approximation.
+- 📐 **Jacobian & manipulability** — Jacobian, manipulability, singularity detection and workspace analysis per configuration.
+- 📈 **Time-optimal trajectories** — Ruckig jerk-limited S-curves with velocity / acceleration / jerk limits.
+- 👻 **Ghost preview & IK drag** — drag the end-effector or set a target pose; a translucent ghost arm shows the live IK solution and reachability.
+- 📦 **One WASM package, no backend** — the whole engine ships as a single module. No CUDA, no ROS, no server.
+
+## Where it fits
+
+RoboViz/trajx isn't trying to beat cuRobo on raw throughput — it's the one you can **ship on the web**, with no CUDA, no ROS and no backend.
+
+| | **trajx** | cuRobo | Pinocchio | MoveIt | Foxglove |
+|---|:---:|:---:|:---:|:---:|:---:|
+| GPU acceleration | **WebGPU / wgpu** | CUDA only | CPU | CPU | — |
+| Runs in the browser | **yes** | no | no | no | viewer only |
+| Dependencies | **1 wasm pkg** | CUDA + Python | C++ / Python | full ROS | ROS / data |
+| Analytical multi-solution IK | **up to 8** | numerical | yes | plugin | — |
+| Motion planning | **RRT\*/BiRRT/PRM/TS-RRT** | GPU | no | OMPL | no |
+| Cable-aware planning | **yes** | no | no | no | no |
+
+## Benchmarks
+
+Engine numbers measured in the [trajx](https://github.com/yuanweima/trajx) repository (WebGPU, Chrome on Apple M4 unless noted). Each is cited to its source so it can be reproduced.
+
+| Workload | Result | Detail | Source |
+|----------|--------|--------|--------|
+| Browser batch IK (WebGPU) | **20,000 IK / 81.7 ms** | ≈245k problems/sec · 19.6× vs single-thread JS | `trajx/CHANGELOG.md:31` |
+| GPU batch IK (native) | **100k / 32.3 ms** | vs 46.8 ms rayon · 173 ms single-core | `trajx/CHANGELOG.md:26` |
+| GPU FK→SDF collision | **100k / 35 ms** | ≈2.85M configs/sec · 7.4× vs rayon | `trajx/CHANGELOG.md:28` |
+| Core FK / IK latency | **FK 1.7–2.6 µs** | seeded IK 21 µs · Ruckig 6-DOF 1 µs | `trajx/README.md:826` |
+
+**13 robots** are built into the engine's DH database — Fanuc (LR Mate 200iD/7L, LR Mate 200iD, M-20iB/25, M-20iD/25), Universal Robots (UR5, UR10), JAKA (Zu7, S12, A12L) and Agilebot (GBT-C12A, GBT-C5A-850, GBT P7A-700, GBT P7A-900).
+
+## Architecture
+
+Two repositories, one product:
+
+- **[trajx](https://github.com/yuanweima/trajx)** — the engine. Rust + WebGPU kinematics / planning core, compiled to `@yuanweima/trajx-wasm` (WebAssembly + WebGPU).
+- **RoboViz** *(this repo)* — the browser renderer and official demo. Consumes `@yuanweima/trajx-wasm` as an **optional** peer dependency, so rendering-only usage stays lightweight.
+
+```
+packages/
+├── core/    @yuanweima/roboviz-core    URDF rendering, trajx bindings, ghost/trajectory/collision viz
+└── react/   @yuanweima/roboviz-react   declarative React components & hooks
+examples/
+└── react-demo/                         the trajx product demo (deployed to GitHub Pages)
+```
+
+Sub-entry points on the core package — `@yuanweima/roboviz-core/kinematics` and `@yuanweima/roboviz-core/planning` — let you pull in IK/planning only when you need it and keep the heavy WASM out of a rendering-only bundle.
+
+## Quickstart
+
+RoboViz is a **pnpm + Turbo** monorepo. Installing pulls `@yuanweima/trajx-wasm` from GitHub Packages, which requires a token with `read:packages` in your `~/.npmrc` (the repo's `.npmrc` only maps the scope to the registry — no secret is committed).
 
 ```bash
-pnpm install
-pnpm build
-pnpm --filter roboviz-react-demo dev   # 运行 trajx 展示 demo
+pnpm install          # install workspace deps (+ the trajx engine)
+pnpm build            # build core + react + demo
+pnpm dev              # run the trajx demo (examples/react-demo)
+pnpm test             # run the core test suite (real trajx-wasm FK/IK/planning)
 ```
 
-### 基础渲染
+## Usage
+
+**Interactive IK with a ghost arm** (declarative components + the kinematics sub-entry):
 
 ```tsx
-import { Canvas } from '@react-three/fiber';
-import { Scene, Robot } from '@yuanweima/roboviz-core';
+import { RoboViz, Robot } from '@yuanweima/roboviz-react';
+import { GhostRobot, type Pose3D } from '@yuanweima/roboviz-core';
+import { usePoseIK, WasmSolverProvider } from '@yuanweima/roboviz-core/kinematics';
 
-function App() {
-  const [joints, setJoints] = useState([0, 0, 0, 0, 0, 0]);
+function IkScene({ urdfContent }: { urdfContent: string }) {
+  const target: Pose3D = { position: [0.45, 0, 0.5], quaternion: [0, 0.707, 0, 0.707] };
+  const { ghostJoints, ghostStatus } = usePoseIK({ robotId: 'arm', urdfContent, targetPose: target });
 
   return (
-    <Canvas>
-      <Scene>
-        <Robot urdfPath="/models/fanuc_m10ia.urdf" jointAngles={joints} />
-      </Scene>
-    </Canvas>
+    <RoboViz>
+      <Robot urdfContent={urdfContent} />
+      {ghostJoints && <GhostRobot jointAngles={ghostJoints} status={ghostStatus} />}
+    </RoboViz>
   );
 }
+
+// Wrap the tree in <WasmSolverProvider> to inject trajx's WASM IK solver.
 ```
 
-### 运动学(trajx)
+**Talking to the engine directly** (`@yuanweima/trajx-wasm`):
 
-```tsx
-import { useRobotWithKinematics } from '@yuanweima/roboviz-core';
+```ts
+import init, { createRobot } from '@yuanweima/trajx-wasm';
 
-function RobotWithIK() {
-  const robot = useRobotWithKinematics({
-    urdfPath: '/models/fanuc_m10ia.urdf',
-    tool: { position: [0, 0, 0.12], quaternion: [0, 0, 0, 1] },
-  });
+await init();
+const robot = createRobot(urdfString);
 
-  const handleMoveTo = (targetPose) => {
-    const result = robot.ikTcp(targetPose);
-    if (result.success) robot.setJointAngles(result.solution);
-  };
+// Forward kinematics
+const pose = robot.forwardKinematics(new Float64Array([0, 0, 0, 0, 0, 0]));
 
-  return <Robot {...robot.robotProps} />;
-}
+// Analytical IK — all solutions at once (up to 8 for spherical-wrist arms)
+const ik = robot.inverseKinematicsAll(pose);
+if (ik.success) console.log(`${ik.solutionCount} solutions, analytical: ${ik.isAnalytical}`);
 ```
 
-### Ghost 预览
+See [`examples/react-demo`](./examples/react-demo) for the full, runnable scenes.
 
-```tsx
-import { GhostRobot } from '@yuanweima/roboviz-core';
-import { useGhostPreview } from '@yuanweima/roboviz-core';
+## Coordinate system
 
-// 给定 TCP 目标位姿 → IK → 半透明 Ghost 显示解与可达性状态
-```
+All 3D positions use **Z-up** (the robotics / URDF standard): **X** forward, **Y** left, **Z** up. When working with Three.js directly (Y-up by default), use the conversions in `packages/core/src/coordinates/`.
 
-### 轨迹 FK 播放
+## Documentation
 
-```tsx
-import { TrajectoryFK } from '@yuanweima/roboviz-core';
-import { usePoseTrajectoryPlayer } from '@yuanweima/roboviz-core';
-```
+- [`docs/architecture.md`](./docs/architecture.md) — system architecture
+- [`docs/kinematics-api.md`](./docs/kinematics-api.md) — kinematics API reference
+- [`docs/LINKING.md`](./docs/LINKING.md) — how the roboviz ↔ trajx repos link during development
+- [`docs/decisions/`](./docs/decisions) — architecture decision records
 
-完整用法见 `examples/react-demo`。
+## Scope
+
+RoboViz is deliberately narrow: it renders robots and visualizes trajx. It intentionally does **not** include industrial process orchestration (welding/grinding/inspection), real-time vision streaming, multi-robot coordination, an advanced post-processing pipeline, or multi-language remote-control SDKs — those belong to trajx or are out of scope.
+
+## License
+
+`UNLICENSED` — proprietary. RoboViz embeds the proprietary trajx engine; no license to use, copy or distribute is granted by this repository being public. See each `package.json`.
 
 ---
 
-## 技术栈
+<div align="center">
 
-- **React 18/19** + **Three.js / React Three Fiber** — 渲染
-- **trajx-wasm** — Rust + WebGPU 运动学/规划内核(WebAssembly),作为可选 peer dependency 注入
-- **Zustand** — 状态管理
-- **TypeScript**
+Built by [Yuanwei Ma](https://github.com/yuanweima) · [trajx](https://github.com/yuanweima/trajx) · [Live demo](https://yuanweima.github.io/roboviz/)
 
-## 坐标系
-
-所有 3D 位置使用 **Z-up**(机器人/URDF 标准):X 向前、Y 向左、Z 向上。直接使用 Three.js(默认 Y-up)时需转换,详见 `coordinates/`。
-
-## 许可证
-
-MIT
+</div>
