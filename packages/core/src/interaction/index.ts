@@ -15,14 +15,6 @@ export {
   formatShortcut as formatGlobalShortcut,
 } from './shortcutRegistry';
 
-// Hooks
-export {
-  useGlobalShortcuts,
-  useShortcut,
-  type ShortcutWithHandler,
-  type UseGlobalShortcutsOptions,
-} from './useGlobalShortcuts';
-
 // Provider
 export {
   InteractionProvider,

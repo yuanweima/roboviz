@@ -12,7 +12,6 @@
  *
  * Z-up 坐标系: X=forward, Y=left, Z=up
  *
- * @see GPUMotionPlanningScene for GPU-accelerated version
  * @see docs/kinematics-api.md for API documentation
  */
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';

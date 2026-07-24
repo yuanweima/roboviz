@@ -10,14 +10,14 @@
  *
  * @example Local WASM (trajx)
  * ```tsx
- * import { SolverProvider, WasmSolverProvider, IKGhostRobot } from '@yuanweima/roboviz-core/kinematics';
- * import { Robot, Scene } from '@yuanweima/roboviz-core';
+ * import { SolverProvider, WasmSolverProvider, usePoseIK } from '@yuanweima/roboviz-core/kinematics';
+ * import { Robot, Scene, GhostRobot } from '@yuanweima/roboviz-core';
  *
  * <SolverProvider>
  *   <WasmSolverProvider robotId="main" urdfContent={urdf}>
  *     <Scene>
  *       <Robot urdfContent={urdf} jointValues={joints} />
- *       <IKGhostRobot targetPose={pose} />
+ *       {ghostJoints && <GhostRobot jointAngles={ghostJoints} status={ghostStatus} />}
  *     </Scene>
  *   </WasmSolverProvider>
  * </SolverProvider>
@@ -48,31 +48,10 @@ export {
 // Kinematics-dependent Components
 // =============================================================================
 export {
-  IKGhostRobot,
-  useIKSolutionSelector,
-  type IKGhostRobotProps,
-  type IKSolution,
-  type IKSolutionSelectorProps,
-} from './components/IKGhostRobot';
-
-export {
-  LinearMotionPreview,
-  type LinearMotionPreviewProps,
-  type PathPoint,
-  type PathSegment,
-} from './components/LinearMotionPreview';
-
-export {
   TrajectoryFK,
   type TrajectoryFKProps,
   type TrajectoryWaypoint,
 } from './components/TrajectoryFK';
-
-export {
-  ManipulabilityIndicator,
-  type ManipulabilityIndicatorProps,
-  type ManipulabilityStatus,
-} from './components/ManipulabilityIndicator';
 
 // =============================================================================
 // Kinematics-dependent Hooks
@@ -83,29 +62,6 @@ export {
   type IKDragResult,
   type UseIKDragReturn,
 } from './hooks/useIKDrag';
-
-export {
-  useGhostPreview,
-  type GhostInputMode,
-  type UseGhostPreviewOptions,
-  type UseGhostPreviewResult,
-} from './hooks/useGhostPreview';
-
-export {
-  usePoseTrajectoryPlayer,
-  type PoseWaypoint,
-  type PoseTrajectory,
-  type PosePlaybackState,
-  type UsePoseTrajectoryPlayerOptions,
-  type UsePoseTrajectoryPlayerResult,
-} from './hooks/usePoseTrajectoryPlayer';
-
-export {
-  useRobotWithKinematics,
-  type ToolConfig,
-  type UseRobotWithKinematicsOptions,
-  type UseRobotWithKinematicsResult,
-} from './hooks/useRobotWithKinematics';
 
 export {
   usePoseIK,

@@ -169,56 +169,6 @@ export type {
 // Re-export Advanced Features from Core
 // =============================================================================
 
-// Trajectory Player
-export {
-  useTrajectoryPlayer,
-  type TrajectoryPlayerState,
-  type TrajectoryPlayerControls,
-  type TrajectoryPlayerOptions,
-} from '@yuanweima/roboviz-core';
-
-// Helper Components
-export {
-  SafetyZoneVisual,
-  type SafetyZoneVisualProps,
-} from '@yuanweima/roboviz-core';
-
-// Collision visualization components
-export {
-  // Main component
-  CollisionVisualizer,
-  CollisionStatusBadge,
-  useCollisionVisualization,
-  // Safety zones (SafetyZone3D to avoid conflict with SafetyZone type)
-  SafetyZone3D,
-  SafetyZoneList,
-  // Collision geometry
-  CollisionGeometryVisual,
-  CollisionGeometryList,
-  // Contact points
-  ContactPoint,
-  ContactPointList,
-  PenetrationVector,
-  CollisionIndicator,
-  // Types
-  type CollisionVisualizerProps,
-  type SafetyZoneProps,
-  type SafetyZoneListProps,
-  type CollisionGeometryVisualProps,
-  type CollisionGeometryListProps,
-  type ContactPointProps,
-  type ContactPointListProps,
-  type CollisionStatusBadgeProps,
-} from '@yuanweima/roboviz-core';
-
-// Collision hooks and types
-export {
-  useCollision,
-  type UseCollisionOptions,
-  type UseCollisionState,
-  type UseCollisionActions,
-} from '@yuanweima/roboviz-core';
-
 // Collision types
 export type {
   CollisionGeometry,

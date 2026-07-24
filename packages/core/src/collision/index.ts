@@ -45,14 +45,6 @@ export type {
 // Constants
 export { DEFAULT_COLLISION_VISUALIZATION } from './types';
 
-// Collision Manager
-export {
-  CollisionManager,
-  createCollisionManager,
-  getCollisionManager,
-  resetCollisionManager,
-} from './collision-manager';
-
 // ============================================================================
 // Collision World (GPU-Accelerated Motion Planning)
 // ============================================================================
@@ -124,11 +116,8 @@ export type {
 } from './components';
 
 // Hooks
-export { useCollisionWorld, useCollisionChecker } from './hooks';
+export { useCollisionWorld } from './hooks';
 export type {
   UseCollisionWorldOptions,
   UseCollisionWorldReturn,
-  UseCollisionCheckerOptions,
-  UseCollisionCheckerReturn,
-  CollisionDetails as WorldCollisionDetails,
 } from './hooks';

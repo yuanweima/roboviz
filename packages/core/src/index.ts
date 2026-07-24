@@ -118,84 +118,10 @@ export { Obstacle, type ObstacleProps } from './components/Obstacle';
 
 // Kinematics-enhanced components
 export {
-  IKGhostRobot,
-  useIKSolutionSelector,
-  type IKGhostRobotProps,
-  type IKSolution,
-  type IKSolutionSelectorProps,
-} from './components/IKGhostRobot';
-export {
-  LinearMotionPreview,
-  type LinearMotionPreviewProps,
-  type PathPoint,
-  type PathSegment,
-} from './components/LinearMotionPreview';
-export {
   TrajectoryFK,
   type TrajectoryFKProps,
   type TrajectoryWaypoint,
 } from './components/TrajectoryFK';
-export {
-  ManipulabilityIndicator,
-  type ManipulabilityIndicatorProps,
-  type ManipulabilityStatus,
-} from './components/ManipulabilityIndicator';
-
-// =============================================================================
-// Helper Components
-// =============================================================================
-export * from './components/helpers';
-
-// =============================================================================
-// Theme System
-// =============================================================================
-export {
-  // Theme creation
-  createRoboVizTheme,
-  themeToCssVariables,
-  getThemeStyleVars,
-  // Preset themes
-  darkTheme,
-  lightTheme,
-  industrialTheme,
-  themePresets,
-  // Provider and hooks
-  RoboVizThemeProvider,
-  useRoboVizTheme,
-  useRoboVizThemeWithFallback,
-  // Types
-  type RoboVizTheme,
-  type ThemeOverrides,
-  type ThemePresetName,
-  type RoboVizThemeProviderProps,
-  type ColorPalette,
-  type BackgroundColors,
-  type TextColors,
-  type BorderColors,
-  type Typography,
-  type Spacing,
-  type BorderRadius,
-  type ButtonTokens,
-  type InputTokens,
-  type JogControlTokens,
-  type Animation,
-  type Shadows,
-} from './theme';
-
-// =============================================================================
-// Trajectory System (Shared Trajectory Infrastructure)
-// =============================================================================
-export * from './trajectory';
-
-// `Trajectory` is exported by both ./kinematics and ./trajectory; the
-// trajectory-system type is canonical at the top level. Explicit re-export
-// disambiguates the star-export collision.
-export type { Trajectory } from './trajectory';
-
-// =============================================================================
-// Workers (Web Worker + SharedArrayBuffer)
-// =============================================================================
-export * from './workers';
 
 // =============================================================================
 // Motion Planning (trajx planners)

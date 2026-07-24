@@ -146,22 +146,6 @@ export {
 } from './useTrajx';
 
 // ============================================================================
-// Linear Motion Planning
-// ============================================================================
-
-export {
-  LinearMotionPlanner,
-  createLinearMotionPlanner,
-  planLinearMotion,
-  planLinearPath,
-  checkLinearFeasibility,
-  type LinearMotionConfig,
-  type LinearPathSegment,
-  type WaypointResult,
-  type OrientationInterpolation,
-} from './linear-motion';
-
-// ============================================================================
 // Unified IK Types & Ghost Status
 // ============================================================================
 
