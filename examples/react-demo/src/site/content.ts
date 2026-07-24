@@ -200,4 +200,5 @@ export const DEMOS: Array<{ slug: string; title: string; blurb: string }> = [
   { slug: 'batch-fk', title: 'Batch FK Swarm', blurb: 'Thousands of robots’ forward kinematics, computed per frame in the browser.' },
   { slug: 'ik', title: 'Interactive IK', blurb: 'Drag a target; trajx solves analytical IK in real time with live reachability.' },
   { slug: 'planning', title: 'Motion Planning', blurb: 'RRT* / BiRRT / PRM compared and timed against obstacles.' },
+  { slug: 'gpu-planning', title: 'GPU Motion Planning', blurb: 'Batched Lazy-PRM plans a collision-free path around obstacles, with live WebGPU collision throughput.' },
 ];

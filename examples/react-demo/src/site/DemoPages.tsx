@@ -4,6 +4,7 @@ import { IKDemoScene } from '../modules/scenes/IKDemoScene';
 import { MotionPlanningScene } from '../modules/scenes/MotionPlanningScene';
 import { BatchFkScene } from '../modules/scenes/BatchFkScene';
 import { BatchIkScene } from '../modules/scenes/BatchIkScene';
+import { GpuPlanningScene } from '../modules/scenes/GpuPlanningScene';
 
 export function IkDemoPage(): React.JSX.Element {
   return (
@@ -34,6 +35,17 @@ export function BatchIkDemoPage(): React.JSX.Element {
       what="Every arm has its own target pose (the amber markers). Instead of solving them one by one, trajx hands the whole batch to the GPU: BatchIkSolver.solveBest runs multi-seed damped-least-squares inverse kinematics for all of them at once via WebGPU, and each arm flows to the joint solution it got back. The counter shows the live throughput — inverse-kinematics solves per second, measured on your machine."
     >
       <BatchIkScene />
+    </DemoPageLayout>
+  );
+}
+
+export function GpuPlanningDemoPage(): React.JSX.Element {
+  return (
+    <DemoPageLayout
+      slug="gpu-planning"
+      what="trajx plans a collision-free path for the Fanuc around a wall and a floating ball using its Lazy-PRM planner — a probabilistic roadmap whose edges are validated in batches. The headline number is the genuine part: trajx's WebGPU batch-collision throughput, measured live on your machine — the raw GPU horsepower that lets batch planning scale. (The plan's own collision checks run in-browser here, since the URDF's STL meshes can't be loaded client-side.)"
+    >
+      <GpuPlanningScene />
     </DemoPageLayout>
   );
 }
