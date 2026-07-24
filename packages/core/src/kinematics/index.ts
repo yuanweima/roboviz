@@ -1,0 +1,236 @@
+/**
+ * RoboViz Kinematics Module
+ *
+ * Provides forward/inverse kinematics and motion planning capabilities
+ * using trajx-wasm for high-performance computation.
+ *
+ * @packageDocumentation
+ */
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export type {
+  // Core types
+  DhParam,
+  JointLimits,
+  KinematicLimits,
+
+  // IK/FK results
+  IkResult,
+  MultiIkResult,
+  FkResult,
+  FkChainResult,
+
+  // Workspace analysis
+  WorkspaceAnalysis,
+  ReachabilityResult,
+
+  // Motion planning
+  LinearMotionSegment,
+  LinearMotionRequest,
+  LinearMotionResult,
+  PathPlanningConfig,
+  PathPlanningRequest,
+  PathPlanningResult,
+
+  // Trajectory
+  TrajectoryConfig,
+  TrajectoryPoint,
+  Trajectory,
+
+  // Configuration
+  IkSolverConfig,
+  RobotSolverConfig,
+
+  // Events
+  KinematicsEventType,
+  KinematicsEvent,
+  KinematicsEventListener,
+
+  // Tool types
+  TcpPoint,
+  ToolDefinition,
+  ToolAttachment,
+  StandoffPoseRequest,
+} from './types';
+
+// ============================================================================
+// Manager
+// ============================================================================
+
+export {
+  getKinematicsManager,
+  resetKinematicsManager,
+  RobotSolver,
+  UrdfRobotSolver,
+  type AnySolver,
+  type TrajxTool,
+  type TrajxTcpPoint,
+  type TrajxToolLibrary,
+  // Cable Management types (NEW in melbourne - integrated into WasmMotion)
+  type TrajxCableConfig,
+  type TrajxMotionResult,
+} from './kinematics-manager';
+
+// ============================================================================
+// Solver Interface (Type Guards)
+// ============================================================================
+
+export {
+  hasMultiIk,
+  hasWorkspaceAnalysis,
+  isExtendedSolver,
+  computeIkAll,
+  computeWorkspaceAnalysis,
+  type IBaseSolver,
+  type IExtendedSolver,
+} from './solver-interface';
+
+// ============================================================================
+// React Hooks
+// ============================================================================
+
+export {
+  // Main hook
+  useTrajx,
+  type UseTrajxState,
+  type UseTrajxActions,
+  type UseTrajxReturn,
+
+  // Robot solver hook (DH database)
+  useRobotSolver,
+  type UseRobotSolverOptions,
+  type UseRobotSolverState,
+  type UseRobotSolverActions,
+  type UseRobotSolverReturn,
+
+  // URDF-based solver hook (automatic from URDF content)
+  useUrdfSolver,
+  type UseUrdfSolverOptions,
+  type UseUrdfSolverState,
+  type UseUrdfSolverActions,
+  type UseUrdfSolverReturn,
+
+  // Hybrid solver hook (URDF + DH for analytical IK)
+  useHybridSolver,
+  URDF_TO_DH_MAPPING,
+  type UseHybridSolverOptions,
+  type UseHybridSolverState,
+  type UseHybridSolverActions,
+  type UseHybridSolverReturn,
+
+  // Coordinate system utilities
+  type CoordinateSystem,
+  poseYupToZup,
+  poseZupToYup,
+  quaternionYupToZup,
+  quaternionZupToYup,
+
+  // Focused IK hook
+  useIK,
+  type UseIKOptions,
+  type UseIKReturn,
+
+  // Focused FK hook
+  useFK,
+  type UseFKOptions,
+  type UseFKReturn,
+
+  // Cable configuration hook (NEW in melbourne - cable tracking is now in WasmMotion)
+  useTrajxCableConfig,
+  type CablePresetType,
+  type UseTrajxCableConfigOptions,
+  type UseTrajxCableConfigReturn,
+} from './useTrajx';
+
+// ============================================================================
+// Linear Motion Planning
+// ============================================================================
+
+export {
+  LinearMotionPlanner,
+  createLinearMotionPlanner,
+  planLinearMotion,
+  planLinearPath,
+  checkLinearFeasibility,
+  type LinearMotionConfig,
+  type LinearPathSegment,
+  type WaypointResult,
+  type OrientationInterpolation,
+} from './linear-motion';
+
+// ============================================================================
+// Unified IK Types & Ghost Status
+// ============================================================================
+
+export {
+  // Ghost Status (SINGLE SOURCE OF TRUTH)
+  type GhostStatus,
+  GHOST_STATUS_COLORS,
+  // Types
+  type UnifiedIKResult,
+  type UnifiedMultiIKResult,
+  type UnifiedIKSolution,
+  type StatusThresholds,
+  // Constants
+  DEFAULT_STATUS_THRESHOLDS,
+  // Utilities
+  getGhostStatusFromWorkspace,
+  createUnifiedIKResult,
+} from './unified-types';
+
+// ============================================================================
+// Core IK Computation Hook
+// ============================================================================
+
+export {
+  useIKComputation,
+  type IKSolver,
+  type IKSolverResult,
+  type UseIKComputationOptions,
+  type UseIKComputationReturn,
+} from './useIKComputation';
+
+// ============================================================================
+// Solver Provider (dependency injection for IK/FK solvers)
+// ============================================================================
+
+export {
+  SolverProvider,
+  useSolverContext,
+  useSolverContextOptional,
+  useSolverStatus,
+  type SolverProviderProps,
+} from './SolverContext';
+
+export type {
+  ISolverProvider,
+  SolverCapabilities,
+  SolverContextValue,
+} from './solver-provider-types';
+
+// Adapters
+export {
+  WasmSolverAdapter,
+  WasmSolverProvider,
+  type WasmSolverProviderProps,
+} from './adapters';
+
+// ============================================================================
+// High-level IK Hooks (kinematics-only, no rendering dependency)
+// ============================================================================
+
+export {
+  usePoseIK,
+  type UsePoseIKOptions,
+  type UsePoseIKReturn,
+} from '../hooks/usePoseIK';
+
+export {
+  useIKDrag,
+  type UseIKDragOptions,
+  type IKDragResult,
+  type UseIKDragReturn,
+} from '../hooks/useIKDrag';

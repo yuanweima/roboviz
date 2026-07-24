@@ -1,0 +1,30 @@
+{
+  "name": "fk-rotated",
+  "category": "fk",
+  "description": "正运动学测试 - 验证非零关节角度的位姿计算",
+  "params": {
+    "urdfPath": "../../fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf",
+    "jointAngles": [0.5, -0.3, 0.8, 0, 0.5, 0]
+  },
+  "expectedBehavior": "机器人应显示旋转后的姿态：第一关节旋转约28度，第二关节反向旋转约17度，第三关节旋转约46度，第五关节旋转约28度。末端执行器应指向不同方向。",
+  "checkpoints": [
+    {
+      "name": "joint1-rotated",
+      "question": "第一个关节（基座旋转）是否有明显旋转？",
+      "expectedKeywords": ["旋转", "转动", "是"],
+      "critical": true
+    },
+    {
+      "name": "arm-pose-changed",
+      "question": "机器人手臂的整体姿态是否与初始位置明显不同？",
+      "expectedKeywords": ["不同", "变化", "改变"],
+      "critical": true
+    },
+    {
+      "name": "links-connected",
+      "question": "所有连杆之间的连接是否正确，没有断裂？",
+      "expectedKeywords": ["正确", "连接", "无断裂"],
+      "critical": true
+    }
+  ]
+}

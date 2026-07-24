@@ -1,0 +1,30 @@
+{
+  "name": "fk-basic",
+  "category": "fk",
+  "description": "基础正运动学测试 - 验证关节角度到末端位姿的计算",
+  "params": {
+    "urdfPath": "../../fixtures/models/Fanuc_LR_Mate_200iD_7L/robot_link.urdf",
+    "jointAngles": [0, 0, 0, 0, 0, 0]
+  },
+  "expectedBehavior": "机器人应显示在初始位置（所有关节角度为0），末端执行器应指向前方。机器人各连杆应正确连接，无断裂或重叠。",
+  "checkpoints": [
+    {
+      "name": "robot-visible",
+      "question": "机器人模型是否完整可见？所有连杆是否正确渲染？",
+      "expectedKeywords": ["可见", "完整", "正确"],
+      "critical": true
+    },
+    {
+      "name": "joint-positions",
+      "question": "机器人是否处于初始姿态（零位）？各关节是否未旋转？",
+      "expectedKeywords": ["初始", "零位", "未旋转"],
+      "critical": true
+    },
+    {
+      "name": "no-visual-artifacts",
+      "question": "画面中是否有视觉错误，如穿模、闪烁或异常渲染？",
+      "expectedKeywords": ["没有", "正常", "无"],
+      "critical": false
+    }
+  ]
+}

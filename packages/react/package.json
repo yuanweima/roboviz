@@ -1,0 +1,54 @@
+{
+  "name": "@yuanweima/roboviz-react",
+  "version": "0.1.0",
+  "description": "React bindings for RoboViz - declarative components and hooks for trajx robot visualization",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "dev": "tsup src/index.ts --watch",
+    "build": "tsup src/index.ts --format cjs,esm --dts --external react --external react-dom",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "@yuanweima/roboviz-core": "workspace:*",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.8.0"
+  },
+  "keywords": [
+    "react",
+    "robot",
+    "visualization",
+    "3d",
+    "urdf",
+    "three.js",
+    "robotics"
+  ],
+  "repository": {
+    "type": "git",
+    "directory": "packages/react"
+  },
+  "license": "UNLICENSED"
+}

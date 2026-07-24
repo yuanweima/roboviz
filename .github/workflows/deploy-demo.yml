@@ -1,0 +1,64 @@
+name: Deploy demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow the workflow to publish to GitHub Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  packages: read
+
+# One deploy at a time; let an in-progress run finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm version comes from package.json "packageManager" (pnpm@9.0.0);
+      # don't also pin it here or the two conflict (ERR_PNPM_BAD_PM_VERSION).
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Auth to GitHub Packages for @yuanweima/trajx-wasm (the trajx engine).
+      # PACKAGES_READ_TOKEN = a PAT (classic) with read:packages. See docs/LINKING.md.
+      - name: Configure GitHub Packages auth
+        run: echo "//npm.pkg.github.com/:_authToken=${PACKAGES_TOKEN}" >> .npmrc
+        env:
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Build core + react first (turbo build.dependsOn ^build), then the demo —
+      # the demo's tsc needs the workspace packages' emitted .d.ts.
+      - name: Build (core → react → demo)
+        run: pnpm build
+        env:
+          GITHUB_PAGES: 'true'
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: examples/react-demo/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

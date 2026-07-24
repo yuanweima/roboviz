@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>URDF 真实网格可视化测试</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      display: flex;
+      height: 100vh;
+    }
+
+    #sidebar {
+      width: 400px;
+      background: #161b22;
+      border-right: 1px solid #30363d;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    #viewport {
+      flex: 1;
+      position: relative;
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    h1 { font-size: 18px; color: #58a6ff; margin-bottom: 12px; }
+    h2 {
+      font-size: 13px;
+      color: #8b949e;
+      margin: 20px 0 10px 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #30363d;
+      padding-bottom: 6px;
+    }
+
+    .status-panel {
+      background: #21262d;
+      padding: 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      border: 1px solid #30363d;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 13px;
+    }
+    .status-label { color: #8b949e; }
+    .status-value { color: #58a6ff; font-family: 'Monaco', monospace; font-size: 12px; }
+    .status-pass { color: #3fb950; }
+    .status-fail { color: #f85149; }
+
+    button {
+      background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      margin: 4px;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+    button:hover { transform: translateY(-1px); filter: brightness(1.1); }
+    button:disabled { background: #30363d; cursor: not-allowed; opacity: 0.6; }
+    button.primary { background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%); }
+    button.danger { background: linear-gradient(135deg, #da3633 0%, #f85149 100%); }
+
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 10px 0;
+    }
+
+    .slider-group {
+      background: #21262d;
+      padding: 12px;
+      border-radius: 8px;
+      margin: 8px 0;
+      border: 1px solid #30363d;
+    }
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .slider-name { color: #8b949e; }
+    .slider-value { color: #58a6ff; font-family: 'Monaco', monospace; }
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #30363d;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #58a6ff;
+      cursor: pointer;
+    }
+
+    .log-panel {
+      background: #0d1117;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: 'Monaco', monospace;
+      font-size: 11px;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid #30363d;
+    }
+
+    .log-info { color: #58a6ff; }
+    .log-success { color: #3fb950; }
+    .log-warn { color: #d29922; }
+    .log-error { color: #f85149; }
+
+    #overlay {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(22, 27, 34, 0.95);
+      padding: 16px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      min-width: 280px;
+      border: 1px solid #30363d;
+    }
+    #overlay h3 { color: #58a6ff; margin-bottom: 12px; font-size: 15px; }
+
+    .loading-bar {
+      height: 4px;
+      background: #30363d;
+      border-radius: 2px;
+      margin: 8px 0;
+      overflow: hidden;
+    }
+    .loading-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #238636, #3fb950);
+      transition: width 0.3s;
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    .legend-item { display: flex; align-items: center; gap: 4px; }
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+
+    .pose-info {
+      background: #21262d;
+      padding: 10px;
+      border-radius: 6px;
+      margin: 8px 0;
+      font-family: 'Monaco', monospace;
+      font-size: 11px;
+    }
+    .pose-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 2px 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h1>URDF 真实网格可视化</h1>
+
+    <div class="status-panel">
+      <div class="status-row">
+        <span class="status-label">网格加载:</span>
+        <span class="status-value" id="mesh-status">未加载</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">已加载连杆:</span>
+        <span class="status-value" id="links-loaded">0/7</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">FK 状态:</span>
+        <span class="status-value" id="fk-status">未计算</span>
+      </div>
+    </div>
+
+    <h2>关节控制</h2>
+    <div id="joint-sliders"></div>
+
+    <div class="pose-info">
+      <div class="pose-row">
+        <span>末端位置 X:</span>
+        <span id="pos-x">- mm</span>
+      </div>
+      <div class="pose-row">
+        <span>末端位置 Y:</span>
+        <span id="pos-y">- mm</span>
+      </div>
+      <div class="pose-row">
+        <span>末端位置 Z:</span>
+        <span id="pos-z">- mm</span>
+      </div>
+    </div>
+
+    <h2>预设姿态</h2>
+    <div class="btn-group">
+      <button id="btn-home" class="primary">零位</button>
+      <button id="btn-pose1">姿态1</button>
+      <button id="btn-pose2">姿态2</button>
+      <button id="btn-pose3">姿态3</button>
+    </div>
+
+    <h2>碰撞场景</h2>
+    <div class="btn-group">
+      <button id="btn-add-box">添加方块</button>
+      <button id="btn-add-sphere">添加球体</button>
+      <button id="btn-clear-obs" class="danger">清除障碍</button>
+    </div>
+
+    <h2>轨迹规划</h2>
+    <div class="btn-group">
+      <button id="btn-plan" class="primary">规划轨迹</button>
+      <button id="btn-execute">执行轨迹</button>
+      <button id="btn-clear-traj" class="danger">清除轨迹</button>
+    </div>
+
+    <h2>日志</h2>
+    <div class="log-panel" id="log"></div>
+  </div>
+
+  <div id="viewport">
+    <div id="canvas-container"></div>
+    <div id="overlay">
+      <h3>Fanuc LR Mate 200iD/7L</h3>
+      <div id="current-status">正在加载 STL 网格...</div>
+      <div class="loading-bar">
+        <div class="loading-fill" id="loading-progress" style="width: 0%"></div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background:#ffcc00"></div> 机器人</div>
+        <div class="legend-item"><div class="legend-color" style="background:#f85149"></div> 障碍物</div>
+        <div class="legend-item"><div class="legend-color" style="background:#3fb950"></div> 轨迹</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+    import init, {
+      version,
+      WasmDhDatabase,
+      forwardKinematicsDh,
+      forwardKinematicsChainDh,
+      CollisionEnvironment,
+      BiRRTPlanner,
+      Pose
+    } from '../../vendor/trajx-wasm/trajx_wasm.js';
+
+    // ========== State ==========
+    let scene, camera, renderer, controls;
+    let robotGroup, obstaclesGroup, trajectoryGroup;
+    let linkMeshes = {};  // Store loaded meshes by link name
+    let dhDb, jointLimits;
+    let collisionEnv;
+    let currentJoints = [0, 0, 0, 0, 0, 0];
+    let trajectoryData = null;
+    let animationId = null;
+    const ROBOT_NAME = 'Fanuc_LR_Mate_200iD_7L';
+    const MESH_BASE_PATH = '../fixtures/models/Fanuc_LR_Mate_200iD_7L/meshes/';
+
+    // URDF structure - link names, colors, and joint transforms
+    const URDF_LINKS = [
+      { name: 'base_link', file: 'base_link.STL', color: 0x666666, parent: null },
+      { name: 'link1', file: 'link1.STL', color: 0xffffff, parent: 'base_link' },
+      { name: 'link2', file: 'link2.STL', color: 0xffcc00, parent: 'link1' },
+      { name: 'link3', file: 'link3.STL', color: 0xffffff, parent: 'link2' },
+      { name: 'link4', file: 'link4.STL', color: 0xffffff, parent: 'link3' },
+      { name: 'link5', file: 'link5.STL', color: 0xffffff, parent: 'link4' },
+      { name: 'link6', file: 'link6.STL', color: 0x333333, parent: 'link5' }
+    ];
+
+    // Joint origins from URDF (parent to child transforms)
+    const JOINT_ORIGINS = [
+      { xyz: [0, 0, 0], rpy: [0, 0, 0] },           // world -> base_link (fixed)
+      { xyz: [0, 0, 0.33], rpy: [0, 0, 0] },        // base_link -> link1 (joint1)
+      { xyz: [0.05, 0, 0], rpy: [0, 0, 0] },        // link1 -> link2 (joint2)
+      { xyz: [0, 0, 0.44], rpy: [0, 0, 0] },        // link2 -> link3 (joint3)
+      { xyz: [0, 0, 0.035], rpy: [0, 0, 0] },       // link3 -> link4 (joint4)
+      { xyz: [0.42, 0, 0], rpy: [0, 0, 0] },        // link4 -> link5 (joint5)
+      { xyz: [0.08, 0, 0], rpy: [Math.PI, -Math.PI/2, 0] }  // link5 -> link6 (joint6)
+    ];
+
+    // Joint axes from URDF
+    const JOINT_AXES = [
+      [0, 0, 1],   // joint1: Z
+      [0, 1, 0],   // joint2: Y
+      [0, -1, 0],  // joint3: -Y
+      [-1, 0, 0],  // joint4: -X
+      [0, -1, 0],  // joint5: -Y
+      [0, 0, -1]   // joint6: -Z
+    ];
+
+    // ========== Logging ==========
+    const logEl = document.getElementById('log');
+    function log(msg, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      const cls = { info: 'log-info', success: 'log-success', warn: 'log-warn', error: 'log-error' }[type] || 'log-info';
+      logEl.innerHTML += `<span class="${cls}">[${time}] ${msg}</span>\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function updateStatus(id, value, type = '') {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = value;
+        el.className = `status-value ${type ? 'status-' + type : ''}`;
+      }
+    }
+
+    // ========== Three.js Setup ==========
+    function initThree() {
+      const container = document.getElementById('canvas-container');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0d1117);
+
+      camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.01, 100);
+      camera.position.set(1.2, 1.0, 1.2);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0.4, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      scene.add(ambientLight);
+
+      const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
+      mainLight.position.set(5, 10, 5);
+      mainLight.castShadow = true;
+      mainLight.shadow.mapSize.width = 2048;
+      mainLight.shadow.mapSize.height = 2048;
+      mainLight.shadow.camera.near = 0.5;
+      mainLight.shadow.camera.far = 50;
+      scene.add(mainLight);
+
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+      fillLight.position.set(-5, 5, -5);
+      scene.add(fillLight);
+
+      // Ground plane
+      const groundGeometry = new THREE.PlaneGeometry(4, 4);
+      const groundMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1a1a2e,
+        roughness: 0.8,
+        metalness: 0.2
+      });
+      const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // Grid
+      const grid = new THREE.GridHelper(3, 30, 0x30363d, 0x21262d);
+      grid.position.y = 0.001;
+      scene.add(grid);
+
+      // Axes helper
+      const axes = new THREE.AxesHelper(0.3);
+      scene.add(axes);
+
+      // Groups
+      robotGroup = new THREE.Group();
+      obstaclesGroup = new THREE.Group();
+      trajectoryGroup = new THREE.Group();
+      scene.add(robotGroup);
+      scene.add(obstaclesGroup);
+      scene.add(trajectoryGroup);
+
+      // Resize handler
+      window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+    }
+
+    // ========== Load STL Meshes ==========
+    async function loadRobotMeshes() {
+      const loader = new STLLoader();
+      let loaded = 0;
+      const total = URDF_LINKS.length;
+
+      log('开始加载 STL 网格文件...', 'info');
+      updateStatus('mesh-status', '加载中...');
+
+      for (const link of URDF_LINKS) {
+        try {
+          const geometry = await new Promise((resolve, reject) => {
+            loader.load(
+              MESH_BASE_PATH + link.file,
+              resolve,
+              (progress) => {
+                // Progress callback
+              },
+              reject
+            );
+          });
+
+          // STL files are already in meters - no scaling needed
+          // geometry.scale(0.001, 0.001, 0.001);
+
+          // Center geometry if needed
+          geometry.computeBoundingBox();
+
+          const material = new THREE.MeshPhongMaterial({
+            color: link.color,
+            specular: 0x222222,
+            shininess: 30,
+            flatShading: false
+          });
+
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.name = link.name;
+
+          // Store mesh reference
+          linkMeshes[link.name] = mesh;
+          robotGroup.add(mesh);
+
+          loaded++;
+          updateStatus('links-loaded', `${loaded}/${total}`);
+          document.getElementById('loading-progress').style.width = `${(loaded / total) * 100}%`;
+
+          log(`已加载: ${link.name}`, 'success');
+
+        } catch (e) {
+          log(`加载 ${link.name} 失败: ${e.message}`, 'error');
+        }
+      }
+
+      if (loaded === total) {
+        updateStatus('mesh-status', '全部加载', 'pass');
+        document.getElementById('current-status').textContent = '网格加载完成';
+        log(`全部 ${total} 个网格加载完成`, 'success');
+
+        // Setup hierarchical link structure
+        setupLinkHierarchy();
+
+        // Apply initial pose
+        updateRobotPose(currentJoints);
+      } else {
+        updateStatus('mesh-status', `${loaded}/${total}`, 'warn');
+      }
+    }
+
+    // ========== Update Robot Pose ==========
+    // Use hierarchical structure: each link is a child of its parent
+    // Only apply joint rotation, not absolute FK position
+    let linkGroups = {};  // Store link groups (containers) for hierarchy
+
+    function setupLinkHierarchy() {
+      // Create a group for each link that will contain:
+      // 1. The visual mesh
+      // 2. The child link group (offset by joint origin)
+
+      // First, rotate base to convert Z-up to Y-up
+      robotGroup.rotation.set(-Math.PI/2, 0, 0);
+
+      // Create link groups with URDF joint origins
+      for (let i = 0; i < URDF_LINKS.length; i++) {
+        const linkInfo = URDF_LINKS[i];
+        const group = new THREE.Group();
+        group.name = linkInfo.name + '_group';
+        linkGroups[linkInfo.name] = group;
+
+        // Add the mesh to its group
+        const mesh = linkMeshes[linkInfo.name];
+        if (mesh) {
+          // Remove from robotGroup if already added
+          if (mesh.parent === robotGroup) {
+            robotGroup.remove(mesh);
+          }
+          group.add(mesh);
+          mesh.position.set(0, 0, 0);
+          mesh.rotation.set(0, 0, 0);
+        }
+      }
+
+      // Build parent-child relationships using joint origins
+      // base_link -> link1 (joint1)
+      if (linkGroups['link1']) {
+        const origin = JOINT_ORIGINS[1];  // joint1 origin
+        linkGroups['link1'].position.set(origin.xyz[0], origin.xyz[1], origin.xyz[2]);
+        linkGroups['base_link'].add(linkGroups['link1']);
+      }
+
+      // link1 -> link2 (joint2)
+      if (linkGroups['link2']) {
+        const origin = JOINT_ORIGINS[2];
+        linkGroups['link2'].position.set(origin.xyz[0], origin.xyz[1], origin.xyz[2]);
+        linkGroups['link1'].add(linkGroups['link2']);
+      }
+
+      // link2 -> link3 (joint3)
+      if (linkGroups['link3']) {
+        const origin = JOINT_ORIGINS[3];
+        linkGroups['link3'].position.set(origin.xyz[0], origin.xyz[1], origin.xyz[2]);
+        linkGroups['link2'].add(linkGroups['link3']);
+      }
+
+      // link3 -> link4 (joint4)
+      if (linkGroups['link4']) {
+        const origin = JOINT_ORIGINS[4];
+        linkGroups['link4'].position.set(origin.xyz[0], origin.xyz[1], origin.xyz[2]);
+        linkGroups['link3'].add(linkGroups['link4']);
+      }
+
+      // link4 -> link5 (joint5)
+      if (linkGroups['link5']) {
+        const origin = JOINT_ORIGINS[5];
+        linkGroups['link5'].position.set(origin.xyz[0], origin.xyz[1], origin.xyz[2]);
+        linkGroups['link4'].add(linkGroups['link5']);
+      }
+
+      // link5 -> link6 (joint6)
+      if (linkGroups['link6']) {
+        const origin = JOINT_ORIGINS[6];
+        linkGroups['link6'].position.set(origin.xyz[0], origin.xyz[1], origin.xyz[2]);
+        // Also apply the RPY rotation from joint6 origin
+        linkGroups['link6'].rotation.set(origin.rpy[0], origin.rpy[1], origin.rpy[2]);
+        linkGroups['link5'].add(linkGroups['link6']);
+      }
+
+      // Add base_link group to robot
+      robotGroup.add(linkGroups['base_link']);
+    }
+
+    function updateRobotPose(joints) {
+      currentJoints = joints;
+
+      if (!dhDb) return;
+
+      try {
+        // Get end effector pose for display
+        const freshDhParams = dhDb.getDhParams(ROBOT_NAME);
+        let jointArray = new Float64Array(freshDhParams.length);
+        for (let i = 0; i < Math.min(joints.length, freshDhParams.length); i++) {
+          jointArray[i] = joints[i];
+        }
+        const eePose = forwardKinematicsDh(freshDhParams, jointArray);
+
+        // Update position display
+        if (eePose.position) {
+          document.getElementById('pos-x').textContent = (eePose.position.x * 1000).toFixed(1) + ' mm';
+          document.getElementById('pos-y').textContent = (eePose.position.y * 1000).toFixed(1) + ' mm';
+          document.getElementById('pos-z').textContent = (eePose.position.z * 1000).toFixed(1) + ' mm';
+        }
+
+        // Apply joint rotations to link groups
+        // Joint 1 rotates link1 around Z axis
+        if (linkGroups['link1']) {
+          linkGroups['link1'].rotation.set(0, 0, joints[0]);  // Z axis
+        }
+
+        // Joint 2 rotates link2 around Y axis
+        if (linkGroups['link2']) {
+          linkGroups['link2'].rotation.set(0, joints[1], 0);  // Y axis
+        }
+
+        // Joint 3 rotates link3 around -Y axis (same as Y with negated angle)
+        if (linkGroups['link3']) {
+          linkGroups['link3'].rotation.set(0, -joints[2], 0);  // -Y axis
+        }
+
+        // Joint 4 rotates link4 around -X axis
+        if (linkGroups['link4']) {
+          linkGroups['link4'].rotation.set(-joints[3], 0, 0);  // -X axis
+        }
+
+        // Joint 5 rotates link5 around -Y axis
+        if (linkGroups['link5']) {
+          linkGroups['link5'].rotation.set(0, -joints[4], 0);  // -Y axis
+        }
+
+        // Joint 6 rotates link6 around -Z axis
+        // But link6 also has static RPY from joint origin
+        if (linkGroups['link6']) {
+          const origin = JOINT_ORIGINS[6];
+          // Apply joint rotation on top of static origin rotation
+          const euler = new THREE.Euler(origin.rpy[0], origin.rpy[1], origin.rpy[2] - joints[5], 'XYZ');
+          linkGroups['link6'].rotation.copy(euler);
+        }
+
+        updateStatus('fk-status', 'OK', 'pass');
+
+      } catch (e) {
+        log(`FK 计算错误: ${e.message}`, 'error');
+        updateStatus('fk-status', '错误', 'fail');
+      }
+
+      // Update slider displays
+      for (let i = 0; i < 6; i++) {
+        const slider = document.getElementById(`joint-${i}`);
+        const display = document.getElementById(`joint-${i}-value`);
+        if (slider && display) {
+          slider.value = joints[i];
+          display.textContent = (joints[i] * 180 / Math.PI).toFixed(1) + '°';
+        }
+      }
+    }
+
+    // ========== Joint Sliders ==========
+    function createJointSliders() {
+      const container = document.getElementById('joint-sliders');
+      const limits = jointLimits ? [
+        [-2.9, 2.9], [-1.7, 2.5], [-2.4, 4.8], [-3.3, 3.3], [-2.1, 2.1], [-6.2, 6.2]
+      ] : [
+        [-3.14, 3.14], [-3.14, 3.14], [-3.14, 3.14], [-3.14, 3.14], [-3.14, 3.14], [-3.14, 3.14]
+      ];
+
+      for (let i = 0; i < 6; i++) {
+        const div = document.createElement('div');
+        div.className = 'slider-group';
+        div.innerHTML = `
+          <div class="slider-label">
+            <span class="slider-name">关节 ${i + 1}</span>
+            <span class="slider-value" id="joint-${i}-value">0°</span>
+          </div>
+          <input type="range" id="joint-${i}"
+                 min="${limits[i][0]}" max="${limits[i][1]}" step="0.01" value="0">
+        `;
+        container.appendChild(div);
+
+        const slider = div.querySelector('input');
+        slider.addEventListener('input', () => {
+          const newJoints = [...currentJoints];
+          newJoints[i] = parseFloat(slider.value);
+          updateRobotPose(newJoints);
+        });
+      }
+    }
+
+    // ========== Obstacles ==========
+    function addObstacle(type) {
+      const material = new THREE.MeshPhongMaterial({
+        color: 0xf85149,
+        transparent: true,
+        opacity: 0.7
+      });
+
+      let mesh;
+      const pos = [
+        0.3 + (Math.random() - 0.5) * 0.3,
+        0.3 + Math.random() * 0.3,
+        (Math.random() - 0.5) * 0.3
+      ];
+
+      if (type === 'box') {
+        const size = 0.08 + Math.random() * 0.05;
+        mesh = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), material);
+        mesh.position.set(pos[0], pos[1], pos[2]);
+
+        if (collisionEnv) {
+          const pose = Pose.fromPositionEuler(pos[0], -pos[2], pos[1], 0, 0, 0);
+          collisionEnv.addBox(`box_${Date.now()}`, new Float64Array([size/2, size/2, size/2]), pose);
+        }
+      } else {
+        const radius = 0.04 + Math.random() * 0.03;
+        mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 24), material);
+        mesh.position.set(pos[0], pos[1], pos[2]);
+
+        if (collisionEnv) {
+          collisionEnv.addSphere(`sphere_${Date.now()}`, radius, new Float64Array([pos[0], -pos[2], pos[1]]));
+        }
+      }
+
+      mesh.castShadow = true;
+      obstaclesGroup.add(mesh);
+      log(`添加 ${type === 'box' ? '方块' : '球体'} 障碍物`, 'info');
+    }
+
+    function clearObstacles() {
+      while (obstaclesGroup.children.length > 0) {
+        obstaclesGroup.remove(obstaclesGroup.children[0]);
+      }
+      if (collisionEnv) collisionEnv.clear();
+      log('已清除所有障碍物', 'info');
+    }
+
+    // ========== Trajectory ==========
+    function planTrajectory() {
+      if (!jointLimits) {
+        log('关节限制未加载', 'error');
+        return;
+      }
+
+      log('开始规划轨迹...', 'info');
+
+      const startJoints = new Float64Array(currentJoints);
+      const goalJoints = new Float64Array([0.8, 0.5, -0.5, 0.3, 0.5, 0.2]);
+
+      try {
+        const planner = new BiRRTPlanner(jointLimits);
+        const result = planner.plan(startJoints, goalJoints);
+
+        if (result.success) {
+          visualizeTrajectory(result);
+          trajectoryData = result;  // Set AFTER visualize so clearTrajectory doesn't nullify it
+          log(`轨迹规划成功: ${result.waypointCount} 个路点`, 'success');
+        } else {
+          log('轨迹规划失败', 'error');
+        }
+      } catch (e) {
+        log(`规划错误: ${e.message}`, 'error');
+      }
+    }
+
+    function visualizeTrajectory(result) {
+      clearTrajectory();
+
+      if (!result || !result.waypointCount || !dhDb) return;
+
+      const points = [];
+      for (let i = 0; i < result.waypointCount; i++) {
+        const joints = result.getWaypoint(i);
+        if (!joints) continue;
+
+        try {
+          const freshDhParams = dhDb.getDhParams(ROBOT_NAME);
+          let jointArray = new Float64Array(freshDhParams.length);
+          for (let j = 0; j < Math.min(joints.length, freshDhParams.length); j++) {
+            jointArray[j] = joints[j];
+          }
+          const fk = forwardKinematicsDh(freshDhParams, jointArray);
+          points.push(new THREE.Vector3(fk.position.x, fk.position.z, -fk.position.y));
+        } catch (e) {}
+      }
+
+      if (points.length > 0) {
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({ color: 0x3fb950, linewidth: 2 });
+        trajectoryGroup.add(new THREE.Line(geometry, material));
+
+        // Waypoint markers
+        const markerMat = new THREE.MeshBasicMaterial({ color: 0x3fb950 });
+        points.forEach((pt, i) => {
+          if (i % Math.ceil(points.length / 10) === 0) {
+            const marker = new THREE.Mesh(new THREE.SphereGeometry(0.01), markerMat);
+            marker.position.copy(pt);
+            trajectoryGroup.add(marker);
+          }
+        });
+
+        // Start/end markers
+        const startMarker = new THREE.Mesh(
+          new THREE.SphereGeometry(0.015),
+          new THREE.MeshBasicMaterial({ color: 0x58a6ff })
+        );
+        startMarker.position.copy(points[0]);
+        trajectoryGroup.add(startMarker);
+
+        const endMarker = new THREE.Mesh(
+          new THREE.SphereGeometry(0.015),
+          new THREE.MeshBasicMaterial({ color: 0xd29922 })
+        );
+        endMarker.position.copy(points[points.length - 1]);
+        trajectoryGroup.add(endMarker);
+      }
+    }
+
+    function executeTrajectory() {
+      if (!trajectoryData) {
+        log('没有轨迹可执行', 'warn');
+        return;
+      }
+
+      log('执行轨迹...', 'info');
+      let currentPoint = 0;
+
+      if (animationId) cancelAnimationFrame(animationId);
+
+      function step() {
+        if (currentPoint >= trajectoryData.waypointCount) {
+          log('轨迹执行完成', 'success');
+          return;
+        }
+
+        const joints = trajectoryData.getWaypoint(currentPoint);
+        if (joints) {
+          updateRobotPose(Array.from(joints));
+        }
+
+        currentPoint++;
+        animationId = setTimeout(step, 50);
+      }
+
+      step();
+    }
+
+    function clearTrajectory() {
+      while (trajectoryGroup.children.length > 0) {
+        trajectoryGroup.remove(trajectoryGroup.children[0]);
+      }
+      trajectoryData = null;
+    }
+
+    // ========== Initialize ==========
+    async function initialize() {
+      initThree();
+
+      try {
+        await init();
+        log(`trajx-wasm 版本: ${version()}`, 'success');
+
+        dhDb = WasmDhDatabase.withDefaults();
+        jointLimits = dhDb.getJointLimits(ROBOT_NAME);
+        collisionEnv = new CollisionEnvironment();
+
+        log(`已加载机器人: ${ROBOT_NAME}`, 'info');
+
+        createJointSliders();
+        await loadRobotMeshes();
+
+      } catch (e) {
+        log(`初始化失败: ${e.message}`, 'error');
+        document.getElementById('current-status').textContent = `错误: ${e.message}`;
+      }
+
+      // Event handlers
+      document.getElementById('btn-home').onclick = () => updateRobotPose([0, 0, 0, 0, 0, 0]);
+      document.getElementById('btn-pose1').onclick = () => updateRobotPose([0.5, 0.3, -0.3, 0, 0.5, 0]);
+      document.getElementById('btn-pose2').onclick = () => updateRobotPose([1.0, -0.5, 0.8, 0.5, -0.3, 0.2]);
+      document.getElementById('btn-pose3').onclick = () => updateRobotPose([-0.5, 0.8, 1.2, -0.3, 0.8, -0.5]);
+
+      document.getElementById('btn-add-box').onclick = () => addObstacle('box');
+      document.getElementById('btn-add-sphere').onclick = () => addObstacle('sphere');
+      document.getElementById('btn-clear-obs').onclick = clearObstacles;
+
+      document.getElementById('btn-plan').onclick = planTrajectory;
+      document.getElementById('btn-execute').onclick = executeTrajectory;
+      document.getElementById('btn-clear-traj').onclick = clearTrajectory;
+    }
+
+    initialize();
+
+    // Expose for debugging
+    window.getDebugInfo = () => ({
+      scene,
+      camera,
+      robotGroup,
+      linkMeshes,
+      currentJoints
+    });
+  </script>
+</body>
+</html>

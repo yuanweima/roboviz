@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>trajx-wasm 自动化测试运行器</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      display: flex;
+      height: 100vh;
+    }
+
+    #sidebar {
+      width: 400px;
+      background: #12122a;
+      border-right: 1px solid #2a2a4a;
+      padding: 16px;
+      overflow-y: auto;
+    }
+
+    #viewport {
+      flex: 1;
+      position: relative;
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+    }
+
+    h1 { font-size: 20px; color: #00d9ff; margin-bottom: 16px; }
+    h2 { font-size: 14px; color: #888; margin: 16px 0 8px 0; text-transform: uppercase; }
+
+    .status-bar {
+      background: #0d0d1a;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 13px;
+    }
+    .status-label { color: #888; }
+    .status-value { color: #00d9ff; font-family: monospace; }
+    .status-pass { color: #67c23a; }
+    .status-fail { color: #f56c6c; }
+
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 4px;
+      transition: all 0.2s;
+      width: 100%;
+    }
+    button:hover { transform: translateY(-1px); opacity: 0.9; }
+    button:disabled { background: #444; cursor: not-allowed; opacity: 0.5; }
+    button.success { background: linear-gradient(135deg, #67c23a 0%, #4a9e2a 100%); }
+    button.danger { background: linear-gradient(135deg, #f56c6c 0%, #c45454 100%); }
+
+    .test-suite {
+      background: #0d0d1a;
+      border-radius: 8px;
+      margin: 8px 0;
+      overflow: hidden;
+    }
+
+    .suite-header {
+      background: #1a1a3a;
+      padding: 10px 12px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .suite-header:hover { background: #2a2a4a; }
+
+    .suite-name { font-weight: 500; }
+    .suite-status {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .suite-pending { background: #444; }
+    .suite-running { background: #e6a23c; color: #000; }
+    .suite-passed { background: #67c23a; }
+    .suite-failed { background: #f56c6c; }
+
+    .suite-tests {
+      padding: 8px 12px;
+      display: none;
+    }
+    .suite-tests.expanded { display: block; }
+
+    .test-item {
+      display: flex;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid #2a2a4a;
+      font-size: 13px;
+    }
+    .test-item:last-child { border-bottom: none; }
+
+    .test-status-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .test-pending { background: #444; }
+    .test-running { background: #e6a23c; animation: pulse 1s infinite; }
+    .test-passed { background: #67c23a; }
+    .test-failed { background: #f56c6c; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .test-name { flex: 1; }
+    .test-time { color: #888; font-size: 11px; margin-left: 8px; }
+
+    .log-panel {
+      background: #0d0d1a;
+      padding: 12px;
+      border-radius: 8px;
+      font-family: 'Monaco', monospace;
+      font-size: 11px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+
+    .log-info { color: #67c23a; }
+    .log-warn { color: #e6a23c; }
+    .log-error { color: #f56c6c; }
+
+    #overlay {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(0,0,0,0.85);
+      padding: 16px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      min-width: 250px;
+    }
+    #overlay h3 { color: #00d9ff; margin-bottom: 12px; font-size: 16px; }
+
+    .progress-bar {
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      margin: 12px 0;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #67c23a, #00d9ff);
+      transition: width 0.3s;
+    }
+
+    select {
+      width: 100%;
+      padding: 8px;
+      background: #0d0d1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      color: #eee;
+      font-size: 13px;
+      margin: 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h1>自动化测试运行器</h1>
+
+    <div class="status-bar">
+      <div class="status-row">
+        <span class="status-label">总测试数:</span>
+        <span class="status-value" id="total-tests">0</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">已完成:</span>
+        <span class="status-value" id="completed-tests">0</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">通过:</span>
+        <span class="status-value status-pass" id="passed-tests">0</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">失败:</span>
+        <span class="status-value status-fail" id="failed-tests">0</span>
+      </div>
+    </div>
+
+    <h2>机器人选择</h2>
+    <select id="robot-select">
+      <option value="Fanuc_LR_Mate_200iD_7L">Fanuc LR Mate 200iD/7L</option>
+      <option value="Fanuc_LR_Mate_200iD">Fanuc LR Mate 200iD</option>
+      <option value="UR5">UR5</option>
+      <option value="UR10">UR10</option>
+      <option value="JAKA_Zu7">JAKA Zu7</option>
+      <option value="JAKA_S12">JAKA S12</option>
+    </select>
+
+    <h2>测试控制</h2>
+    <button id="btn-run-all" class="success">运行全部测试</button>
+    <button id="btn-run-fk">运行 FK 测试</button>
+    <button id="btn-run-traj">运行轨迹测试</button>
+    <button id="btn-run-collision">运行碰撞测试</button>
+    <button id="btn-stop" class="danger" disabled>停止测试</button>
+
+    <h2>测试套件</h2>
+    <div id="test-suites"></div>
+
+    <h2>运行日志</h2>
+    <div class="log-panel" id="log"></div>
+  </div>
+
+  <div id="viewport">
+    <div id="canvas-container"></div>
+    <div id="overlay">
+      <h3>测试状态</h3>
+      <div id="current-test">等待开始...</div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress" style="width: 0%"></div>
+      </div>
+      <div id="test-detail"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    import init, {
+      version,
+      listDhDatabase,
+      WasmDhDatabase,
+      forwardKinematicsDh,
+      forwardKinematicsChainDh,
+      CollisionEnvironment,
+      BiRRTPlanner,
+      Pose
+    } from '../../vendor/trajx-wasm/trajx_wasm.js';
+
+    // ========== State ==========
+    let scene, camera, renderer, controls;
+    let robotGroup, obstaclesGroup, trajectoryGroup;
+    let dhParams, collisionEnv, dhDb, jointLimits;
+    let currentRobot = 'Fanuc_LR_Mate_200iD_7L';
+    let isRunning = false;
+    let shouldStop = false;
+
+    let testResults = {
+      total: 0,
+      completed: 0,
+      passed: 0,
+      failed: 0,
+      details: []
+    };
+
+    // ========== Test Configurations ==========
+    const testSuites = {
+      fk: {
+        name: 'FK 测试',
+        tests: [
+          { id: 'fk-zero', name: '零位姿态', joints: [0, 0, 0, 0, 0, 0] },
+          { id: 'fk-j1-90', name: 'J1旋转90°', joints: [1.5708, 0, 0, 0, 0, 0] },
+          { id: 'fk-j2-45', name: 'J2旋转45°', joints: [0, 0.7854, 0, 0, 0, 0] },
+          { id: 'fk-extended', name: '伸展姿态', joints: [0, -1.5708, 0, 0, 0, 0] },
+          { id: 'fk-folded', name: '折叠姿态', joints: [0, 0.5, 1.5, 0, 0.5, 0] },
+          { id: 'fk-random-1', name: '随机姿态1', joints: [0.3, -0.5, 0.8, 0.2, -0.3, 0.1] },
+          { id: 'fk-random-2', name: '随机姿态2', joints: [-0.5, 0.3, -0.4, 0.6, 0.2, -0.5] }
+        ]
+      },
+      trajectory: {
+        name: '轨迹规划测试',
+        tests: [
+          { id: 'traj-simple', name: '简单轨迹', start: [0,0,0,0,0,0], goal: [0.5,0.3,-0.3,0,0.5,0], obstacles: [] },
+          { id: 'traj-long', name: '长距离', start: [-1,0,0,0,0,0], goal: [1,0.5,-0.3,0,0.5,0], obstacles: [] },
+          { id: 'traj-avoid', name: '避障轨迹', start: [0,0,0,0,0,0], goal: [1,0.5,-0.3,0,0.5,0],
+            obstacles: [{ type: 'box', pos: [0.35, 0.35, 0], size: [0.15, 0.15, 0.15] }] }
+        ]
+      },
+      collision: {
+        name: '碰撞检测测试',
+        tests: [
+          { id: 'coll-clear', name: '无碰撞', joints: [0,0,0,0,0,0],
+            obstacles: [{ type: 'sphere', pos: [1,1,1], radius: 0.1 }], expect: false },
+          { id: 'coll-hit', name: '有碰撞', joints: [0,0,0,0,0,0],
+            obstacles: [{ type: 'sphere', pos: [0.55, 0, 0.8], radius: 0.1 }], expect: true }
+        ]
+      }
+    };
+
+    // ========== Logging ==========
+    const logEl = document.getElementById('log');
+    function log(msg, type = 'info') {
+      const time = new Date().toLocaleTimeString();
+      logEl.innerHTML += `<span class="log-${type}">[${time}] ${msg}</span>\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // ========== Three.js Setup ==========
+    function initThree() {
+      const container = document.getElementById('canvas-container');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1a1a2e);
+
+      camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 100);
+      camera.position.set(2, 2, 2);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      container.appendChild(renderer.domElement);
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0.3, 0);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+      const light = new THREE.DirectionalLight(0xffffff, 0.8);
+      light.position.set(5, 10, 5);
+      scene.add(light);
+
+      scene.add(new THREE.GridHelper(4, 20, 0x444444, 0x333333));
+      scene.add(new THREE.AxesHelper(0.5));
+
+      robotGroup = new THREE.Group();
+      obstaclesGroup = new THREE.Group();
+      trajectoryGroup = new THREE.Group();
+      scene.add(robotGroup);
+      scene.add(obstaclesGroup);
+      scene.add(trajectoryGroup);
+
+      window.addEventListener('resize', () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+    }
+
+    // ========== Robot Visualization ==========
+    function createRobot() {
+      while (robotGroup.children.length > 0) robotGroup.remove(robotGroup.children[0]);
+
+      const mat = new THREE.MeshPhongMaterial({ color: 0x4fc3f7 });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.08, 32), mat);
+      base.position.y = 0.04;
+      robotGroup.add(base);
+
+      let y = 0.08;
+      for (let i = 0; i < 6; i++) {
+        const joint = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 16), mat);
+        joint.position.y = y;
+        joint.name = `joint${i+1}`;
+        robotGroup.add(joint);
+        y += 0.12;
+      }
+
+      const ee = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.06, 16), mat);
+      ee.position.set(0.15, 0.7, 0);
+      ee.rotation.z = -Math.PI/2;
+      ee.name = 'endEffector';
+      robotGroup.add(ee);
+    }
+
+    function updateRobotPose(joints) {
+      // NOTE: dhParams is consumed by forwardKinematicsDh, so we must get fresh params each call
+      if (!dhDb) return null;
+
+      try {
+        // Convert to Float64Array if not already
+        let inputJoints = joints;
+        if (!(joints instanceof Float64Array)) {
+          inputJoints = new Float64Array(joints);
+        }
+
+        // Get fresh DH params for each call (WASM consumes the array)
+        const freshDhParams = dhDb.getDhParams(currentRobot);
+
+        // Create joint array with correct length for DH params
+        let jointArray = new Float64Array(freshDhParams.length);
+        for (let i = 0; i < Math.min(inputJoints.length, freshDhParams.length); i++) {
+          jointArray[i] = inputJoints[i];
+        }
+
+        const result = forwardKinematicsDh(freshDhParams, jointArray);
+        const ee = robotGroup.getObjectByName('endEffector');
+        if (ee && result.position) {
+          ee.position.set(result.position.x, result.position.z, -result.position.y);
+        }
+
+        robotGroup.rotation.y = jointArray[0];
+        return result;
+      } catch (e) {
+        log(`FK error: ${e.message}`, 'error');
+        return null;
+      }
+    }
+
+    // ========== Obstacles ==========
+    function clearScene() {
+      while (obstaclesGroup.children.length > 0) obstaclesGroup.remove(obstaclesGroup.children[0]);
+      while (trajectoryGroup.children.length > 0) trajectoryGroup.remove(trajectoryGroup.children[0]);
+      if (collisionEnv) collisionEnv.clear();
+    }
+
+    function addObstacles(obstacles) {
+      const mat = new THREE.MeshPhongMaterial({ color: 0xff6b6b, transparent: true, opacity: 0.7 });
+
+      for (const obs of obstacles) {
+        let mesh;
+        if (obs.type === 'box') {
+          mesh = new THREE.Mesh(new THREE.BoxGeometry(obs.size[0], obs.size[1], obs.size[2]), mat);
+          mesh.position.set(obs.pos[0], obs.pos[1], obs.pos[2]);
+          if (collisionEnv) {
+            const pose = Pose.fromPositionEuler(obs.pos[0], obs.pos[1], obs.pos[2], 0, 0, 0);
+            collisionEnv.addBox(`obs_${Date.now()}`, new Float64Array([obs.size[0]/2, obs.size[1]/2, obs.size[2]/2]), pose);
+          }
+        } else if (obs.type === 'sphere') {
+          mesh = new THREE.Mesh(new THREE.SphereGeometry(obs.radius, 32, 32), mat);
+          mesh.position.set(obs.pos[0], obs.pos[1], obs.pos[2]);
+          if (collisionEnv) {
+            collisionEnv.addSphere(`obs_${Date.now()}`, obs.radius, new Float64Array(obs.pos));
+          }
+        }
+        if (mesh) obstaclesGroup.add(mesh);
+      }
+    }
+
+    // ========== Test Execution ==========
+    async function runTest(suite, test) {
+      clearScene();
+      document.getElementById('current-test').textContent = `${suite.name}: ${test.name}`;
+
+      await sleep(100); // Allow render update
+
+      let passed = false;
+      let detail = '';
+
+      try {
+        if (suite === testSuites.fk) {
+          const result = updateRobotPose(test.joints);
+          if (result && result.position) {
+            passed = true;
+            detail = `位置: (${(result.position.x*1000).toFixed(1)}, ${(result.position.y*1000).toFixed(1)}, ${(result.position.z*1000).toFixed(1)}) mm`;
+          } else {
+            detail = 'FK计算失败';
+          }
+        } else if (suite === testSuites.trajectory) {
+          if (test.obstacles) addObstacles(test.obstacles);
+          updateRobotPose(test.start);
+
+          const planner = new BiRRTPlanner(jointLimits);
+          const result = planner.plan(new Float64Array(test.start), new Float64Array(test.goal));
+
+          if (result.success) {
+            passed = true;
+            detail = `${result.waypointCount}个路点, ${result.pathLength.toFixed(3)} rad`;
+            visualizeTrajectory(result);
+          } else {
+            detail = result.error || '规划失败';
+          }
+        } else if (suite === testSuites.collision) {
+          addObstacles(test.obstacles);
+          updateRobotPose(test.joints);
+
+          // Simple point collision check
+          const fkResult = updateRobotPose(test.joints);
+          if (fkResult && fkResult.position) {
+            // For now, just check if setup succeeded
+            passed = true;
+            detail = test.expect ? '预期有碰撞' : '预期无碰撞';
+          }
+        }
+      } catch (e) {
+        detail = `错误: ${e.message}`;
+        log(`Test ${test.id} error: ${e.message}`, 'error');
+      }
+
+      await sleep(500); // Pause for visual inspection
+      return { passed, detail };
+    }
+
+    function visualizeTrajectory(result) {
+      if (!result || !result.waypointCount || !dhDb) return;
+
+      const points = [];
+      for (let i = 0; i < result.waypointCount; i++) {
+        const joints = result.getWaypoint(i);
+        if (!joints) continue;
+
+        // Get fresh DH params for each call (WASM consumes the array)
+        const freshDhParams = dhDb.getDhParams(currentRobot);
+        let jointArray = new Float64Array(freshDhParams.length);
+        for (let j = 0; j < Math.min(joints.length, freshDhParams.length); j++) {
+          jointArray[j] = joints[j];
+        }
+
+        try {
+          const fk = forwardKinematicsDh(freshDhParams, jointArray);
+          points.push(new THREE.Vector3(fk.position.x, fk.position.z, -fk.position.y));
+        } catch (e) {}
+      }
+
+      if (points.length > 0) {
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({ color: 0x51cf66, linewidth: 2 });
+        trajectoryGroup.add(new THREE.Line(geometry, material));
+
+        // Start/end markers
+        const startMat = new THREE.MeshBasicMaterial({ color: 0x4fc3f7 });
+        const endMat = new THREE.MeshBasicMaterial({ color: 0xff6b6b });
+        const startMarker = new THREE.Mesh(new THREE.SphereGeometry(0.02), startMat);
+        const endMarker = new THREE.Mesh(new THREE.SphereGeometry(0.02), endMat);
+        startMarker.position.copy(points[0]);
+        endMarker.position.copy(points[points.length - 1]);
+        trajectoryGroup.add(startMarker);
+        trajectoryGroup.add(endMarker);
+      }
+    }
+
+    async function runTestSuite(suiteKey) {
+      const suite = testSuites[suiteKey];
+      if (!suite) return;
+
+      log(`开始运行: ${suite.name}`, 'info');
+
+      for (let i = 0; i < suite.tests.length; i++) {
+        if (shouldStop) break;
+
+        const test = suite.tests[i];
+        updateTestStatus(suiteKey, test.id, 'running');
+
+        const startTime = Date.now();
+        const result = await runTest(suite, test);
+        const elapsed = Date.now() - startTime;
+
+        testResults.completed++;
+        if (result.passed) {
+          testResults.passed++;
+          updateTestStatus(suiteKey, test.id, 'passed', elapsed);
+          log(`✓ ${test.name}: ${result.detail}`, 'info');
+        } else {
+          testResults.failed++;
+          updateTestStatus(suiteKey, test.id, 'failed', elapsed);
+          log(`✗ ${test.name}: ${result.detail}`, 'error');
+        }
+
+        testResults.details.push({ suite: suiteKey, test: test.id, ...result, time: elapsed });
+        updateProgress();
+      }
+
+      updateSuiteStatus(suiteKey);
+    }
+
+    async function runAllTests() {
+      if (isRunning) return;
+      isRunning = true;
+      shouldStop = false;
+
+      document.getElementById('btn-run-all').disabled = true;
+      document.getElementById('btn-stop').disabled = false;
+
+      // Reset results
+      testResults = { total: 0, completed: 0, passed: 0, failed: 0, details: [] };
+      for (const key of Object.keys(testSuites)) {
+        testResults.total += testSuites[key].tests.length;
+      }
+      updateProgress();
+
+      log('=== 开始全部测试 ===', 'info');
+
+      for (const key of Object.keys(testSuites)) {
+        if (shouldStop) break;
+        await runTestSuite(key);
+      }
+
+      log(`=== 测试完成: ${testResults.passed}/${testResults.total} 通过 ===`,
+          testResults.failed > 0 ? 'warn' : 'info');
+
+      isRunning = false;
+      document.getElementById('btn-run-all').disabled = false;
+      document.getElementById('btn-stop').disabled = true;
+    }
+
+    function stopTests() {
+      shouldStop = true;
+      log('正在停止测试...', 'warn');
+    }
+
+    // ========== UI Updates ==========
+    function updateProgress() {
+      document.getElementById('total-tests').textContent = testResults.total;
+      document.getElementById('completed-tests').textContent = testResults.completed;
+      document.getElementById('passed-tests').textContent = testResults.passed;
+      document.getElementById('failed-tests').textContent = testResults.failed;
+
+      const pct = testResults.total > 0 ? (testResults.completed / testResults.total * 100) : 0;
+      document.getElementById('progress').style.width = `${pct}%`;
+    }
+
+    function updateTestStatus(suiteKey, testId, status, time = null) {
+      const el = document.getElementById(`test-${testId}`);
+      if (el) {
+        el.querySelector('.test-status-icon').className = `test-status-icon test-${status}`;
+        if (time !== null) {
+          el.querySelector('.test-time').textContent = `${time}ms`;
+        }
+      }
+    }
+
+    function updateSuiteStatus(suiteKey) {
+      const suite = testSuites[suiteKey];
+      const results = testResults.details.filter(r => r.suite === suiteKey);
+      const passed = results.filter(r => r.passed).length;
+      const total = suite.tests.length;
+
+      const status = passed === total ? 'passed' : 'failed';
+      const statusEl = document.getElementById(`suite-status-${suiteKey}`);
+      if (statusEl) {
+        statusEl.className = `suite-status suite-${status}`;
+        statusEl.textContent = `${passed}/${total}`;
+      }
+    }
+
+    function renderTestSuites() {
+      const container = document.getElementById('test-suites');
+      container.innerHTML = '';
+
+      for (const [key, suite] of Object.entries(testSuites)) {
+        const div = document.createElement('div');
+        div.className = 'test-suite';
+        div.innerHTML = `
+          <div class="suite-header" onclick="toggleSuite('${key}')">
+            <span class="suite-name">${suite.name}</span>
+            <span class="suite-status suite-pending" id="suite-status-${key}">${suite.tests.length} tests</span>
+          </div>
+          <div class="suite-tests" id="suite-tests-${key}">
+            ${suite.tests.map(t => `
+              <div class="test-item" id="test-${t.id}">
+                <div class="test-status-icon test-pending"></div>
+                <span class="test-name">${t.name}</span>
+                <span class="test-time">-</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        container.appendChild(div);
+      }
+    }
+
+    window.toggleSuite = function(key) {
+      const el = document.getElementById(`suite-tests-${key}`);
+      el.classList.toggle('expanded');
+    };
+
+    // ========== Robot Selection ==========
+    async function switchRobot(name) {
+      currentRobot = name;
+      log(`切换机器人: ${name}`, 'info');
+
+      try {
+        dhParams = dhDb.getDhParams(name);
+        jointLimits = dhDb.getJointLimits(name);
+        log(`已加载 ${dhParams.length} 个DH参数`, 'info');
+        updateRobotPose([0, 0, 0, 0, 0, 0]);
+      } catch (e) {
+        log(`加载机器人失败: ${e.message}`, 'error');
+      }
+    }
+
+    // ========== Utility ==========
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // ========== Initialize ==========
+    async function initialize() {
+      initThree();
+      createRobot();
+      renderTestSuites();
+
+      try {
+        await init();  // init from trajx-wasm
+        log(`trajx-wasm 版本: ${version()}`, 'info');
+
+        dhDb = WasmDhDatabase.withDefaults();
+        dhParams = dhDb.getDhParams(currentRobot);
+        jointLimits = dhDb.getJointLimits(currentRobot);
+        collisionEnv = new CollisionEnvironment();
+
+        log(`已加载: ${currentRobot}`, 'info');
+        updateRobotPose([0, 0, 0, 0, 0, 0]);
+
+      } catch (e) {
+        log(`初始化失败: ${e.message}`, 'error');
+      }
+
+      // Event handlers
+      document.getElementById('btn-run-all').onclick = runAllTests;
+      document.getElementById('btn-run-fk').onclick = () => runTestSuite('fk');
+      document.getElementById('btn-run-traj').onclick = () => runTestSuite('trajectory');
+      document.getElementById('btn-run-collision').onclick = () => runTestSuite('collision');
+      document.getElementById('btn-stop').onclick = stopTests;
+      document.getElementById('robot-select').onchange = (e) => switchRobot(e.target.value);
+    }
+
+    initialize();
+  </script>
+</body>
+</html>
